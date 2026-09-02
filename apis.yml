@@ -1,0 +1,59 @@
+name: Renderwolf
+description: >-
+  A rendering API by Ironfang Ltd that turns a URL or raw HTML into screenshots, PDFs, templated images, QR codes and
+  short captioned video clips over plain HTTPS and JSON. Offers a REST API, OpenAPI contract, a hosted MCP server, and
+  an llms.txt.
+url: https://raw.githubusercontent.com/api-evangelist/renderwolf/refs/heads/main/apis.yml
+created: '2026-09-02'
+modified: '2026-09-02'
+specificationVersion: '0.21'
+tags:
+  - Developer Tools
+  - Screenshot API
+  - Website Screenshot
+  - HTML-to-PDF
+  - PDF API
+  - Image API
+  - OG Image API
+  - QR Code API
+  - Website-to-Video
+  - Rendering Infrastructure
+  - MCP
+  - UK-hosted
+apis:
+  - name: Renderwolf API
+    description: >-
+      Production REST/JSON rendering API: screenshots, PDFs, templated images, QR codes, video, site previews, signed
+      URLs, async jobs, batches, destinations/deliveries and usage. Bearer API-key auth.
+    humanURL: https://ironfang.uk/renderwolf/docs
+    baseURL: https://api.ironfang.uk/renderwolf
+    tags:
+      - Developer Tools
+      - Screenshot API
+      - Website Screenshot
+      - HTML-to-PDF
+      - PDF API
+      - Image API
+      - OG Image API
+      - QR Code API
+      - Website-to-Video
+      - Rendering Infrastructure
+      - MCP
+      - UK-hosted
+    properties:
+      - type: OpenAPI
+        url: https://api.ironfang.uk/openapi.yaml
+      - type: Documentation
+        url: https://ironfang.uk/renderwolf/docs
+      - type: LLMsTxt
+        url: https://ironfang.uk/llms.txt
+      - type: MCPServer
+        url: https://mcp.ironfang.uk/mcp
+maintainers:
+  - FN: Ironfang Ltd
+    url: https://ironfang.uk
+generated:
+  by: apis.io/add
+  model: claude-opus-4-8
+  confidence: 98
+  at: '2026-09-02T12:33:19.116Z'
