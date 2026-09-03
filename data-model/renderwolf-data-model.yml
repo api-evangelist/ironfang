@@ -1,0 +1,171 @@
+generated: '2026-09-02'
+method: derived
+source: openapi/renderwolf-openapi.yaml
+enriched_from: https://ironfang.uk/renderwolf/docs
+note: >-
+  Renderwolf's core is a render request, not a stored record. Only four entities persist -
+  Template, Job, Batch and Destination (plus the Delivery attempts a Destination produces).
+  Everything else is a transient request shape or bytes on the wire. Job response bodies are
+  declared inline in the contract rather than as named components, so the Job/Batch/Delivery
+  field lists below are taken from the API reference and the MCP reference where the spec is
+  silent; that is recorded per entity.
+entities:
+  - name: Template
+    schema: Template
+    persistent: true
+    id: uuid (v7-shaped, e.g. 0198c9f1-5b7a-7c2e-9f1d-3a8b2c4d5e6f)
+    fields: [id, name, html, width, height, created_at, updated_at]
+    input_schema: TemplateInput
+    operations: [listTemplates, createTemplate, getTemplate, updateTemplate, deleteTemplate, renderTemplate]
+    note: >-
+      The MCP surface exposes ids, names, sizes and variable names but never the stored html.
+      Editing a template invalidates its render cache immediately.
+  - name: Job
+    persistent: true
+    retention: 24 hours after success, then the hosted result is removed
+    id: uuid
+    fields_from_spec: [kind, request, external_id, delivery]
+    fields_from_docs: [id, status, kind, external_id, credits.reserved, credits.charged, cached, result, created_at, request_id, connection_id]
+    status_enum: [queued, running, cancellation_requested, succeeded, failed, cancelled]
+    result_fields: [content_type, size, sha256, expires_at, url]
+    operations: [submitJob, listJobs, getJob, cancelJob, getJobResult, getSignedResult]
+    field_source: >-
+      The 202/200 job envelope is inline in the spec; the field list is from
+      https://ironfang.uk/renderwolf/docs#jobs and https://ironfang.uk/docs/mcp.
+  - name: Batch
+    persistent: true
+    id: uuid
+    fields_from_spec: [kind, default, delivery, external_id, items]
+    fields_from_docs: [id, counts, done, jobs]
+    max_items: 100
+    operations: [submitBatch, getBatch]
+    semantics: >-
+      Accepted or refused whole. Every item validated before any is stored; credits for all
+      reserved in one transaction. The default/item merge is one level deep - an item's field
+      wins, everything else comes from default. An item may override kind and carry its own delivery.
+  - name: Destination
+    persistent: true
+    id: uuid
+    fields: [id, type, name, url, endpoint, region, bucket, prefix, path_style, access_key, secret_key, session_token]
+    type_enum: [webhook, s3]
+    write_once_field: signing_secret (returned at creation only, stored encrypted, never readable)
+    operations: [createDestination, listDestinations, getDestination, updateDestination, deleteDestination, testDestination]
+  - name: Delivery
+    persistent: true
+    id: uuid
+    fields_from_docs: [id, destination, job, status, attempts, error, body]
+    operations: [listDeliveries, getDelivery, redeliverDelivery]
+    field_source: https://ironfang.uk/renderwolf/docs#delivery
+  - name: SignedUrl
+    schema: SignedUrl
+    persistent: false
+    fields: [url, path]
+    input_schema: SignRequest
+    operations: [createSignedUrl, renderSignedUrl]
+    note: >-
+      Not stored as a record - the signature itself carries the parameters and the metering
+      account. There is no list or revoke operation.
+  - name: Usage
+    schema: Usage
+    persistent: false
+    fields: [period, credits, renders, limit, period_start, period_end, by_kind, unattributed, daily]
+    operations: [getUsage]
+    deprecated_fields:
+      - field: renders
+        replacement: credits
+        see: lifecycle/renderwolf-lifecycle.yml
+  - name: RequestRecord
+    persistent: true
+    operations: [listRequests]
+    note: >-
+      Request history. The contract declares no fields and no filter parameters; the CLI
+      exposes --since, --failed and --kind against it.
+  - name: Capability
+    persistent: false
+    fields: [key, name, status, since, gap_heading]
+    status_enum: [live, planned, not_offered]
+    operations: [getCapabilities]
+    note: Public and unauthenticated. See lifecycle/renderwolf-capabilities.json.
+request_shapes:
+  note: >-
+    These are input-only value objects, not entities. They are the spec's real reuse story -
+    RenderCommon is composed into four of the five render request bodies.
+  shapes:
+    - name: RenderCommon
+      composed_into: [ScreenshotRequest, PdfRequest, SitePreviewRequest, RenderTemplateRequest]
+      fields: [no_cache, block_ads, block_cookie_banners, hide_selectors, headers, cookies, authorization, user_agent, wait_until, wait_for_selector, timeout_ms, device_scale_factor]
+    - name: Cookie
+      composed_into: [RenderCommon]
+      fields: [name, value, domain, path]
+    - name: Clip
+      composed_into: [ScreenshotRequest]
+      fields: [x, y, width, height]
+      note: A region rectangle - unrelated to the video "clip" product.
+    - name: Margin
+      composed_into: [PdfRequest]
+    - name: QrRequest
+      standalone: true
+    - name: ClipRequest
+      standalone: true
+    - name: JobDelivery
+      composed_into: [submitJob, submitBatch]
+      fields: [webhook_destination, storage_destination, storage_key]
+    - name: Error
+      used_by: every 4xx/5xx response
+relationships:
+  - from: Job
+    to: Destination
+    type: belongs_to
+    via: delivery.webhook_destination
+    optional: true
+  - from: Job
+    to: Destination
+    type: belongs_to
+    via: delivery.storage_destination
+    optional: true
+  - from: Batch
+    to: Job
+    type: has_many
+    via: items
+    cardinality: 1..100
+  - from: Batch
+    to: Destination
+    type: belongs_to
+    via: delivery
+    optional: true
+  - from: Delivery
+    to: Destination
+    type: belongs_to
+    via: destination
+  - from: Delivery
+    to: Job
+    type: belongs_to
+    via: job
+  - from: Job
+    to: Template
+    type: belongs_to
+    via: request.template (kind = image)
+    optional: true
+  - from: SignedUrl
+    to: Template
+    type: belongs_to
+    via: template (kind = image)
+    optional: true
+  - from: Job
+    to: RenderCommon
+    type: has_one
+    via: request
+id_conventions:
+  format: UUID, time-ordered (v7-shaped) - ids in Ironfang's own examples begin 0198.../01a0...
+  prefixes: none - Renderwolf does not use typed id prefixes
+  external_id: caller-supplied correlation string on Job and Batch
+  request_id: X-Ironfang-Request-ID on every response, repeated as request_id in errors
+mcp_resource_templates:
+  uris:
+    - 'ironfang://connection'
+    - 'ironfang://renderwolf/jobs/{job_id}'
+    - 'ironfang://renderwolf/jobs/{job_id}/result'
+    - 'ironfang://renderwolf/templates/{template_id}'
+  note: >-
+    The MCP surface exposes no enumeration of an account's objects - ids come from tool results,
+    which is why there is no jobs.list or templates.list-by-filter tool.

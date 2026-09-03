@@ -1,0 +1,178 @@
+generated: '2026-09-02'
+method: searched
+status: published
+source: https://ironfang.uk/docs/mcp
+registry:
+  name: 'uk.ironfang/ironfang'
+  url: https://registry.modelcontextprotocol.io/v0/servers?search=ironfang
+  status: active
+  published: '2026-08-31'
+  version: '1.0.0'
+  transport: streamable-http
+deployment:
+  mode: remote
+  endpoint: https://mcp.ironfang.uk/mcp
+  auth: oauth
+  verified: probed
+  probe:
+    method: 'POST {"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+    http_status: 401
+    www_authenticate: >-
+      Bearer resource_metadata="https://mcp.ironfang.uk/.well-known/oauth-protected-resource/mcp",
+      error="invalid_token", error_description="authorization required"
+    note: >-
+      The server is live and answers an RFC 9728 challenge. tools/list is auth-gated, so the
+      tool table below was read from Ironfang's published MCP reference rather than from live
+      introspection - names, scopes and credit costs are the provider's own; inputSchemas
+      require an authenticated tools/list.
+server:
+  name: ironfang
+  title: Ironfang
+  transport: http
+  protocol_revision: '2026-07-28'
+  accepted_revisions: ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26']
+  url: https://mcp.ironfang.uk/mcp
+  session: stateless - POST /mcp only, no standalone event stream, no session id
+  capabilities:
+    tools: true
+    resources: true
+    resource_templates: true
+    prompts: false
+    sampling: false
+    roots: false
+    tasks_extension: 'io.modelcontextprotocol/tasks'
+  lifecycle_status: private beta
+  compatibility_contract: >-
+    Tool names are a compatibility contract - Ironfang adds names, and anything that changes
+    semantics gets a new name.
+  install:
+    claude_code: 'claude mcp add --transport http ironfang https://mcp.ironfang.uk/mcp'
+    claude_desktop: 'Settings > Connectors > Add custom connector, endpoint https://mcp.ironfang.uk/mcp'
+  tested_clients:
+    - Claude Code
+    - claude.ai
+tools:
+  - name: ironfang.connection.get
+    scope: 'ironfang:mcp'
+    credits: 0
+    description: The organisation this connection acts for, its scopes, products and budgets.
+    source_operation: null
+  - name: renderwolf.usage.get
+    scope: 'renderwolf:usage:read'
+    credits: 0
+    description: Credits used this period, the plan limit and the reset date.
+    source_operation: openapi/renderwolf-openapi.yaml#getUsage
+  - name: renderwolf.template.list
+    scope: 'renderwolf:templates:read'
+    credits: 0
+    description: Template ids, names, sizes and variable names.
+    source_operation: openapi/renderwolf-openapi.yaml#listTemplates
+  - name: renderwolf.template.get
+    scope: 'renderwolf:templates:read'
+    credits: 0
+    description: One template's metadata.
+    source_operation: openapi/renderwolf-openapi.yaml#getTemplate
+  - name: renderwolf.screenshot.create
+    scope: 'renderwolf:render'
+    credits: 1
+    description: Capture a page or HTML as PNG, JPEG or WebP. Durable job.
+    source_operation: openapi/renderwolf-openapi.yaml#createScreenshot
+  - name: renderwolf.pdf.create
+    scope: 'renderwolf:render'
+    credits: 2
+    description: Render a page or HTML to PDF. Durable job.
+    source_operation: openapi/renderwolf-openapi.yaml#createPdf
+  - name: renderwolf.qr.create
+    scope: 'renderwolf:render'
+    credits: 0
+    description: A QR code for text or a URL, returned inline as a data URL.
+    source_operation: openapi/renderwolf-openapi.yaml#createQr
+  - name: renderwolf.template.render
+    scope: 'renderwolf:render + renderwolf:templates:read'
+    credits: 1
+    description: Render one of your templates with variables into an image. Durable job.
+    source_operation: openapi/renderwolf-openapi.yaml#renderTemplate
+  - name: renderwolf.clip.create
+    scope: 'renderwolf:render'
+    credits: per second
+    description: A short captioned clip (1-60s). Always a durable job; a task where supported.
+    source_operation: openapi/renderwolf-openapi.yaml#createClip
+  - name: renderwolf.signed_url.create
+    scope: 'renderwolf:sign'
+    credits: 0 until fetched
+    description: >-
+      A signed URL that renders when fetched, lifetime 1 second to 24 hours. Permanent links
+      are refused through MCP even though the REST API allows them.
+    source_operation: openapi/renderwolf-openapi.yaml#createSignedUrl
+  - name: renderwolf.job.get
+    scope: the creating scope
+    credits: 0
+    description: A job's state, cost, result metadata and a fresh download link.
+    source_operation: openapi/renderwolf-openapi.yaml#getJob
+  - name: renderwolf.job.cancel
+    scope: the creating scope
+    credits: 0
+    description: Cooperative cancel. Queued work refunded in full; running work charged only if it produced usable output.
+    source_operation: openapi/renderwolf-openapi.yaml#cancelJob
+  - name: renderwolf.batch.create
+    scope: 'renderwolf:render'
+    credits: 1 per screenshot, 2 per PDF
+    description: Up to 100 screenshot or PDF jobs in one call, with a shared default and optional delivery.
+    source_operation: openapi/renderwolf-openapi.yaml#submitBatch
+  - name: renderwolf.batch.get
+    scope: 'renderwolf:render'
+    credits: 0
+    description: A batch's progress - counts by status and every job with state, cost and result link.
+    source_operation: openapi/renderwolf-openapi.yaml#getBatch
+  - name: renderwolf.destination.list
+    scope: 'renderwolf:destinations'
+    credits: 0
+    description: The webhook endpoints and storage buckets on the account.
+    source_operation: openapi/renderwolf-openapi.yaml#listDestinations
+  - name: renderwolf.destination.create
+    scope: 'renderwolf:destinations'
+    credits: 0
+    description: >-
+      Register a public https webhook endpoint; signing secret returned once. Storage
+      destinations carry credentials and are registered in the portal, not through an assistant.
+    source_operation: openapi/renderwolf-openapi.yaml#createDestination
+  - name: renderwolf.destination.test
+    scope: 'renderwolf:destinations'
+    credits: 0
+    description: Send a test delivery now and report what happened.
+    source_operation: openapi/renderwolf-openapi.yaml#testDestination
+  - name: renderwolf.destination.delete
+    scope: 'renderwolf:destinations'
+    credits: 0
+    description: Stop deliveries to a destination and forget it.
+    source_operation: openapi/renderwolf-openapi.yaml#deleteDestination
+reserved_tools:
+  note: >-
+    Ironfang documents nine auditwolf.* tools on the same endpoint, marked "Not yet available"
+    pending the Auditwolf commercial release. They are not listed above because they are not
+    live and they belong to a sibling product, not to Renderwolf.
+resources:
+  - uri: 'ironfang://connection'
+    returns: The connection summary.
+  - uri: 'ironfang://renderwolf/jobs/{job_id}'
+    returns: The job envelope.
+  - uri: 'ironfang://renderwolf/jobs/{job_id}/result'
+    returns: Result metadata with a freshly signed link; marked non-cacheable.
+  - uri: 'ironfang://renderwolf/templates/{template_id}'
+    returns: Template metadata.
+agent_safety:
+  tool_hints: >-
+    Every tool carries readOnlyHint, destructiveHint, idempotentHint and openWorldHint plus
+    namespaced metadata naming its scope, product, credit behaviour and risk.
+  spend_cap: 'connection budget = max(25, 10% of the plan monthly credits), capped by remaining allowance, per billing period'
+  budget_exhausted_code: mcp_budget_exhausted
+  input_policy: >-
+    Strict JSON Schema objects - unknown fields rejected, every string/size/duration bounded.
+    Rendering tools take a public URL or bounded raw HTML and refuse cookies, authorization
+    headers, custom request headers, proxy settings, scripts to execute and private network targets.
+  result_policy: >-
+    Results are durable jobs, not bytes in the conversation. Hosted 24 hours, fetched through
+    15-minute signed links. PDFs, clips and full-page images are never returned inline.
+  token_isolation: >-
+    The MCP token is audience-bound to the MCP endpoint; products reject it. Each product call
+    uses a separate two-minute delegated token.

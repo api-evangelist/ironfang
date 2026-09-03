@@ -1,0 +1,92 @@
+generated: '2026-09-02'
+method: searched
+source: https://ironfang.uk/renderwolf/docs#delivery
+docs: https://ironfang.uk/renderwolf/docs#delivery
+asyncapi_published: false
+asyncapi_note: >-
+  Ironfang publishes no AsyncAPI document. /asyncapi.yaml and /asyncapi.json are not served on
+  api.ironfang.uk, and the webhooks: block of the OpenAPI 3.1 contract is empty even though the
+  contract is 3.1 and could carry them. The event surface below was read from the API
+  reference prose and is captured as a webhook catalog, not fabricated as a spec.
+transport: HTTPS POST to a customer-registered destination
+registration:
+  operation: createDestination
+  body_example: '{ "type": "webhook", "name": "Production", "url": "https://hooks.example.com/renderwolf" }'
+  response: '201 with id and signing_secret (shown exactly once)'
+  scope_required: 'renderwolf:destinations'
+  types: [webhook, s3]
+  binding: >-
+    A destination is named by id on a job's or a batch's `delivery` block
+    (webhook_destination / storage_destination / storage_key).
+security:
+  signature_header: Renderwolf-Signature
+  algorithm: 'v1=hmac_sha256(signing_secret, timestamp + "." + raw_body) hex'
+  verification_rule: >-
+    Compute over the raw bytes received, never over a parsed and re-serialised body. Compare in
+    constant time.
+  timestamp_header: Renderwolf-Timestamp
+  timestamp_format: Unix seconds
+  replay_protection: Reject a timestamp more than a few minutes old.
+  dedupe_header: Renderwolf-Event-Id
+  dedupe_rule: Stable across retries of the same delivery - use it to make the handler idempotent.
+  secret_rotation: >-
+    Not supported. The secret is returned once, stored encrypted, and has no read endpoint; a
+    lost secret means creating a new destination.
+delivery_semantics:
+  guarantee: at-least-once
+  retry_ladder: one minute out to a day, with jitter
+  honours_retry_after: true (bounded)
+  retried_on: [408, 429, '5xx']
+  terminal_on: other 4xx - a retry will not help
+  auto_disable: after 10 consecutive failures, until re-enabled in the portal
+  isolation: >-
+    A delivery failure never changes a render. A job that rendered is succeeded whatever the
+    receiver did; an unreachable webhook does not spend a render attempt, hold a render slot, or
+    turn a successful job into a failed one.
+  observability:
+    - listDeliveries
+    - getDelivery
+    - redeliverDelivery
+events:
+  - name: render.job.succeeded
+    description: A durable render job completed successfully.
+    payload:
+      - the job
+      - credits (reserved, charged)
+      - 'result: content type, byte size, SHA-256'
+      - 'result url: signed, valid 15 minutes from the moment of sending (not from job completion)'
+  - name: render.job.failed
+    description: A durable render job failed. The reason accompanies the job.
+    payload: [the job, credits]
+  - name: render.job.cancelled
+    description: A durable render job was cancelled cooperatively.
+    payload: [the job, credits]
+  - name: render.delivery.failed
+    description: >-
+      A storage delivery gave up. Sent to the webhook destination, naming the storage
+      destination and the error - how a customer learns a bucket stopped accepting uploads
+      without watching for absent files.
+    payload: [destination, error]
+storage_delivery:
+  type: s3
+  compatible_with: [AWS S3, Cloudflare R2, MinIO, Ceph]
+  fields: [bucket, region, credentials, endpoint (optional), prefix (optional)]
+  key_template:
+    default: 'renderwolf/{date}/{job_id}'
+    placeholders: ['{job_id}', '{external_id}', '{date} (YYYY/MM/DD)']
+    rules: >-
+      Fixed text plus those three placeholders only; nothing else is evaluated. A key that would
+      climb out of the prefix is refused at job submission rather than silently rewritten.
+  integrity: >-
+    Uploads are checksummed and verified after writing; an object already present with the same
+    checksum is left alone, so a retried delivery is a no-op.
+  credential_handling: >-
+    Sent once at destination creation and never carried in a job body. Ironfang advises scoping
+    the credentials to the given prefix - they only need write there.
+  agent_restriction: Storage destinations are registered in the portal, never through an MCP assistant.
+x-findings:
+  - id: no-asyncapi
+    detail: >-
+      A real, signed, retrying, four-event webhook surface with documented dedupe and replay
+      protection exists with no machine-readable event contract. The OpenAPI is 3.1, so the
+      `webhooks:` block would carry it with no new document required.

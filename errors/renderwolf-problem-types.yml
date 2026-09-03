@@ -1,0 +1,123 @@
+generated: '2026-09-02'
+method: searched
+source: https://ironfang.uk/renderwolf/docs#errors
+derived_from: openapi/renderwolf-openapi.yaml
+docs: https://ironfang.uk/renderwolf/docs#errors
+format: vendor-json
+rfc9457: false
+rfc9457_note: >-
+  Renderwolf does NOT use RFC 9457 application/problem+json. It ships a stable vendor envelope
+  with a machine-readable `code`, which is the useful half of the RFC without the media type,
+  `type` URI, `title`/`detail` split or extension members.
+envelope:
+  media_type: application/json
+  shape: '{"error": {"code": "<stable slug>", "message": "<human readable>"}}'
+  example: '{"error": {"code": "quota_exhausted", "message": "monthly credits exhausted - upgrade your plan or wait for the period to reset"}}'
+  fields:
+    code: Stable and safe to branch on. Enumerated in the OpenAPI Error schema.
+    message: Human-readable. Ironfang states it may change - do not match on it.
+    request_id: >-
+      Echoed into the error body and always present as the X-Ironfang-Request-ID response
+      header. Quote it to support to find the exact request.
+correlation:
+  server_header: X-Ironfang-Request-ID
+  client_header: X-Request-ID
+  client_header_rules: printable ASCII, up to 128 characters, echoed back unchanged
+problem_types:
+  - code: bad_request
+    status: 400
+    title: Malformed JSON or invalid parameters
+    remediation: Fix the request body against the operation's schema; the message names the field.
+    operations: [createScreenshot, createQr, createPdf, createClip, createSitePreview, createTemplate, updateTemplate, renderTemplate, createSignedUrl, submitJob, submitBatch, createDestination, listRequests]
+  - code: unauthorized
+    status: 401
+    title: Authentication failed
+    remediation: Send Authorization Bearer with a valid API key.
+  - code: invalid_api_key
+    status: 401
+    title: Missing or unknown API key
+    remediation: Mint a new key in the portal. Keys are shown once and stored hashed.
+  - code: auth_failed
+    status: 401
+    title: Credential rejected
+  - code: forbidden
+    status: 403
+    title: Not permitted
+  - code: email_unverified
+    status: 403
+    title: Account email not yet verified
+    remediation: Verify the account email before rendering.
+  - code: insufficient_scope
+    status: 403
+    title: Key or token does not carry the required scope
+    remediation: >-
+      Create a new API key with the scope (key scopes cannot be widened), or re-run the OAuth
+      flow for the extra scope. The response names the missing scope.
+    source: docs
+  - code: not_found
+    status: 404
+    title: The template or signed route does not exist
+    operations: [getTemplate, updateTemplate, deleteTemplate, renderTemplate, getJob, cancelJob, getJobResult, getBatch, getDestination, updateDestination, deleteDestination, testDestination, getDelivery, redeliverDelivery]
+  - code: idempotency_conflict
+    status: 409
+    title: Same Idempotency-Key, different request body
+    remediation: >-
+      Reuse the key only for the identical request; choose a new key for a different one.
+    operations: [submitJob, cancelJob]
+    source: docs
+  - code: gone
+    status: 410
+    title: The hosted result has expired
+    remediation: >-
+      Hosted results are kept 24 hours after success. Re-render, or configure a delivery
+      destination to collect results.
+    operations: [getJobResult, getSignedResult]
+  - code: render_failed
+    status: 422
+    title: Chromium could not render the target
+    causes: [invalid URL, blocked private address, selector timeout]
+    remediation: >-
+      Check the URL is publicly reachable and any wait_for_selector exists. Credits charged for
+      failed work are refunded automatically.
+    operations: [createScreenshot, createQr, createPdf, createClip, createSitePreview, renderTemplate]
+  - code: quota_exhausted
+    status: 429
+    title: Monthly credit cap reached
+    remediation: Upgrade the plan or wait for the period to reset. No overage is charged.
+  - code: rate_limited
+    status: 429
+    title: Account rate limit exceeded (120 renders per minute)
+    remediation: Back off and retry. A limited request spends no credits.
+  - code: target_rate_limited
+    status: 429
+    title: Target-host rate limit exceeded (60 renders per minute, across all customers)
+    remediation: >-
+      Back off, or contact Ironfang to raise the limit for a host you own.
+  - code: bad_signature
+    status: 403
+    title: Signed URL failed verification or expired
+    remediation: Mint a fresh signed URL; the signature covers every parameter and the account.
+    operations: [renderSignedUrl, getSignedResult]
+  - code: signing_disabled
+    status: 403
+    title: Signed-URL minting is not enabled for this account
+  - code: mcp_budget_exhausted
+    status: null
+    title: The MCP connection's own credit budget is spent
+    remediation: Wait for the reset time returned with the error, or raise the plan.
+    surface: mcp
+    source: https://ironfang.uk/docs/mcp
+  - code: not_implemented
+    status: 501
+    title: Capability not offered on this account or not yet shipped
+    operations: [createClip, createSitePreview, createSignedUrl, submitJob, createDestination]
+x-findings:
+  - id: docs-table-is-a-subset
+    detail: >-
+      The API reference error table lists 6 codes; the OpenAPI Error enum carries 13, and the
+      docs prose adds idempotency_conflict, insufficient_scope and mcp_budget_exhausted on top.
+      This catalog is the union of all three.
+  - id: no-problem-json
+    detail: >-
+      No operation declares application/problem+json. A client written against RFC 9457
+      tooling has to special-case Renderwolf's envelope.

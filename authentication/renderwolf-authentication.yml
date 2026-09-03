@@ -1,0 +1,106 @@
+generated: '2026-09-02'
+method: searched
+source: https://ironfang.uk/renderwolf/docs#auth
+docs: https://ironfang.uk/renderwolf/docs#auth
+derived_from: openapi/renderwolf-openapi.yaml
+summary:
+  types:
+    - http
+    - oauth2
+  note: >-
+    Two distinct credentials serve two distinct surfaces. The REST API takes a long-lived
+    bearer API key minted in the portal. The MCP server refuses API keys outright and takes
+    only a short-lived OAuth 2.1 access token from id.ironfang.uk. Ironfang states each
+    surface rejects the other's token.
+schemes:
+  - name: apiKey
+    type: http
+    scheme: bearer
+    surface: REST
+    description: 'An API key from the portal, sent as `Authorization: Bearer <key>`.'
+    key_management:
+      created_at: https://portal.ironfang.uk
+      shown_once: true
+      storage: hashed - a lost key is replaced, never recovered
+      revocable: true
+    scoped: true
+    scope_note: >-
+      Key scopes are chosen at creation and cannot be widened afterwards; broader access
+      requires a new key. Keys minted before scopes existed carry no scopes and retain full
+      access for backward compatibility. A call outside the key's scopes returns
+      403 insufficient_scope naming the missing scope.
+    failure_codes:
+      - status: 401
+        code: invalid_api_key
+        meaning: missing or unrecognised key
+      - status: 403
+        code: insufficient_scope
+        meaning: key does not carry the scope the operation needs
+    sources:
+      - openapi/renderwolf-openapi.yaml
+      - https://ironfang.uk/renderwolf/docs#auth
+  - name: ironfangOAuth
+    type: oauth2
+    surface: MCP
+    description: >-
+      OAuth 2.1 authorization-code flow with PKCE (S256) against id.ironfang.uk, used only by
+      MCP clients reaching https://mcp.ironfang.uk/mcp. The access token is audience-bound to
+      the MCP resource; product calls are made with a separate two-minute delegated token
+      minted per call.
+    issuer: https://id.ironfang.uk
+    flows:
+      authorizationCode:
+        authorizationUrl: https://id.ironfang.uk/oauth/authorize
+        tokenUrl: https://id.ironfang.uk/oauth/token
+        refreshUrl: https://id.ironfang.uk/oauth/token
+    discovery:
+      protected_resource: https://mcp.ironfang.uk/.well-known/oauth-protected-resource
+      authorization_server: https://id.ironfang.uk/.well-known/oauth-authorization-server
+      openid_configuration: https://id.ironfang.uk/.well-known/openid-configuration
+      jwks_uri: https://id.ironfang.uk/oauth/jwks
+      registration_endpoint: https://id.ironfang.uk/oauth/register
+    client_identification:
+      - Client ID Metadata Document (CIMD) - an HTTPS URL as the client id; preferred
+      - public Dynamic Client Registration with PKCE
+    grant_types:
+      - authorization_code
+      - refresh_token
+      - client_credentials
+      - 'urn:ietf:params:oauth:grant-type:token-exchange'
+    pkce: S256
+    resource_indicator: 'resource=https://mcp.ironfang.uk/mcp (RFC 8707)'
+    token_lifetime: short-lived, rotating refresh token; revocation ends access within 30 seconds
+    tenancy: one connection is one person, one organisation, one client
+    live_scope_check: >-
+      A scope is re-checked against the person's organisation permission on every call - losing
+      a permission ends access the same minute.
+    sources:
+      - well-known/renderwolf-oauth-protected-resource.json
+      - well-known/renderwolf-oauth-authorization-server.json
+      - https://ironfang.uk/docs/mcp
+signed_urls:
+  description: >-
+    A third, credential-free access path. POST /v1/sign mints a GET URL whose HMAC signature
+    covers every parameter and the metering account, so it can be embedded in an <img> or
+    og:image tag without exposing the API key.
+  operations:
+    - createSignedUrl
+    - renderSignedUrl
+  ttl: ttl_hours, 0 = never expires (REST); MCP refuses permanent links and caps at 24 hours
+  failure_code: 403 bad_signature
+x-findings:
+  - id: key-prefix-disagreement
+    detail: >-
+      The published OpenAPI's info.description documents the key prefix as `rw_live_...`, while
+      the API reference at ironfang.uk/renderwolf/docs and the renderwolf-cli README both
+      document `if_live_...`. Recorded, not resolved - a consumer reading only the contract gets
+      the wrong prefix.
+    evidence:
+      - https://api.ironfang.uk/openapi.yaml
+      - https://ironfang.uk/renderwolf/docs
+      - https://raw.githubusercontent.com/ironfang-ltd/renderwolf-cli/main/README.md
+  - id: oauth-absent-from-contract
+    detail: >-
+      The OpenAPI declares only the apiKey bearer scheme. The OAuth 2.1 model that governs the
+      MCP surface is documented in prose and in the two well-known documents, but appears in no
+      machine-readable contract.

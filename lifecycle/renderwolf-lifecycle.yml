@@ -1,0 +1,90 @@
+generated: '2026-09-02'
+method: searched
+source: https://ironfang.uk/renderwolf/docs
+docs:
+  - https://ironfang.uk/renderwolf/docs
+  - https://ironfang.uk/docs/mcp
+  - https://api.ironfang.uk/renderwolf/v1/capabilities
+versioning:
+  style: URI path
+  current: v1
+  spec_version: '1.0.0'
+  base_migration: >-
+    api.ironfang.uk hosts every Ironfang product, so endpoints moved to a product-prefixed base
+    (/renderwolf/v1/...). The legacy unprefixed /v1/ path remains supported for endpoints that
+    previously shipped there; new endpoints appear only under the product base. Both are
+    declared in the OpenAPI servers[], the second labelled "retained for existing clients".
+  breaking_change_policy: >-
+    Published for MCP only: tool names are a compatibility contract - names are added, and
+    anything that changes semantics gets a new name. No equivalent statement is published for
+    the REST API.
+status_page:
+  url: https://status.ironfang.uk
+  http_status: 200
+  provider: self-hosted, static
+  cadence: Checks run every five minutes from an independent network.
+  note: >-
+    The page shell is served statically and fills in current status client-side; there is no
+    published JSON status endpoint, no incident history feed and no RSS/Atom subscription.
+deprecation:
+  policy_published: false
+  sunset_header: not published
+  deprecation_header: not published
+  rfc8594: false
+  deprecated_items:
+    - item: '`renders` field in the GET /v1/usage response'
+      operation: getUsage
+      replacement: '`credits`'
+      status: deprecated
+      removal: >-
+        "will be removed after connector migrations are complete" - no date given.
+      source: https://ironfang.uk/renderwolf/docs#usage
+      note: >-
+        Documented in prose only. The field is not marked `deprecated: true` in the OpenAPI, so
+        no generated client or linter will surface it.
+  deprecated_operations_in_spec: 0
+  spec_scan: >-
+    No `deprecated: true` appears anywhere in openapi/renderwolf-openapi.yaml.
+sla:
+  published: false
+  note: >-
+    No uptime commitment, no support-response target and no service credits are published. Plans
+    are self-service and cancel in one click; the terms of service is the only contractual document.
+maturity:
+  rest_api: generally available
+  mcp_server: private beta
+  auditwolf_mcp_tools: announced, not yet available
+capability_feed:
+  url: https://api.ironfang.uk/renderwolf/v1/capabilities
+  operation: getCapabilities
+  auth: none - answers anonymously
+  http_status: 200
+  file: renderwolf-capabilities.json
+  updated: '2026-08-28'
+  note: >-
+    An unusual and genuinely useful artifact: a public, unauthenticated, dated endpoint that
+    states per capability whether it is live, planned or NOT OFFERED, with a `since` date on
+    each recent addition and a `gap_heading` naming what Ironfang deliberately does not do.
+    It is the closest thing Renderwolf publishes to a changelog and a roadmap, and it names its
+    own gaps rather than only its features.
+  live_since_2026_08_28: [async_jobs, webhooks, storage_delivery, batches]
+  planned: [request_history, sdks, capture_bundle]
+  not_offered: [azure_gcs_delivery, proxies, browser_actions]
+  staleness: >-
+    The `sdks` capability is still "planned" although the TypeScript client, Python client and
+    CLI all shipped 0.1.0 on 2026-09-01, and `request_history` is "planned" although
+    GET /v1/requests (listRequests) is in the published contract. The feed lags the API.
+changelog:
+  dated_changelog_published: false
+  probes:
+    - url: https://ironfang.uk/changelog
+      status: 404
+    - url: https://ironfang.uk/renderwolf/changelog
+      status: 404
+  note: >-
+    No dated release-notes page exists. The capability feed's `since` dates and the GitHub
+    release tags on renderwolf-cli are the only version history Ironfang publishes.
+result_retention:
+  hosted_results: 24 hours after success, then removed
+  signed_download_links: 15 minutes, reissued on every read
+  policy_note: A collection window, not asset hosting - Ironfang states customers should store what they need.

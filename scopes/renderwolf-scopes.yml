@@ -1,0 +1,88 @@
+generated: '2026-09-02'
+method: searched
+source: https://ironfang.uk/docs/mcp
+docs:
+  - https://ironfang.uk/docs/mcp
+  - https://ironfang.uk/renderwolf/docs#scopes
+note: >-
+  derive-oauth-scopes.py found no oauth2 securityScheme in the OpenAPI - the published contract
+  declares only the apiKey bearer scheme, so nothing was derivable. Every scope below was read
+  from Ironfang's own published scope tables. Two scope systems share one vocabulary: API-key
+  scopes chosen at key creation (REST), and OAuth scopes granted at MCP consent.
+authorization_server: https://id.ironfang.uk
+advertised_at:
+  - well-known/renderwolf-oauth-authorization-server.json
+  - well-known/renderwolf-oauth-protected-resource.json
+advertised_scopes_note: >-
+  The two discovery documents advertise only three scopes (ironfang:mcp, renderwolf:render,
+  renderwolf:usage:read). The MCP reference documents six more that the metadata does not list.
+scopes:
+  - name: 'ironfang:mcp'
+    description: Connect, list tools, and inspect this connection and its budgets.
+    requires_permission: membership
+    surfaces: [mcp]
+    advertised_in_metadata: true
+  - name: 'renderwolf:render'
+    description: >-
+      Create screenshots, PDFs, QR codes, template renders, clips and site previews; read or
+      cancel its own jobs.
+    requires_permission: render
+    surfaces: [rest, mcp]
+    advertised_in_metadata: true
+  - name: 'renderwolf:usage:read'
+    description: Read the period's credit usage.
+    requires_permission: usage.read
+    surfaces: [rest, mcp]
+    advertised_in_metadata: true
+  - name: 'renderwolf:sign'
+    description: Create signed render URLs. Through MCP they must expire within 24 hours.
+    requires_permission: render
+    surfaces: [rest, mcp]
+    advertised_in_metadata: false
+  - name: 'renderwolf:templates:read'
+    description: List templates and their variable names - never the stored markup.
+    requires_permission: templates.read
+    surfaces: [rest, mcp]
+    advertised_in_metadata: false
+  - name: 'renderwolf:templates:write'
+    description: Create, edit and delete templates.
+    requires_permission: templates.write
+    surfaces: [rest]
+    advertised_in_metadata: false
+    note: REST API-key scope only; not exposed as an MCP tool scope.
+  - name: 'renderwolf:destinations'
+    description: >-
+      Register and test delivery destinations, and name a destination on a job or batch.
+      Storage destinations carrying credentials are registered in the portal, not by an agent.
+    requires_permission: destinations.manage
+    surfaces: [rest, mcp]
+    advertised_in_metadata: false
+  - name: 'auditwolf:read'
+    description: Read sites, audits, findings and rules.
+    requires_permission: auditwolf.read
+    surfaces: [mcp]
+    advertised_in_metadata: false
+    note: Sibling product (Auditwolf). Reserved - tools not yet available.
+  - name: 'auditwolf:run'
+    description: Start a manual audit of a site within its page bound and the connection budget.
+    requires_permission: auditwolf.run
+    surfaces: [mcp]
+    advertised_in_metadata: false
+    note: Sibling product (Auditwolf). Reserved - tools not yet available.
+  - name: 'auditwolf:evidence'
+    description: See where an audit's signed evidence bundle is and how to verify it.
+    requires_permission: auditwolf.evidence
+    surfaces: [mcp]
+    advertised_in_metadata: false
+    note: Sibling product (Auditwolf). Reserved - tools not yet available.
+semantics:
+  ungranted_tool_behavior: >-
+    A tool whose scope was not granted is still listed so a client can ask for it; the call
+    answers 403 with the complete scope set in the challenge, and the client re-runs the flow
+    for the extra scope.
+  api_key_scopes_immutable: >-
+    API-key scopes cannot be widened after creation - broader access requires a new key.
+  legacy_keys: Keys created before scopes existed carry no scopes and retain full access.
+  revocation: >-
+    Scopes are re-checked live against the organisation permission on every call; losing a
+    permission ends the access the same minute.

@@ -1,0 +1,79 @@
+generated: '2026-09-02'
+method: searched
+source: https://github.com/ironfang-ltd/renderwolf-cli
+docs: https://raw.githubusercontent.com/ironfang-ltd/renderwolf-cli/main/README.md
+name: renderwolf
+official: true
+version: v0.1.0
+released: '2026-09-01'
+repository: https://github.com/ironfang-ltd/renderwolf-cli
+releases: https://github.com/ironfang-ltd/renderwolf-cli/releases
+install:
+  - method: github-release
+    platforms: [linux/amd64, macOS Intel, macOS Apple Silicon, windows]
+    steps: >-
+      Download the archive for your platform from Releases, verify it against checksums.txt,
+      extract and put the binary on PATH.
+    example: |
+      tar -xzf renderwolf_v0.1.0_linux_amd64.tar.gz
+      sudo mv renderwolf_v0.1.0_linux_amd64/renderwolf /usr/local/bin/
+      renderwolf version
+  - method: homebrew
+    available: false
+  - method: package-manager
+    available: false
+    note: No apt/dnf/scoop/winget/chocolatey distribution is published.
+authentication:
+  env_var: IRONFANG_API_KEY
+  file_flag: '--api-key-file <path>'
+  hardening: >-
+    The key is never accepted as a command-line argument, so it stays out of shell history and
+    process lists. A notable default - most API CLIs accept --api-key.
+commands:
+  - command: 'screenshot <url>'
+    does: Capture a page as PNG, JPEG or WebP.
+    flags: ['--full-page', '--device mobile', '-o']
+    rest: createScreenshot
+  - command: 'pdf <url> | --html <file>'
+    does: Render a page or your own HTML to PDF.
+    flags: ['--paper', '--landscape', '-o']
+    rest: createPdf
+  - command: 'qr <data>'
+    does: Generate a QR code; every code is decoded to verify it before delivery.
+    flags: ['--size', '-o']
+    rest: createQr
+  - command: 'clip --json <file>'
+    does: Produce a captioned MP4 clip.
+    rest: createClip
+  - command: 'job submit|get|wait|cancel|result'
+    does: Work with durable render jobs.
+    flags: ['--wait', '-o']
+    rest: [submitJob, getJob, cancelJob, getJobResult]
+  - command: history
+    does: Your recent requests.
+    flags: ['--failed', '--kind', '--since']
+    rest: listRequests
+    note: >-
+      These filter flags are the only evidence of query parameters on listRequests - the
+      OpenAPI declares none. See conventions/renderwolf-conventions.yml.
+  - command: usage
+    does: Credits used this period.
+    rest: getUsage
+  - command: doctor
+    does: Check connectivity and key validity.
+    rest: null
+global_flags:
+  - flag: '--json <file>'
+    does: Supply the full request body for any render command.
+  - flag: '--request-id <id>'
+    does: Your own correlation id, echoed back as X-Request-ID.
+  - flag: '--verbose'
+    does: Print request and response headers with secrets redacted.
+  - flag: '-o <file>'
+    does: Write the rendered bytes to a file.
+pricing: >-
+  Commands spend ordinary Renderwolf credits at the ordinary rate - a screenshot is one credit,
+  a PDF two, QR codes free, cached repeats free, failed work refunded.
+coverage_gap: >-
+  No template, signed-URL, batch or destination commands are published in 0.1.0, so the CLI
+  covers roughly a third of the REST surface.

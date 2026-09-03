@@ -1,0 +1,81 @@
+generated: '2026-09-02'
+method: searched
+source: https://ironfang.uk/renderwolf
+docs:
+  - https://ironfang.uk/renderwolf
+  - https://ironfang.uk/renderwolf/docs#credits
+currency: GBP
+billing_period: month
+unit: credit
+plan_count: 4
+metering:
+  unit_costs:
+    screenshot: 1
+    template_image: 1
+    pdf: 2
+    qr: 0
+    site_preview: 1 per output second (poster included)
+    clip: varies by duration and output size
+    cache_hit: 0
+  free_operations:
+    - cache hits (identical request served from cache)
+    - QR codes (still recorded in usage)
+    - reads - usage, templates, jobs, batches, destinations, deliveries
+  refunds: Credits charged before unsuccessful work are returned automatically.
+  overage: >-
+    None. Reaching the cap pauses work with 429 quota_exhausted and creates no overage charge -
+    plans are hard-capped, not metered into overage.
+  period_basis: >-
+    Paid accounts meter between billing anniversaries (the `period` field shows the cycle start
+    date); free accounts meter by calendar month.
+plans:
+  - name: Free
+    price: 0
+    currency: GBP
+    period: month
+    included_credits: 250
+    price_per_1000_credits: null
+    card_required: false
+    limits:
+      - Output carries a small Renderwolf badge in the bottom corner (bottom left on clips).
+      - Same endpoints, rendering fleet and product features as paid plans.
+    note: The badge follows the account plan, not the request - there is no field to toggle it.
+  - name: Hobby
+    price: 9
+    currency: GBP
+    period: month
+    approx_usd: 12
+    included_credits: 5000
+    price_per_1000_credits: 1.80
+    card_required: true
+    limits:
+      - No badge on output.
+    audience: Smaller applications and automation workflows.
+  - name: Pro
+    price: 19
+    currency: GBP
+    period: month
+    approx_usd: 26
+    included_credits: 15000
+    price_per_1000_credits: 1.27
+    card_required: true
+    audience: Production applications and higher-volume workflows.
+    note: Marked "Best value" on the pricing panel.
+  - name: Scale
+    price: 49
+    currency: GBP
+    period: month
+    approx_usd: 67
+    included_credits: 50000
+    price_per_1000_credits: 0.98
+    card_required: true
+    audience: High-volume rendering with the same predictable hard cap.
+    note: 46% below Hobby per credit, per Ironfang's own comparison.
+enterprise_tier: none published - every plan is self-service and cancels in one click
+mcp_pricing:
+  fee: 0
+  note: >-
+    MCP is not separately priced. Rendering through the MCP server spends ordinary Renderwolf
+    credits; connecting, listing tools and reading metadata are free. Each MCP connection also
+    carries its own budget of max(25, 10% of the plan's monthly credits) per billing period,
+    capped by the organisation's remaining allowance, so a looping agent cannot drain a month.

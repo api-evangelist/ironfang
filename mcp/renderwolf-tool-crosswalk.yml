@@ -1,0 +1,162 @@
+generated: '2026-09-02'
+method: derived
+source: mcp/renderwolf-mcp.yml + openapi/renderwolf-openapi.yaml
+note: >-
+  Ironfang's MCP tool table and the REST OpenAPI are two projections of one core. Because
+  tools/list is auth-gated (401), tools were bound to operations by published name, scope and
+  documented behaviour rather than by a fetched inputSchema; confidence is set accordingly.
+  A bound tool's real input contract is the linked operation's requestBody in the OpenAPI.
+surfaces:
+  openapi:
+    file: openapi/renderwolf-openapi.yaml
+    url: https://api.ironfang.uk/openapi.yaml
+    gated: false
+    operations: 33
+  mcp:
+    url: https://mcp.ironfang.uk/mcp
+    gated: true
+    gate: OAuth 2.1 - tools/list returns 401 with an RFC 9728 challenge
+    tools: 18
+  graphql:
+    present: false
+crosswalk:
+  - tool: renderwolf.screenshot.create
+    category: render
+    rest: [createScreenshot, submitJob]
+    binding: rest
+    confidence: high
+    note: >-
+      MCP always queues a durable job, so the closest REST equivalent is submitJob with
+      kind=screenshot; createScreenshot is the synchronous twin with the identical request body.
+  - tool: renderwolf.pdf.create
+    category: render
+    rest: [createPdf, submitJob]
+    binding: rest
+    confidence: high
+    note: Same synchronous/durable pairing as screenshot.
+  - tool: renderwolf.qr.create
+    category: render
+    rest: [createQr]
+    binding: rest
+    confidence: high
+    note: Returned inline as a data URL rather than as a job; the only inline render tool.
+  - tool: renderwolf.clip.create
+    category: render
+    rest: [createClip, submitJob]
+    binding: rest
+    confidence: high
+    note: Always durable via MCP; uses the tasks extension where the client advertises it.
+  - tool: renderwolf.template.render
+    category: templates
+    rest: [renderTemplate, submitJob]
+    binding: rest
+    confidence: high
+  - tool: renderwolf.template.list
+    category: templates
+    rest: [listTemplates]
+    binding: rest
+    confidence: high
+    note: >-
+      Narrower than REST - MCP returns ids, names, sizes and variable names but never the
+      stored markup.
+  - tool: renderwolf.template.get
+    category: templates
+    rest: [getTemplate]
+    binding: rest
+    confidence: high
+    note: Metadata only; markup withheld from agents.
+  - tool: renderwolf.signed_url.create
+    category: signed-urls
+    rest: [createSignedUrl]
+    binding: rest
+    confidence: high
+    note: >-
+      Deliberately narrower - REST accepts ttl_hours 0 (never expires); MCP refuses permanent
+      links and caps lifetime at 24 hours.
+  - tool: renderwolf.job.get
+    category: jobs
+    rest: [getJob, getJobResult]
+    binding: rest
+    confidence: high
+    note: One tool fans out to two operations - state plus a freshly signed result link.
+  - tool: renderwolf.job.cancel
+    category: jobs
+    rest: [cancelJob]
+    binding: rest
+    confidence: high
+  - tool: renderwolf.batch.create
+    category: batches
+    rest: [submitBatch]
+    binding: rest
+    confidence: high
+  - tool: renderwolf.batch.get
+    category: batches
+    rest: [getBatch]
+    binding: rest
+    confidence: high
+  - tool: renderwolf.destination.list
+    category: destinations
+    rest: [listDestinations, getDestination]
+    binding: rest
+    confidence: high
+  - tool: renderwolf.destination.create
+    category: destinations
+    rest: [createDestination]
+    binding: rest
+    confidence: medium
+    note: >-
+      Narrower than REST - MCP registers webhook destinations only; s3 storage destinations
+      carry credentials and are portal-only.
+  - tool: renderwolf.destination.test
+    category: destinations
+    rest: [testDestination]
+    binding: rest
+    confidence: high
+  - tool: renderwolf.destination.delete
+    category: destinations
+    rest: [deleteDestination]
+    binding: rest
+    confidence: high
+  - tool: renderwolf.usage.get
+    category: account
+    rest: [getUsage]
+    binding: rest
+    confidence: high
+mcp_only:
+  - tool: ironfang.connection.get
+    reason: >-
+      Reports the MCP connection itself - organisation, granted scopes, available products and
+      the per-connection credit budget. No REST equivalent; the budget concept exists only on
+      the MCP surface.
+rest_only:
+  - capability: site previews
+    operations: [createSitePreview]
+    reason: No site_preview tool is published, though site_preview is a valid job kind on REST.
+  - capability: signed-URL rendering and signed result download
+    operations: [renderSignedUrl, getSignedResult]
+    reason: Public GET fetch paths consumed by browsers and crawlers, not by an agent.
+  - capability: template write
+    operations: [createTemplate, updateTemplate, deleteTemplate]
+    reason: >-
+      Template markup is deliberately withheld from agents - the renderwolf:templates:write
+      scope is REST-only.
+  - capability: destination rename/enable
+    operations: [updateDestination]
+    reason: No corresponding MCP tool.
+  - capability: delivery history
+    operations: [listDeliveries, getDelivery, redeliverDelivery]
+    reason: No delivery tools are published on the MCP surface.
+  - capability: job listing and request history
+    operations: [listJobs, listRequests]
+    reason: >-
+      MCP exposes no enumeration of an account's objects by design - ids come from tool results.
+  - capability: capability discovery
+    operations: [getCapabilities]
+    reason: Public unauthenticated REST endpoint; no MCP tool.
+coverage:
+  tools_named: 18
+  tools_bound_to_rest: 17
+  mcp_only: 1
+  rest_operations_total: 33
+  rest_operations_with_a_tool: 21
+  rest_only_operations: 12

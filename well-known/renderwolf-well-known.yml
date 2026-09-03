@@ -1,0 +1,120 @@
+generated: '2026-09-02'
+method: probed
+source: direct HTTPS probe of the named /.well-known/ path list on every Ironfang host in apis.yml
+note: >-
+  Renderwolf's discovery surface is OAuth-shaped, not catalog-shaped. The API host
+  (api.ironfang.uk) serves nothing under /.well-known/. The MCP host serves a real RFC 9728
+  protected-resource document, and the identity host serves RFC 8414 + OIDC discovery. There is
+  no security.txt, no api-catalog, no apis.json and no ai-plugin.json anywhere on the estate.
+  portal.ironfang.uk is an Angular SPA that answers 200 with the same 1,448-byte HTML shell for
+  every path including a negative control, so every 200 recorded there is a soft-404 and NOTHING
+  from that host is counted as a document.
+hosts:
+  - host: https://api.ironfang.uk
+    hit_count: 0
+    path_echo_control: passed
+    soft_404_control:
+      path: /.well-known/rw-negative-control-7f3ab91c.json
+      status: 404
+      bytes: 19
+    documents:
+      - path: /.well-known/security.txt
+        status: 404
+      - path: /.well-known/openid-configuration
+        status: 404
+      - path: /.well-known/oauth-authorization-server
+        status: 404
+      - path: /.well-known/oauth-protected-resource
+        status: 404
+      - path: /.well-known/api-catalog
+        status: 404
+      - path: /.well-known/ai-plugin.json
+        status: 404
+      - path: /.well-known/aauth-resource.json
+        status: 404
+      - path: /.well-known/apis.json
+        status: 404
+      - path: /apis.json
+        status: 404
+      - path: /apis.yml
+        status: 404
+      - path: /.well-known/agent-card.json
+        status: 404
+      - path: /.well-known/agent.json
+        status: 404
+  - host: https://mcp.ironfang.uk
+    hit_count: 1
+    path_echo_control: passed
+    soft_404_control:
+      path: /.well-known/rw-negative-control-7f3ab91c.json
+      status: 404
+      bytes: 564
+    documents:
+      - path: /.well-known/oauth-protected-resource
+        status: 200
+        file: renderwolf-oauth-protected-resource.json
+        note: >-
+          RFC 9728. resource https://mcp.ironfang.uk/mcp, authorization_servers
+          [https://id.ironfang.uk], scopes_supported [ironfang:mcp, renderwolf:render,
+          renderwolf:usage:read]. The same document is served at the resource-suffixed path
+          /.well-known/oauth-protected-resource/mcp named in the 401 WWW-Authenticate challenge.
+      - path: /.well-known/security.txt
+        status: 404
+      - path: /.well-known/openid-configuration
+        status: 404
+      - path: /.well-known/oauth-authorization-server
+        status: 404
+      - path: /.well-known/api-catalog
+        status: 404
+      - path: /.well-known/ai-plugin.json
+        status: 404
+      - path: /.well-known/aauth-resource.json
+        status: 404
+      - path: /.well-known/apis.json
+        status: 404
+      - path: /apis.json
+        status: 404
+      - path: /apis.yml
+        status: 404
+      - path: /.well-known/agent-card.json
+        status: 404
+      - path: /.well-known/agent.json
+        status: 404
+  - host: https://id.ironfang.uk
+    hit_count: 2
+    path_echo_control: passed
+    soft_404_control:
+      path: /.well-known/id-neg-ctl-9z1.json
+      status: 404
+      bytes: 19
+    documents:
+      - path: /.well-known/oauth-authorization-server
+        status: 200
+        file: renderwolf-oauth-authorization-server.json
+        note: >-
+          RFC 8414. issuer https://id.ironfang.uk, PKCE S256 only, public + confidential clients,
+          dynamic client registration at /oauth/register, Client ID Metadata Documents supported,
+          token exchange (RFC 8693) supported. Product scopes are advertised here.
+      - path: /.well-known/openid-configuration
+        status: 200
+        file: renderwolf-openid-configuration.json
+        note: OIDC discovery. ES256 id tokens, scopes openid/profile/email/offline_access.
+      - path: /.well-known/security.txt
+        status: 404
+      - path: /.well-known/api-catalog
+        status: 404
+      - path: /.well-known/agent-card.json
+        status: 404
+  - host: https://portal.ironfang.uk
+    hit_count: 0
+    path_echo_control: failed
+    soft_404_control:
+      path: /.well-known/rw-negative-control-7f3ab91c.json
+      status: 200
+      bytes: 1448
+      body: '<!doctype html> Angular application shell (Ironfang Portal)'
+    note: >-
+      CATCH-ALL. Every probed path returned HTTP 200 with the identical 1,448-byte SPA shell,
+      including a path that cannot exist. No document is recorded from this host and it
+      contributes no pointer.
+    documents: []

@@ -1,0 +1,211 @@
+generated: '2026-09-02'
+method: searched
+source: https://ironfang.uk/renderwolf/docs
+docs:
+  - https://ironfang.uk/renderwolf/docs
+  - https://ironfang.uk/docs/mcp
+derived_from: openapi/renderwolf-openapi.yaml
+cross_links:
+  errors: errors/renderwolf-problem-types.yml
+  lifecycle: lifecycle/renderwolf-lifecycle.yml
+  authentication: authentication/renderwolf-authentication.yml
+  rate_limits: rate-limits/renderwolf-rate-limits.yml
+  scopes: scopes/renderwolf-scopes.yml
+base_url:
+  production: https://api.ironfang.uk/renderwolf
+  legacy: https://api.ironfang.uk/v1/
+  note: >-
+    api.ironfang.uk hosts every Ironfang product, so the product name is in the path. The
+    unprefixed /v1/ path stays supported for endpoints that previously shipped there; new
+    endpoints only appear under the product base. Both are declared in the OpenAPI servers[].
+auth:
+  style: bearer API key (REST), OAuth 2.1 (MCP)
+  header: 'Authorization: Bearer <key>'
+  see: authentication/renderwolf-authentication.yml
+idempotency:
+  supported: true
+  header: Idempotency-Key
+  applies_to:
+    - 'POST /v1/jobs (submitJob)'
+    - 'POST /v1/batches (submitBatch)'
+  semantics: >-
+    The same key with the same request returns the existing job. The same key with a different
+    request is a 409 idempotency_conflict. Ironfang instructs clients to send it on every
+    submission.
+  scope: per key value, per account
+  retention: not published
+  conflict_code: idempotency_conflict
+  synchronous_endpoints: >-
+    The synchronous render endpoints (/v1/screenshot, /v1/pdf, /v1/qr, /v1/video,
+    /v1/site-preview, /v1/image/{id}) do not take an Idempotency-Key. In practice the content
+    cache is the safety net there: an identical request is served from cache, is free, and
+    carries X-Renderwolf-Cache: hit - unless no_cache is set, which is excluded from the cache
+    key precisely so two fresh requests do not collide.
+  webhook_side:
+    header: Renderwolf-Event-Id
+    semantics: >-
+      Stable across retries of the same delivery. Ironfang's documented use is to make the
+      receiving handler idempotent.
+  storage_side: >-
+    An S3 delivery is checksummed after writing, and an object already present with the same
+    checksum is left alone - a retried delivery is a no-op, not a second write.
+  gap: >-
+    Idempotency-Key appears nowhere in the published OpenAPI. It is documented only in prose,
+    so a client generated from the contract will not send it.
+pagination:
+  style: not published
+  note: >-
+    listJobs, listRequests, listDeliveries, listTemplates and listDestinations return
+    collections, but the contract declares no cursor, page, offset or limit parameter and no
+    next-page field. listRequests declares a 400 response, implying some validated filtering
+    (the CLI exposes --since, --failed and --kind), but the parameters are not in the spec.
+    Recorded as a gap, not guessed.
+filtering:
+  cli_flags_only: ['--since', '--failed', '--kind']
+  source: https://raw.githubusercontent.com/ironfang-ltd/renderwolf-cli/main/README.md
+field_expansion:
+  supported: false
+metadata:
+  external_id:
+    description: >-
+      A caller-supplied correlation id carried on a job or a batch item, echoed back on the job
+      and usable in a storage_key template as {external_id}.
+    operations: [submitJob, submitBatch]
+request_id_tracing:
+  server_header: X-Ironfang-Request-ID
+  client_header: X-Request-ID
+  in_body: request_id on every error
+  mcp: request_id and connection_id on every job envelope
+versioning:
+  style: URI path
+  current: v1
+  spec_version: '1.0.0'
+  see: lifecycle/renderwolf-lifecycle.yml
+error_envelope:
+  shape: '{"error": {"code": "...", "message": "..."}}'
+  rfc9457: false
+  see: errors/renderwolf-problem-types.yml
+rate_limit_signaling:
+  headers_published: false
+  signal: 429 plus a stable error code (rate_limited, target_rate_limited, quota_exhausted)
+  see: rate-limits/renderwolf-rate-limits.yml
+caching:
+  default: >-
+    Identical render requests are served from cache, cost zero credits, and carry
+    X-Renderwolf-Cache: hit. Assets return Cache-Control: public, max-age=3600.
+  bypass: '"no_cache": true - billable, returns Cache-Control: no-store and X-Renderwolf-Captured-At'
+  invalidation: Editing a template invalidates that template's cache immediately.
+async:
+  model: durable jobs
+  submit: 'POST /v1/jobs -> 202 with an envelope; kinds screenshot, pdf, qr, image, clip, site_preview'
+  poll: 'GET /v1/jobs/{id} - queued | running | cancellation_requested | succeeded | failed | cancelled'
+  result: >-
+    A succeeded job carries content type, size, SHA-256, expiry and a signed URL valid 15
+    minutes that needs no API key; GET /v1/jobs/{id}/result redirects to a fresh one.
+  retention: 24 hours after success, then removed - a collection window, not asset hosting.
+  retries: Transient failures retried up to three times with backoff; a page that refuses to render fails at once.
+  batching: Up to 100 jobs per batch; accepted or refused whole, credits reserved in one transaction.
+delivery:
+  destinations: [webhook, s3-compatible storage]
+  webhook_events: [render.job.succeeded, render.job.failed, render.job.cancelled, render.delivery.failed]
+  signature: 'Renderwolf-Signature: v1=hmac_sha256(secret, timestamp + "." + raw_body)'
+  signature_rule: Verify over the raw bytes received, never over a reparsed body; compare in constant time.
+  timestamp_header: 'Renderwolf-Timestamp (Unix seconds) - reject anything more than a few minutes old'
+  secret_handling: >-
+    Returned once at destination creation; Ironfang keeps only an encrypted copy and has no
+    endpoint that can return it. A lost secret means a new destination.
+  isolation: >-
+    Delivery never changes a render. A job that rendered is succeeded whatever the endpoint did;
+    an unreachable webhook does not spend a render attempt or fail the job.
+  see: asyncapi/renderwolf-webhooks.yml
+dry_run_mode:
+  supported: false
+  substitute: >-
+    Validation-before-charge. A job submission is validated exactly as the synchronous endpoint
+    would validate it before anything is charged, and a batch is validated whole before any
+    item is stored - so a malformed batch of 100 comes back having charged nothing and left no
+    jobs behind. testDestination is a real dry run for the delivery path specifically.
+reversibility:
+  grade: verified
+  applicable: true
+  note: >-
+    Renderwolf writes are mostly ephemeral renders that spend credits, so "reversible" here
+    means: can the agent stop the work, get the credits back, and undo the durable objects it
+    created. Every window below is Ironfang's own published number.
+  write_surfaces:
+    - action: submit a durable render job
+      operations: [submitJob]
+      reversal: cancelJob
+      reversal_operation_id: cancelJob
+      window: >-
+        Until the job leaves the queue for a queued job (stops at once, refunded in full);
+        a running job stops at its next safe point and is charged only if it produced a usable
+        output.
+      docs: https://ironfang.uk/renderwolf/docs#jobs
+      credit_effect: >-
+        The maximum cost is reserved on acceptance and settled on completion; the difference is
+        released. Failed work is refunded automatically.
+      grade: verified
+    - action: submit a batch of up to 100 jobs
+      operations: [submitBatch]
+      reversal: cancelJob per item
+      reversal_operation_id: cancelJob
+      window: Same per-item window as a single job; there is no batch-level cancel operation.
+      docs: https://ironfang.uk/renderwolf/docs#batches
+      grade: documented
+      note: >-
+        Partial reversal only - each item must be cancelled individually. Recorded as a real
+        limitation of the batch surface.
+    - action: render synchronously (screenshot, pdf, qr, clip, site preview, template render)
+      operations: [createScreenshot, createPdf, createQr, createClip, createSitePreview, renderTemplate]
+      reversal: none
+      window: null
+      grade: na
+      note: >-
+        The call returns bytes. There is nothing to undo and nothing is stored server-side.
+        Credits for failed work are refunded automatically, which is the only reversal that
+        applies.
+    - action: create a template
+      operations: [createTemplate]
+      reversal: deleteTemplate
+      reversal_operation_id: deleteTemplate
+      window: >-
+        No stated window - deleteTemplate is available for the life of the template. Deletion is
+        permanent; Ironfang publishes no restore or trash window.
+      docs: https://ironfang.uk/renderwolf/docs#templates
+      grade: documented
+    - action: mint a signed render URL
+      operations: [createSignedUrl]
+      reversal: expiry
+      window: >-
+        ttl_hours on REST, where 0 means never expires - an unbounded, non-revocable public URL.
+        Through MCP the same tool is capped at 24 hours and permanent links are refused.
+      docs: https://ironfang.uk/renderwolf/docs#signed-urls
+      grade: documented
+      note: >-
+        THE ONE-WAY DOOR. Ironfang publishes no revoke operation for a signed URL. A REST-minted
+        ttl_hours:0 URL renders and meters against the account indefinitely. The MCP surface's
+        24-hour cap exists specifically because an agent should not be able to open that door.
+    - action: register a delivery destination
+      operations: [createDestination]
+      reversal: deleteDestination
+      reversal_operation_id: deleteDestination
+      window: Available at any time. updateDestination can also disable it without deleting.
+      docs: https://ironfang.uk/renderwolf/docs#delivery
+      grade: documented
+      note: >-
+        The signing secret is shown once and is not recoverable, so a delete is not undoable -
+        re-registering produces a new secret every receiver must be updated with.
+    - action: deliver a result to a webhook or bucket
+      operations: [testDestination, redeliverDelivery]
+      reversal: none
+      window: null
+      grade: na
+      note: >-
+        Delivery to a third party cannot be recalled. redeliverDelivery only sends again. The
+        practical safeguard is testDestination, which exercises the path before a real job uses it.
+  result_expiry:
+    window: 24 hours after success
+    note: >-
+      Not a reversal, but the deadline that makes one moot - a hosted result is removed after
+      24 hours and a signed download link lives 15 minutes.

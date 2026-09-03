@@ -1,0 +1,127 @@
+{
+  "product": "renderwolf",
+  "updated": "2026-08-28",
+  "free_credits_per_month": 250,
+  "capabilities": [
+    {
+      "key": "screenshot",
+      "name": "Full-page, element and region screenshots",
+      "status": "live"
+    },
+    {
+      "key": "pdf",
+      "name": "PDF rendering",
+      "status": "live"
+    },
+    {
+      "key": "device_emulation",
+      "name": "Device and retina output",
+      "status": "live"
+    },
+    {
+      "key": "blocking",
+      "name": "Ad, cookie-banner and tracker blocking",
+      "status": "live"
+    },
+    {
+      "key": "authenticated",
+      "name": "Authenticated requests (headers, cookies)",
+      "status": "live"
+    },
+    {
+      "key": "settling",
+      "name": "Deterministic settling and waits",
+      "status": "live"
+    },
+    {
+      "key": "templates",
+      "name": "HTML templates and generated images",
+      "status": "live"
+    },
+    {
+      "key": "signed_urls",
+      "name": "Signed render URLs",
+      "status": "live"
+    },
+    {
+      "key": "qr",
+      "name": "QR codes",
+      "status": "live"
+    },
+    {
+      "key": "clips",
+      "name": "Short clips and site previews",
+      "status": "live"
+    },
+    {
+      "key": "request_ids",
+      "name": "Request identity on every response and error",
+      "status": "live",
+      "since": "2026-08-27"
+    },
+    {
+      "key": "mcp_server",
+      "name": "Remote MCP server for AI assistants (OAuth, private beta)",
+      "status": "live",
+      "since": "2026-08-28",
+      "note": "Since 30 Aug 2026 the tools also cover batches and webhook destinations; every create tool takes a delivery block naming a registered destination."
+    },
+    {
+      "key": "async_jobs",
+      "name": "Durable asynchronous jobs with polling, cancellation and 24-hour hosted results",
+      "status": "live",
+      "since": "2026-08-28"
+    },
+    {
+      "key": "webhooks",
+      "name": "Signed completion webhooks",
+      "status": "live",
+      "since": "2026-08-28"
+    },
+    {
+      "key": "storage_delivery",
+      "name": "Delivery to customer S3-compatible storage",
+      "status": "live",
+      "since": "2026-08-28"
+    },
+    {
+      "key": "azure_gcs_delivery",
+      "name": "Delivery to Azure Blob Storage or Google Cloud Storage",
+      "status": "not_offered",
+      "gap_heading": "Azure and Google Cloud delivery"
+    },
+    {
+      "key": "batches",
+      "name": "Batch submission of up to 100 renders",
+      "status": "live",
+      "since": "2026-08-28"
+    },
+    {
+      "key": "request_history",
+      "name": "Customer-visible request history",
+      "status": "planned"
+    },
+    {
+      "key": "sdks",
+      "name": "Official language SDKs and CLI",
+      "status": "planned"
+    },
+    {
+      "key": "capture_bundle",
+      "name": "Rendered HTML, Markdown and metadata capture",
+      "status": "planned"
+    },
+    {
+      "key": "proxies",
+      "name": "Proxy routing and country selection",
+      "status": "not_offered",
+      "gap_heading": "Proxy and country-specific rendering"
+    },
+    {
+      "key": "browser_actions",
+      "name": "Broad browser-automation control surface",
+      "status": "not_offered",
+      "gap_heading": "Very large browser-control surfaces"
+    }
+  ]
+}

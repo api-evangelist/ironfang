@@ -1,0 +1,82 @@
+generated: '2026-09-02'
+method: searched
+source: https://ironfang.uk/tools
+docs:
+  - https://ironfang.uk/tools
+  - https://ironfang.uk/renderwolf
+note: >-
+  Renderwolf publishes NO test mode and NO sandbox environment - there is one set of endpoints,
+  one fleet, one key prefix and one billing path. What it publishes instead are two things that
+  do the same job for a developer: a set of free, no-account browser tools that exercise the
+  real rendering engine, and a free plan that needs no card. Recorded as they are; nothing here
+  is a simulated environment.
+test_mode:
+  exists: false
+  key_prefixes:
+    live: 'if_live_ (per the API reference and the CLI README); the OpenAPI info.description says rw_live_ - see authentication/renderwolf-authentication.yml'
+    test: none - there is no test key prefix
+  note: >-
+    Because there is no test mode, every call an integration makes during development is a real
+    render against the real fleet. The mitigations Ironfang offers are the free plan, free cache
+    hits, free QR codes, and automatic refunds on failed work.
+free_tools_console:
+  url: https://ironfang.uk/tools
+  http_status: 200
+  auth: none - no account, no key
+  description: >-
+    Browser tools backed by the production API, usable anonymously to see exactly what the
+    engine returns before writing any code.
+  tools:
+    - name: Full page screenshot
+      url: https://ironfang.uk/tools/full-page-screenshot
+      exercises: createScreenshot
+    - name: QR code generator
+      url: https://ironfang.uk/tools/qr-code-generator
+      exercises: createQr
+    - name: QR code verifier
+      url: https://ironfang.uk/tools/qr-code-verifier
+    - name: Favicon generator
+      url: https://ironfang.uk/tools/favicon-generator
+    - name: Image converter
+      url: https://ironfang.uk/tools/image-converter
+    - name: UUID generator
+      url: https://ironfang.uk/tools/uuid-generator
+free_tier:
+  credits_per_month: 250
+  card_required: false
+  signup: https://id.ironfang.uk/signup
+  parity: >-
+    Same endpoints, same rendering fleet, same product features as paid plans. The only
+    difference is a small Renderwolf badge in the corner of screenshots, template images, PDFs
+    and clips, applied from the plan rather than from any request field.
+safe_rehearsal_affordances:
+  - name: capability discovery
+    endpoint: 'GET /renderwolf/v1/capabilities'
+    auth: none
+    http_status: 200
+    does: >-
+      States which capabilities are live, planned or not offered, with dates. Callable before
+      writing a line of integration code and before creating an account.
+  - name: destination test delivery
+    operation: testDestination
+    does: >-
+      Sends a real test delivery to a registered webhook now and reports what happened; a
+      receiver that does not answer is reported as a fact, not an error.
+  - name: validation before charge
+    does: >-
+      A job submission is validated exactly as the synchronous endpoint would validate it before
+      anything is charged, and a batch of up to 100 is validated whole - a batch that would
+      exceed the monthly credits returns 429 quota_exhausted having charged nothing and left no
+      jobs behind.
+  - name: cache hits are free
+    header: 'X-Renderwolf-Cache: hit'
+    does: Re-running an identical request during development costs zero credits.
+  - name: MCP connection budget
+    does: >-
+      Every MCP connection carries its own budget of max(25, 10% of the plan's monthly credits)
+      per period, so an agent under test cannot spend the month.
+test_values:
+  published: none
+  note: >-
+    Ironfang publishes no magic test URLs, fixture pages or deterministic sample targets. The
+    documented examples render https://example.com, which is a real public page, not a fixture.

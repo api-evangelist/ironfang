@@ -1,0 +1,1790 @@
+openapi: 3.1.0
+
+# Written against the handlers in internal/httpapi, not from memory. When an
+# endpoint changes, change this too - a spec that drifts is worse than none,
+# because connectors are generated from it.
+#
+# Covers the customer-facing v1 API only. The dashboard endpoints
+# (/v1/dashboard/*) are portal-internal and authenticated with Warden user
+# tokens rather than API keys; the admin endpoints are operator tools. Neither
+# belongs in a public contract.
+
+info:
+  title: Renderwolf API
+  version: '1.0.0'
+  summary: Screenshots, PDFs, dynamic images and video through one API.
+  description: |
+    Renderwolf renders web pages to images, PDFs and video. Give it a URL or a
+    block of HTML and get the finished asset without running a browser.
+
+    ## Free tier attribution
+
+    Output from a free account carries a small Renderwolf badge in the bottom
+    corner on screenshots, template images, PDFs, clips and site previews. Any
+    paid plan removes it. It follows the account's plan rather than the request,
+    so there is no field here that turns it on or off.
+
+    ## Authentication
+
+    Every request carries an API key as a bearer token:
+
+    ```
+    Authorization: Bearer rw_live_...
+    ```
+
+    Keys are created in the portal at https://portal.ironfang.uk. They are shown
+    once at creation and stored only as a hash, so a lost key is replaced rather
+    than recovered.
+
+    ## Responses are bytes, not JSON
+
+    `/v1/screenshot`, `/v1/pdf`, `/v1/image/{id}` and `/v1/video` return the
+    rendered file directly. `/v1/site-preview` returns a multipart payload with
+    the poster and MP4. Only errors and the metadata endpoints return JSON.
+
+    ## Caching and billing
+
+    Identical requests return a cached result, and **cache hits are free** - they
+    do not count against quota. `X-Renderwolf-Cache: hit` tells you which you
+    got. Set `no_cache: true` to force a fresh render, which is billable; the
+    flag is deliberately excluded from the cache key, so two fresh requests do
+    not hit each other's results.
+
+    ## Quotas and rate limits
+
+    Monthly quota depends on plan: free 250, hobby 5,000, pro 15,000, scale
+    50,000 renders. For subscribers the period follows the billing anniversary
+    rather than the calendar month.
+
+    Two rate limits apply, both per minute:
+
+    - **120 renders per account**, and
+    - **60 renders per target host**, counted across all customers.
+
+    The second protects the sites being rendered: one API call is a full page
+    load, so a victim's exposure must not scale with our customer count. Both
+    are checked after the cache and before charging, so a blocked call costs
+    nothing.
+
+    ## Bot protection
+
+    Renderwolf does not attempt to circumvent bot protection, CAPTCHAs or
+    paywalls. A challenge page renders as the challenge page. This is a
+    deliberate limit, not a bug.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.uk
+  termsOfService: https://ironfang.uk/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.uk/legal/terms
+
+# api.ironfang.uk carries every Ironfang product, so the product name is part
+# of the path: /renderwolf/v1/usage, not /v1/usage. Product precedes version so
+# each product versions on its own clock. The bare prefix is still served for
+# clients written before the partition and is not going away, but new
+# integrations should use the first server below.
+servers:
+  - url: https://api.ironfang.uk/renderwolf
+    description: Production
+  - url: https://api.ironfang.uk
+    description: Production, unpartitioned - retained for existing clients
+
+security:
+  - apiKey: []
+
+tags:
+  - name: Render
+    description: Turn a URL or HTML into an image, PDF or video.
+  - name: Templates
+    description: Stored HTML with `{{variable}}` placeholders, rendered on demand.
+  - name: Signed URLs
+    description: Shareable render URLs that need no API key.
+  - name: Batches
+    description: Up to 100 renders submitted, and refused, together.
+  - name: Destinations
+    description: Where a finished job goes - a signed webhook, or your own S3 bucket.
+  - name: Account
+    description: Usage against quota.
+
+paths:
+  /v1/screenshot:
+    post:
+      tags: [Render]
+      summary: Render a screenshot
+      description: |
+        Supply exactly one of `url` or `html`. Returns the image bytes.
+      operationId: createScreenshot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScreenshotRequest'
+            examples:
+              url:
+                summary: A page, full length
+                value:
+                  url: https://example.com
+                  width: 1280
+                  full_page: true
+              element:
+                summary: One element, on a dark-mode page
+                value:
+                  url: https://example.com/pricing
+                  selector: '.pricing-table'
+                  dark_mode: true
+              html:
+                summary: Your own markup, as JPEG
+                value:
+                  html: '<h1 style="font:600 48px sans-serif">Hello</h1>'
+                  width: 1200
+                  height: 630
+                  format: jpeg
+                  quality: 85
+      responses:
+        '200':
+          $ref: '#/components/responses/Image'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/RenderFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/qr:
+    post:
+      tags: [Render]
+      summary: Render a QR code
+      description: |
+        Styled, optionally logo-bearing QR codes, drawn natively and
+        **verified before delivery**: every response is decoded and compared
+        to `data` on the way out. A code that would not scan is a
+        `422 unscannable` and the credit is returned - the guarantee is the
+        feature.
+
+        A logo forces the highest error-correction level and is composited
+        over the center on a knockout tile (`logo_pad`). Send it inline as a
+        `data:` URI (`logo`) or by URL (`logo_url`); remote logos face the
+        same target guard and rate caps as screenshot URLs.
+
+        QRs are deterministic, so identical requests hit the cache and cache
+        hits are free. QR costs no credits on any plan (`CostQR` is zero) -
+        still metered per kind, and never refused at a cap. Output never
+        carries the free-tier badge - a mark inside a scannable symbol would
+        corrupt it.
+
+        To place a QR inside a stored template render, use the `qr` object
+        on `POST /v1/image/{id}` instead - each entry becomes a
+        `{{qr.<name>}}` variable holding a data URI.
+      operationId: createQr
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QrRequest'
+            examples:
+              plain:
+                summary: A link, defaults throughout
+                value:
+                  data: https://example.com/menu
+              branded:
+                summary: Rounded style with a centered logo
+                value:
+                  data: https://example.com
+                  size: 600
+                  dots: circle
+                  dark: '#1b2a4a'
+                  logo_url: https://example.com/logo.png
+                  logo_size: 0.22
+      responses:
+        '200':
+          $ref: '#/components/responses/Image'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/RenderFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/pdf:
+    post:
+      tags: [Render]
+      summary: Render a PDF
+      description: |
+        Supply exactly one of `url` or `html`. Returns `application/pdf`.
+
+        `header_html` and `footer_html` are Chromium print templates: they
+        support the classes `date`, `title`, `url`, `pageNumber` and
+        `totalPages`, which Chromium substitutes at print time.
+      operationId: createPdf
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PdfRequest'
+            examples:
+              invoice:
+                summary: An invoice with a page footer
+                value:
+                  html: '<h1>Invoice 1024</h1>'
+                  print_background: true
+                  footer_html: '<div style="font-size:9px;margin:0 auto"><span class="pageNumber"></span> of <span class="totalPages"></span></div>'
+              page:
+                summary: A page, landscape
+                value:
+                  url: https://example.com/report
+                  landscape: true
+                  print_background: true
+      responses:
+        '200':
+          $ref: '#/components/responses/Pdf'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/RenderFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/video:
+    post:
+      tags: [Render]
+      summary: Render a clip
+      description: |
+        A background, captions that appear on a schedule, an optional
+        watermark and an optional audio bed, encoded to MP4.
+
+        Rendered inside the request, so clips are capped at 60 seconds. Cost
+        is one credit per second of vertical or landscape output, half that
+        for `720p` and 0.6 for `square` - pixels are what the encoder spends.
+        A clip that fails to render is refunded.
+
+        Every asset URL is fetched by us through the same guard a screenshot
+        target faces, and each is capped at 64 MB.
+      operationId: createClip
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClipRequest'
+            examples:
+              captioned:
+                summary: A captioned vertical clip on a solid colour
+                value:
+                  size: vertical
+                  duration: 15
+                  colour: '#101820'
+                  captions:
+                    - { text: 'Ship it on Friday', from: 0, to: 5 }
+                    - { text: 'Find out on Monday', from: 5, to: 10 }
+                    - { text: 'Or gate the deploy', from: 10, to: 15 }
+              overBackground:
+                summary: Over an image, with a logo and music
+                value:
+                  size: square
+                  duration: 20
+                  background: https://example.com/backdrop.jpg
+                  watermark: https://example.com/logo.png
+                  audio: https://example.com/bed.m4a
+                  captions:
+                    - { text: 'New in August', from: 1, to: 6 }
+      responses:
+        '200':
+          $ref: '#/components/responses/Clip'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/RenderFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '501':
+          description: This deployment has no encoder configured.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/site-preview:
+    post:
+      tags: [Render]
+      summary: Render a scrolling website preview
+      description: |
+        Loads and settles a website, preloads lazy content, then records a
+        top-to-bottom browser motion at 30 frames per second. `per_page` moves
+        one viewport at a time and pauses for 750ms between steps.
+        `single_sweep` makes one continuous eased pass. Sticky and fixed
+        elements behave as they do in the browser.
+
+        The response is one `multipart/form-data` payload containing the first
+        video frame as `poster.jpg` and the H.264 video as `preview.mp4`.
+        Renderwolf calculates the duration from the page height and selected
+        motion, up to a 60 second hard limit. Cost is one credit per output
+        second, rounded up. Failed work is refunded and cached repeats are free.
+
+        This endpoint is available on the product-partitioned Renderwolf URL
+        only. It has no unprefixed `/v1/site-preview` compatibility route.
+      operationId: createSitePreview
+      servers:
+        - url: https://api.ironfang.uk/renderwolf
+          description: Production
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SitePreviewRequest'
+            examples:
+              showcase:
+                summary: A showcase card preview
+                value:
+                  url: https://example.com
+                  width: 672
+                  height: 494
+                  motion: per_page
+      responses:
+        '200':
+          $ref: '#/components/responses/SitePreview'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '422': { $ref: '#/components/responses/RenderFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '501':
+          description: This deployment does not have browser video capture configured.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/templates:
+    get:
+      tags: [Templates]
+      summary: List templates
+      operationId: listTemplates
+      responses:
+        '200':
+          description: |
+            Your templates, wrapped in a `templates` property - not a bare
+            array. Clients that iterate must read `templates`.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [templates]
+                properties:
+                  templates:
+                    type: array
+                    items: { $ref: '#/components/schemas/Template' }
+              example:
+                templates:
+                  - id: 01a01c7c-682e-7b2a-95cd-ffb2f2a4d9be
+                    name: og-card
+                    width: 1200
+                    height: 630
+        '401': { $ref: '#/components/responses/Unauthorized' }
+    post:
+      tags: [Templates]
+      summary: Create a template
+      description: |
+        Store HTML containing `{{placeholders}}`. Render it with
+        `POST /v1/image/{id}`, supplying values for the placeholders.
+      operationId: createTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TemplateInput' }
+            examples:
+              og:
+                summary: An Open Graph card
+                value:
+                  name: og-card
+                  html: '<div style="font:700 64px sans-serif;padding:80px">{{title}}</div>'
+                  width: 1200
+                  height: 630
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Template' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  /v1/templates/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TemplateId'
+    get:
+      tags: [Templates]
+      summary: Fetch a template
+      operationId: getTemplate
+      responses:
+        '200':
+          description: The template.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Template' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Templates]
+      summary: Replace a template
+      operationId: updateTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TemplateInput' }
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Template' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Templates]
+      summary: Delete a template
+      operationId: deleteTemplate
+      responses:
+        '204':
+          description: Deleted.
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/image/{id}:
+    parameters:
+      - $ref: '#/components/parameters/TemplateId'
+    post:
+      tags: [Templates]
+      summary: Render a template
+      description: |
+        Substitutes `vars` into the template's `{{placeholders}}` and renders it
+        at the template's own width and height. Returns the image bytes.
+      operationId: renderTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/RenderTemplateRequest' }
+            examples:
+              card:
+                value:
+                  vars:
+                    title: Shipping UUIDv7 everywhere
+                  format: png
+      responses:
+        '200':
+          $ref: '#/components/responses/Image'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/RenderFailed' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/sign:
+    post:
+      tags: [Signed URLs]
+      summary: Mint a signed render URL
+      description: |
+        Returns a URL that renders on GET without an API key - safe to put in an
+        `<img>` tag or an email. The URL is bound to your account, so renders
+        through it meter against your quota.
+
+        Requires signing to be configured on the deployment; returns `501`
+        otherwise.
+      operationId: createSignedUrl
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SignRequest' }
+            examples:
+              screenshot:
+                value:
+                  kind: screenshot
+                  url: https://example.com
+                  width: 1280
+                  ttl_hours: 24
+              template:
+                value:
+                  kind: image
+                  template: 0193f0c4-1f4e-7a91-9c3e-2b6f5d8a1e77
+                  vars: { title: Hello }
+      responses:
+        '200':
+          description: The signed URL.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignedUrl' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '501':
+          description: Signing is not configured on this deployment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+
+  /v1/r/{exp}/{sig}:
+    get:
+      tags: [Signed URLs]
+      summary: Render from a signed URL
+      description: |
+        The endpoint a signed URL points at. Takes no API key - the signature is
+        the credential - so it can be embedded directly in HTML or email. Call
+        `POST /v1/sign` to mint one rather than constructing it by hand.
+      operationId: renderSignedUrl
+      security: []
+      parameters:
+        - name: exp
+          in: path
+          required: true
+          description: Expiry stamp, part of the signed payload. `0` never expires.
+          schema: { type: string }
+        - name: sig
+          in: path
+          required: true
+          description: The signature.
+          schema: { type: string }
+      responses:
+        '200':
+          $ref: '#/components/responses/Image'
+        '403':
+          description: Signature invalid or expired.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '404':
+          description: Signing is not configured on this deployment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /v1/capabilities:
+    get:
+      tags: [Account]
+      security: []
+      summary: What Renderwolf does, is building and does not offer
+      description: |
+        A dated statement of capabilities with a status of `live`, `planned`
+        or `not_offered`. Public and cacheable; the comparison pages are
+        checked against the same file, so nothing is advertised before it is
+        live.
+      operationId: getCapabilities
+      responses:
+        '200':
+          description: The capability catalogue.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  product: { type: string }
+                  updated: { type: string, format: date }
+                  free_credits_per_month: { type: integer }
+                  capabilities:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key: { type: string }
+                        name: { type: string }
+                        status: { type: string, enum: [live, planned, not_offered] }
+                        since: { type: string, format: date }
+  /v1/jobs:
+    post:
+      tags: [Jobs]
+      summary: Submit a durable render job
+      description: |
+        The same renders as the synchronous endpoints - `kind` is one of
+        `screenshot`, `pdf`, `qr`, `image`, `clip` or `site_preview` and
+        `request` is that endpoint's body (an `image` job names its
+        `template` inside `request`) - accepted with `202` and run by a
+        worker. Poll the job, or cancel it, then collect the result while it
+        is hosted: 24 hours, private, through a signed link valid for 15
+        minutes. A process restart after the `202` never loses the job.
+
+        Send `Idempotency-Key` on every submission. The same key with the same
+        request returns the existing job with `200`; the same key with a
+        different request is a `409 idempotency_conflict`. `external_id` is
+        your own reference, up to 120 characters.
+
+        Credits: the job's maximum cost is reserved when it is accepted and
+        settled when it finishes - a site preview reserves the 60-second
+        ceiling and releases the difference. Failed work is refunded. A
+        queued job cancels for free; a running one is charged only if it
+        produced a usable output.
+      operationId: submitJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [kind, request]
+              properties:
+                kind: { type: string, enum: [screenshot, pdf, qr, image, clip, site_preview] }
+                request: { type: object, description: The synchronous endpoint's request body for that kind. }
+                external_id: { type: string, maxLength: 120 }
+                delivery: { $ref: '#/components/schemas/JobDelivery' }
+      responses:
+        '202':
+          description: The job was accepted; the body is the job resource.
+        '200':
+          description: The same Idempotency-Key and request were seen before; this is that job.
+        '400': { description: Invalid submission. }
+        '403': { description: The key carries no `renderwolf:render` scope, or is not account-backed. }
+        '404': { description: The template named by an image job does not exist. }
+        '409': { description: '`idempotency_conflict`: the key was used with a different request.' }
+        '429': { description: Monthly credits exhausted. }
+        '501': { description: This deployment cannot render clips or site previews. }
+    get:
+      tags: [Jobs]
+      summary: List jobs
+      description: Newest first. `status` filters; `limit` up to 100; pass `next_cursor` back to continue.
+      operationId: listJobs
+      parameters:
+        - { name: status, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 100 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Jobs and `next_cursor`. }
+  /v1/jobs/{id}:
+    get:
+      tags: [Jobs]
+      summary: Poll a job
+      description: |
+        `status` is `queued`, `running`, `cancellation_requested`,
+        `succeeded`, `failed` or `cancelled`. A succeeded job carries
+        `result` with `content_type`, `bytes`, `sha256`, `expires_at` and,
+        while hosted, a signed `url` valid for 15 minutes. A failed job
+        carries `error.code` and `error.message`. The submitted request is
+        never returned; `request_summary` is the redacted shape.
+      operationId: getJob
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: The job resource. }
+        '404': { description: No such job on this account. }
+    delete:
+      tags: [Jobs]
+      summary: Cancel a job
+      description: A queued job is cancelled and refunded at once; a running one stops at its next safe point.
+      operationId: cancelJob
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: The job, cancelled or with cancellation requested. }
+        '404': { description: No such job on this account. }
+        '409': { description: '`job_finished`: nothing left to cancel.' }
+  /v1/jobs/{id}/result:
+    get:
+      tags: [Jobs]
+      summary: Collect a job's result
+      description: |
+        Redirects (`302`) to a signed download link valid for 15 minutes; the
+        link needs no API key. The hosted result is kept for 24 hours after
+        success, privately, on Ironfang's side - not permanent hosting.
+      operationId: getJobResult
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '302': { description: Redirect to the signed download link. }
+        '404': { description: No such job on this account. }
+        '409': { description: '`result_not_ready`: the job has not succeeded.' }
+        '410': { description: '`result_expired`: the hosted result is gone; run the job again.' }
+  /v1/results/{exp}/{sig}:
+    get:
+      tags: [Jobs]
+      security: []
+      summary: Signed result download
+      description: The link a job's `result.url` points at. The signature is the authorisation; it expires after 15 minutes.
+      operationId: getSignedResult
+      parameters:
+        - { name: exp, in: path, required: true, schema: { type: string } }
+        - { name: sig, in: path, required: true, schema: { type: string } }
+        - { name: job, in: query, required: true, schema: { type: string } }
+      responses:
+        '200': { description: The result bytes with their recorded content type. }
+        '403': { description: Bad or expired signature. }
+        '410': { description: The hosted result has expired. }
+  /v1/batches:
+    post:
+      tags: [Batches]
+      summary: Submit up to 100 jobs together
+      description: |
+        One `default` request plus `items` that override parts of it, merged
+        one level deep: an item's field wins, everything else comes from the
+        default. The default is written for the batch's `kind`, so it applies
+        only to items of that kind; an item that names a different kind stands
+        on its own request, and any item may carry its own `delivery`. Every item is validated as a single job would be,
+        and an unknown field is refused rather than ignored, because a typo
+        that is silently dropped is a credit spent on the wrong render.
+
+        The batch is accepted or refused whole. Every item is validated before
+        any is stored, and the credits for all of them are reserved in one
+        transaction, so a batch that would exceed your monthly credits is a
+        `429` that charged nothing and left no jobs behind. The error names
+        the item that was wrong.
+
+        Items are ordinary jobs: poll them individually, or poll the batch for
+        the aggregate. There is no ZIP of results - configure a storage
+        destination if you want the output collected in one place.
+      operationId: submitBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [items]
+              properties:
+                kind: { type: string, enum: [screenshot, pdf, qr, image, clip, site_preview] }
+                default: { type: object, description: The request every item starts from. }
+                delivery: { $ref: '#/components/schemas/JobDelivery' }
+                external_id: { type: string, maxLength: 120 }
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    properties:
+                      kind: { type: string }
+                      request: { type: object }
+                      external_id: { type: string, maxLength: 120 }
+                      delivery: { $ref: '#/components/schemas/JobDelivery' }
+      responses:
+        '202':
+          description: The batch was accepted; the body carries the batch and one job per item.
+        '400': { description: 'Invalid submission, or `batch_too_large`. The message names the item.' }
+        '403': { description: The key carries no `renderwolf:render` scope, or is not account-backed. }
+        '429': { description: '`quota_exhausted`: the whole batch was refused and nothing was charged.' }
+  /v1/batches/{id}:
+    get:
+      tags: [Batches]
+      summary: Poll a batch
+      description: |
+        `counts` totals the items by state and `done` is true once none of
+        them can change. `jobs` is the full job resource for every item.
+      operationId: getBatch
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: The batch, its counts and its jobs. }
+        '404': { description: No such batch on this account. }
+  /v1/destinations:
+    post:
+      tags: [Destinations]
+      summary: Register a delivery destination
+      description: |
+        A destination is created once and named by id from every job, so a
+        signing secret or a set of S3 keys is sent to us on one request and
+        never appears in a job body again.
+
+        A `webhook` destination needs a public `https` URL. The response
+        carries `signing_secret` **once**: we keep only an encrypted copy,
+        so there is no endpoint that can show it to you again.
+
+        An `s3` destination needs `bucket`, `region`, `access_key` and
+        `secret_key`; `endpoint` (for a non-AWS provider), `path_style` and
+        `prefix` are optional. Scope the credentials to the prefix you give
+        us. They are never returned after creation.
+
+        Needs the `renderwolf:destinations` scope, which maps to the
+        `destinations.manage` permission.
+      operationId: createDestination
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              properties:
+                type: { type: string, enum: [webhook, s3] }
+                name: { type: string, maxLength: 120 }
+                url: { type: string, format: uri, description: 'webhook: a public https URL.' }
+                endpoint: { type: string, format: uri }
+                region: { type: string }
+                bucket: { type: string }
+                prefix: { type: string, maxLength: 256 }
+                path_style: { type: boolean }
+                access_key: { type: string }
+                secret_key: { type: string }
+                session_token: { type: string }
+      responses:
+        '201': { description: 'The destination. A webhook also carries `signing_secret`, shown once.' }
+        '400': { description: '`bad_destination`: not a public https URL, or missing bucket credentials.' }
+        '403': { description: The key carries no `renderwolf:destinations` scope. }
+        '501': { description: This deployment has no credential vault configured. }
+    get:
+      tags: [Destinations]
+      summary: List destinations
+      description: Live destinations, newest first. Secrets and credentials are never included.
+      operationId: listDestinations
+      responses:
+        '200': { description: The account's destinations. }
+  /v1/destinations/{id}:
+    get:
+      tags: [Destinations]
+      summary: Get a destination
+      operationId: getDestination
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: The destination. }
+        '404': { description: No such destination on this account. }
+    patch:
+      tags: [Destinations]
+      summary: Rename or enable a destination
+      description: |
+        `name` and `enabled` only. An address or a credential is not edited in
+        place - create a new destination and point your jobs at it, so a
+        delivery's history always says where it actually went. Re-enabling
+        clears the failure count.
+      operationId: updateDestination
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string, maxLength: 120 }
+                enabled: { type: boolean }
+      responses:
+        '200': { description: The destination. }
+        '404': { description: No such destination on this account. }
+    delete:
+      tags: [Destinations]
+      summary: Remove a destination
+      description: |
+        It stops receiving anything and leaves the list. Its past deliveries
+        stay, so history still reads true.
+      operationId: deleteDestination
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '204': { description: Removed. }
+        '404': { description: No such destination on this account. }
+  /v1/destinations/{id}/test:
+    post:
+      tags: [Destinations]
+      summary: Test a destination now
+      description: |
+        A webhook receives a signed `renderwolf.destination.test` event; a
+        bucket has a uniquely named object written to it. Always `200`: the
+        body's `ok` says whether the destination answered, and `error` says
+        what went wrong if it did not.
+      operationId: testDestination
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: '`ok` and, on failure, `error`.' }
+        '404': { description: No such destination on this account. }
+  /v1/requests:
+    get:
+      tags: [Account]
+      summary: Request history
+      description: |
+        One row per authenticated render in the last seven days, newest
+        first, synchronous calls and jobs alike: kind, outcome, safe error
+        code, cache hit or miss, credits charged and refunded, response size
+        and type, duration, the target's origin and path, the names of the
+        option fields supplied, and the request id you can quote to support.
+
+        It is diagnostic, not replay. Nothing here can rebuild the request:
+        header and cookie values, HTML, template variables, URL query strings
+        and signatures are never recorded. Retention is seven days on every
+        plan.
+
+        `id` matches the request id, a job id or your own `X-Request-ID`,
+        which is how you arrive here from an error message.
+      operationId: listRequests
+      parameters:
+        - { name: since, in: query, schema: { type: string, format: date-time } }
+        - { name: until, in: query, schema: { type: string, format: date-time } }
+        - { name: outcome, in: query, schema: { type: string, enum: [ok, error, cancelled] } }
+        - { name: kind, in: query, schema: { type: string, enum: [screenshot, pdf, qr, image, clip, site_preview] } }
+        - { name: cache, in: query, schema: { type: string, enum: [hit, miss] } }
+        - { name: key, in: query, description: API key id, schema: { type: string } }
+        - { name: error, in: query, description: Safe error code, schema: { type: string } }
+        - { name: id, in: query, description: Request id, job id or your X-Request-ID, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 200, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
+      responses:
+        '200': { description: "`requests` and `retention_days`." }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /v1/deliveries:
+    get:
+      tags: [Destinations]
+      summary: List deliveries
+      description: |
+        Newest first, optionally for one `destination`. A delivery is
+        `pending`, `delivering`, `delivered` or `failed`; `failed` means it
+        used up its attempts. Delivery state never affects the job's own
+        outcome.
+      operationId: listDeliveries
+      parameters:
+        - { name: destination, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, maximum: 100 } }
+        - { name: cursor, in: query, schema: { type: string } }
+      responses:
+        '200': { description: Deliveries and `next_cursor`. }
+  /v1/deliveries/{id}:
+    get:
+      tags: [Destinations]
+      summary: One delivery, with the body it posted
+      description: |
+        The list omits payloads because they are the largest part of a
+        delivery and are wanted one at a time, when something has gone wrong.
+        This returns the body exactly as it went on the wire, plus
+        `payload_timestamp` and `payload_signature` - the two values the
+        signature is computed over - so you can reproduce the HMAC check
+        against your own secret and see where it diverges.
+
+        `response_body` is what your endpoint sent back, bounded to 4 KB.
+
+        Bodies are kept for `payload_retention_days` (7) after the attempt
+        and then blanked; the delivery row itself stays, so the history of
+        what was sent and how it went is not lost with it.
+      operationId: getDelivery
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: 'The delivery. `payload` is absent once purged.' }
+        '404': { description: No such delivery on this account. }
+  /v1/deliveries/{id}/redeliver:
+    post:
+      tags: [Destinations]
+      summary: Send a delivery again
+      description: |
+        Puts a delivery back on the queue with a fresh attempt ladder, for
+        after you have fixed whatever was wrong. The webhook body is rebuilt
+        at send time, so the result link in it is good for 15 minutes from
+        then rather than from the original attempt.
+      operationId: redeliverDelivery
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses:
+        '200': { description: The delivery, queued again. }
+        '404': { description: No such delivery on this account. }
+  /v1/usage:
+    get:
+      tags: [Account]
+      summary: Usage this period
+      description: |
+        For subscribers the period runs from the billing anniversary, not the
+        first of the month, so it lines up with invoices.
+      operationId: getUsage
+      responses:
+        '200':
+          description: Current period usage.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: |
+        An API key from the portal, sent as `Authorization: Bearer rw_live_...`.
+
+  parameters:
+    TemplateId:
+      name: id
+      in: path
+      required: true
+      description: Template id (UUIDv7).
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Image:
+      description: |
+        The rendered image. `png` unless `format: jpeg` was requested.
+      headers:
+        X-Renderwolf-Cache:
+          description: '`hit` when served from cache, in which case it was free.'
+          schema: { type: string, enum: [hit] }
+        X-Renderwolf-Credits:
+          description: |
+            What this call cost. `0` on a cache hit, because a cache hit is
+            free. Read it to log spend per request without polling
+            `/v1/usage`.
+          schema: { type: integer }
+        X-Renderwolf-Render-Ms:
+          description: Render time in milliseconds, excluding any requested delay.
+          schema: { type: integer }
+        X-Renderwolf-Delay-Ms:
+          description: The `delay_ms` actually waited, when one was requested.
+          schema: { type: integer }
+        X-Renderwolf-Captured-At:
+          description: |
+            RFC 3339 timestamp of a fresh capture. Present only on
+            `no_cache` renders, where the response is also `no-store` - the
+            pairing is what makes a capture usable as evidence.
+          schema: { type: string, format: date-time }
+      content:
+        image/png:
+          schema: { type: string, format: binary }
+        image/jpeg:
+          schema: { type: string, format: binary }
+
+    Clip:
+      description: The rendered clip.
+      headers:
+        X-Renderwolf-Cache:
+          schema: { type: string, enum: [hit] }
+        X-Renderwolf-Render-Ms:
+          schema: { type: integer }
+        X-Renderwolf-Credits:
+          description: |
+            What this clip cost. `0` on a cache hit, because a cache hit is
+            free.
+          schema: { type: integer }
+      content:
+        video/mp4:
+          schema: { type: string, format: binary }
+
+    SitePreview:
+      description: The poster image and scrolling MP4 returned as two file parts.
+      headers:
+        X-Renderwolf-Cache:
+          schema: { type: string, enum: [hit] }
+        X-Renderwolf-Render-Ms:
+          schema: { type: integer }
+        X-Renderwolf-Credits:
+          description: |
+            What this preview cost. `0` on a cache hit, because a cache hit is
+            free. The poster is included in the video cost.
+          schema: { type: integer }
+        X-Renderwolf-Output-Seconds:
+          description: Calculated video length in seconds. Present on fresh renders.
+          schema: { type: number }
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required: [poster, video]
+            properties:
+              poster:
+                type: string
+                format: binary
+                description: JPEG first frame, suitable for a video poster.
+              video:
+                type: string
+                format: binary
+                description: H.264 MP4 with fast-start metadata.
+
+    Pdf:
+      description: The rendered PDF.
+      headers:
+        X-Renderwolf-Cache:
+          schema: { type: string, enum: [hit] }
+        X-Renderwolf-Credits:
+          description: |
+            What this call cost. `0` on a cache hit, because a cache hit is
+            free. Read it to log spend per request without polling
+            `/v1/usage`.
+          schema: { type: integer }
+        X-Renderwolf-Render-Ms:
+          schema: { type: integer }
+      content:
+        application/pdf:
+          schema: { type: string, format: binary }
+
+    BadRequest:
+      description: Malformed body, or neither/both of `url` and `html`.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    NotFound:
+      description: No such template, or not yours.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    RateLimited:
+      description: |
+        Three distinct conditions share this status, separated by `error.code`:
+
+        - `rate_limited` - your account exceeded 120 renders/minute
+        - `target_rate_limited` - the site being rendered is being hit too hard
+          across all customers (60/minute per host)
+        - `quota_exhausted` - the plan's monthly allowance is spent
+
+        The first two clear within the minute, so retry with backoff. The third
+        does not: upgrade in the portal or wait for the period to roll over.
+        Branch on the code rather than the status.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    RenderFailed:
+      description: |
+        The page did not render: the host did not resolve, it never finished
+        loading, it timed out, or it was blocked. Try `delay_ms`, and check the
+        target loads in a normal browser.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: Stable, safe to branch on.
+              enum:
+                - bad_request
+                - unauthorized
+                - invalid_api_key
+                - auth_failed
+                - forbidden
+                - email_unverified
+                - not_found
+                - quota_exhausted
+                - rate_limited
+                - target_rate_limited
+                - render_failed
+                - bad_signature
+                - signing_disabled
+            message:
+              type: string
+              description: Human-readable. May change; do not match on it.
+      example:
+        error:
+          code: target_rate_limited
+          message: too many renders for that host, try again shortly
+
+    Cookie:
+      type: object
+      required: [name, domain]
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        domain:
+          type: string
+          description: |
+            Required. Chromium silently drops a domainless cookie set before
+            navigation, so the render would quietly come back logged out.
+        path:
+          type: string
+          default: /
+
+    Clip:
+      type: object
+      description: A rectangle in CSS pixels from the top left of the page.
+      required: [width, height]
+      properties:
+        x:
+          type: number
+          default: 0
+        y:
+          type: number
+          default: 0
+        width:
+          type: number
+          maximum: 4096
+        height:
+          type: number
+          maximum: 4096
+
+    Margin:
+      type: object
+      description: |
+        Page margins in inches. Omitted sides keep Chromium's default rather
+        than becoming zero - a PDF printed hard to the paper edge is rarely
+        what leaving a field out was meant to mean.
+      properties:
+        top:
+          type: number
+        right:
+          type: number
+        bottom:
+          type: number
+        left:
+          type: number
+
+    RenderCommon:
+      type: object
+      properties:
+        no_cache:
+          type: boolean
+          default: false
+          description: |
+            Force a fresh render instead of serving a cached one. Always
+            billable. Excluded from the cache key, so repeated fresh requests
+            do not collide.
+        block_ads:
+          type: boolean
+          default: false
+          description: |
+            Drop requests to known ad and tracker networks before they load.
+            Stopped as network requests rather than hidden afterwards, so the
+            page never spends time fetching them.
+        block_cookie_banners:
+          type: boolean
+          default: false
+          description: |
+            Hide common consent banners, and undo the scroll lock they set -
+            without which a full-page capture is one viewport tall.
+
+            Hidden, not accepted. Clicking "accept" would be a decision made
+            on the site owner's behalf and recorded as theirs.
+        hide_selectors:
+          type: array
+          items:
+            type: string
+          description: |
+            CSS selectors to hide before capturing. Applied after load, so
+            elements injected by script are covered.
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: Extra HTTP headers sent with every request for the page.
+        cookies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cookie'
+          description: |
+            Cookies to set before navigating. Set beforehand because a session
+            cookie that arrives after load has missed the request it was meant
+            to authenticate.
+        authorization:
+          type: string
+          description: |
+            Sets the `Authorization` header - the common case, spelled once.
+            An explicit `Authorization` in `headers` wins over this.
+        user_agent:
+          type: string
+          description: |
+            Overrides the user agent, including any set by `device`.
+        wait_until:
+          type: string
+          enum: [load, domcontentloaded, networkidle]
+          default: load
+          description: |
+            When the page counts as ready. `networkidle` waits for traffic to
+            stop and is bounded by the render timeout, because a page with
+            polling never truly idles.
+        wait_for_selector:
+          type: string
+          description: |
+            Wait for this element before capturing. Fails the render if it
+            never appears, rather than returning a half-drawn page.
+        timeout_ms:
+          type: integer
+          description: |
+            Per-render timeout. Clamped to the service maximum - it can lower
+            the ceiling but not raise it.
+        device_scale_factor:
+          type: number
+          minimum: 1
+          maximum: 3
+          description: |
+            Pixel density. 2 is retina: the same CSS size at twice the pixels.
+
+    QrRequest:
+      type: object
+      required: [data]
+      properties:
+        data:
+          type: string
+          maxLength: 1024
+          description: The payload - a URL, WiFi string, or any text up to 1KB.
+        size:
+          type: integer
+          default: 512
+          minimum: 64
+          maximum: 2048
+          description: Output side in pixels. Output is always square PNG.
+        ecc:
+          type: string
+          enum: [L, M, Q, H]
+          default: M
+          description: |
+            Error-correction level. Forced to `H` when a logo is present -
+            the logo destroys the modules it covers, and that budget has to
+            come from somewhere.
+        dark:
+          type: string
+          default: '#000000'
+          description: Module color, `#rgb` or `#rrggbb`. Must actually be darker than `light`.
+        light:
+          type: string
+          default: '#ffffff'
+          description: |
+            Background color, or `transparent`. Transparent codes are
+            verified against a white ground - place them on light surfaces.
+        dots:
+          type: string
+          enum: [square, circle]
+          default: square
+          description: |
+            Module style. `circle` draws separated dots. Finder patterns
+            always render solid - styled finders are how QR generators
+            produce codes that do not scan.
+        eyes:
+          type: string
+          enum: [square, rounded]
+          description: Finder-pattern style. Defaults to match `dots`.
+        margin:
+          type: integer
+          default: 4
+          minimum: 0
+          maximum: 8
+          description: Quiet zone, in modules.
+        invert:
+          type: boolean
+          default: false
+          description: |
+            Light modules on a dark ground. Explicit because it narrows the
+            audience: modern phone cameras read inverted codes, many
+            embedded and in-app scanners do not - use it for screens, not
+            print or payments. With the flag set, `dark` (the module color)
+            must be lighter than `light` (the ground). Verified against the
+            negative, so the structural guarantee holds.
+        logo:
+          type: string
+          description: |
+            Center mark as a base64 `data:` URI, png or jpeg, up to 1MB
+            decoded. Mutually exclusive with `logo_url`.
+        logo_url:
+          type: string
+          format: uri
+          description: Center mark by URL. SSRF-guarded and rate-capped like a render target.
+        logo_size:
+          type: number
+          default: 0.22
+          minimum: 0.12
+          maximum: 0.3
+          description: Logo tile as a fraction of the symbol width.
+        logo_pad:
+          type: boolean
+          default: true
+          description: Knockout tile behind the logo so it sits on clean ground.
+
+    JobDelivery:
+      type: object
+      description: |
+        Where this job goes when it finishes, by destination id. Register the
+        destination first; credentials are never sent here.
+
+        A webhook fires on success, failure and cancellation. Storage only
+        carries a result, so it fires on success alone - and a storage
+        delivery that gives up raises `render.delivery.failed` on the webhook
+        destination, which is how you find out that a bucket stopped
+        accepting uploads.
+      properties:
+        webhook_destination:
+          type: string
+          description: Id of a `webhook` destination.
+        storage_destination:
+          type: string
+          description: Id of an `s3` destination.
+        storage_key:
+          type: string
+          maxLength: 700
+          description: |
+            The object key, relative to the destination's prefix. Fixed text
+            plus `{job_id}`, `{external_id}` and `{date}` (`YYYY/MM/DD`) -
+            no other field, and nothing evaluated. Segments may hold letters,
+            digits, dot, dash and underscore; anything that would climb out
+            of the prefix is refused when the job is submitted, not quietly
+            rewritten. Defaults to `renderwolf/{date}/{job_id}`.
+          example: captures/{external_id}/{job_id}.png
+    ScreenshotRequest:
+      allOf:
+        - $ref: '#/components/schemas/RenderCommon'
+        - type: object
+          properties:
+            url:
+              type: string
+              format: uri
+              description: Page to capture. Mutually exclusive with `html`.
+            html:
+              type: string
+              description: Markup to render. Mutually exclusive with `url`.
+            width:
+              type: integer
+              default: 1280
+              maximum: 4096
+              description: Viewport width in pixels.
+            height:
+              type: integer
+              default: 800
+              maximum: 4096
+              description: Viewport height. Ignored when `full_page` is set.
+            full_page:
+              type: boolean
+              default: false
+              description: Capture the whole scrollable page.
+            selector:
+              type: string
+              description: |
+                CSS selector of a single element to capture instead of the
+                viewport.
+            clip:
+              $ref: '#/components/schemas/Clip'
+            omit_background:
+              type: boolean
+              default: false
+              description: |
+                Transparent background instead of the page's own. Ignored for
+                `jpeg`, which has no alpha channel.
+            full_page_max_height:
+              type: integer
+              default: 20000
+              maximum: 20000
+              description: |
+                Cap a `full_page` capture at this many pixels. An
+                infinite-scroll page has no natural end, so 20000 applies when
+                none is given, and is also the most that can be asked for.
+            dark_mode:
+              type: boolean
+              default: false
+              description: 'Render with `prefers-color-scheme: dark`.'
+            format:
+              type: string
+              enum: [png, jpeg, webp]
+              default: png
+              description: |
+                PNG is lossless and the default. WebP is typically a fraction of
+                the size for the same picture, which is what matters when the
+                output is served to browsers or social crawlers.
+            quality:
+              type: integer
+              minimum: 1
+              maximum: 100
+              default: 85
+              description: Quality for the lossy formats, `jpeg` and `webp`. Ignored for PNG.
+            device:
+              type: string
+              enum: [desktop, tablet, mobile]
+              description: |
+                Capture as a phone or tablet rather than a desktop window that
+                happens to be narrow. Sets the viewport, the device pixel ratio,
+                touch, and a matching mobile user agent together - width alone
+                gets media queries right and everything else wrong.
+
+                An explicit `width` or `height` still wins, so a preset can be
+                used for the density and user agent while overriding the size.
+            delay_ms:
+              type: integer
+              minimum: 0
+              maximum: 10000
+              description: |
+                Extra settle time after load. Renderwolf watches the page and
+                captures when it stops changing, so this is rarely needed - use
+                it for content that arrives on a timer, which quiescence cannot
+                anticipate. Capped at ten seconds.
+
+    SitePreviewRequest:
+      allOf:
+        - $ref: '#/components/schemas/RenderCommon'
+        - type: object
+          required: [url]
+          properties:
+            url:
+              type: string
+              format: uri
+              description: Public HTTP or HTTPS page to record.
+            width:
+              type: integer
+              default: 672
+              minimum: 320
+              maximum: 1280
+              multipleOf: 2
+              description: Output and browser viewport width in pixels.
+            height:
+              type: integer
+              default: 494
+              minimum: 240
+              maximum: 1200
+              multipleOf: 2
+              description: |
+                Output and browser viewport height in pixels. Width multiplied
+                by height cannot exceed 1,200,000 pixels.
+            motion:
+              type: string
+              enum: [per_page, single_sweep]
+              default: per_page
+              description: |
+                `per_page` moves one viewport at a time with eased transitions
+                and a 750ms reading pause. `single_sweep` makes one
+                continuous eased pass from top to bottom.
+            dark_mode:
+              type: boolean
+              default: false
+              description: 'Record with `prefers-color-scheme: dark`.'
+            device:
+              type: string
+              enum: [desktop, tablet, mobile]
+              description: |
+                Use a full device preset. Explicit width and height still win.
+            delay_ms:
+              type: integer
+              minimum: 0
+              maximum: 10000
+              description: Extra settle time after page load and before lazy-content preloading. Capped at ten seconds.
+            no_cache:
+              type: boolean
+              default: false
+              description: Force a fresh recording instead of using a cached result.
+
+    ClipRequest:
+      type: object
+      description: |
+        Everything is optional. With no background a solid `colour` is used,
+        which is what most captioned clips want.
+      properties:
+        size:
+          type: string
+          enum: [vertical, square, landscape, 720p]
+          default: vertical
+          description: |
+            vertical 1080x1920, square 1080x1080, landscape 1920x1080,
+            720p 1280x720.
+        duration:
+          type: number
+          default: 15
+          minimum: 1
+          maximum: 60
+          description: Seconds of output.
+        colour:
+          type: string
+          pattern: '^#[0-9a-fA-F]{6}$'
+          default: '#101820'
+          description: Background colour, used when no background asset is given.
+        background:
+          type: string
+          format: uri
+          description: An image or video to fill the canvas, cropped to fit.
+        watermark:
+          type: string
+          format: uri
+          description: A PNG placed in the bottom right corner.
+        audio:
+          type: string
+          format: uri
+          description: An audio track, trimmed to the clip's length.
+        font_size:
+          type: integer
+          minimum: 12
+          maximum: 200
+          description: Caption size in pixels; defaults to a fifteenth of the width.
+        captions:
+          type: array
+          maxItems: 12
+          items:
+            type: object
+            required: [text, to]
+            properties:
+              text: { type: string, maxLength: 280 }
+              from: { type: number, description: Seconds from the start. }
+              to: { type: number }
+
+    PdfRequest:
+      allOf:
+        - $ref: '#/components/schemas/RenderCommon'
+        - type: object
+          properties:
+            url:
+              type: string
+              format: uri
+              description: Page to print. Mutually exclusive with `html`.
+            html:
+              type: string
+              description: Markup to print. Mutually exclusive with `url`.
+            landscape:
+              type: boolean
+              default: false
+            paper_format:
+              type: string
+              enum: [a3, a4, a5, letter, legal, tabloid]
+              description: |
+                Named page size. Omit for Chromium's default, which is Letter.
+                Sizes are portrait; `landscape` rotates them.
+            margin:
+              $ref: '#/components/schemas/Margin'
+            print_background:
+              type: boolean
+              default: false
+              description: |
+                Include background colours and images. Off by default, matching
+                a browser's print dialog.
+            header_html:
+              type: string
+              description: Chromium print header template.
+            footer_html:
+              type: string
+              description: Chromium print footer template.
+            scale:
+              type: number
+              description: Print scale. Omit or `0` for 1.0.
+
+    TemplateInput:
+      type: object
+      required: [name, html]
+      properties:
+        name: { type: string }
+        html:
+          type: string
+          description: HTML with `{{placeholder}}` markers.
+        width: { type: integer, default: 1280 }
+        height: { type: integer, default: 800 }
+
+    Template:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        html: { type: string }
+        width: { type: integer }
+        height: { type: integer }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+
+    RenderTemplateRequest:
+      allOf:
+        - $ref: '#/components/schemas/RenderCommon'
+        - type: object
+          properties:
+            vars:
+              type: object
+              additionalProperties: { type: string }
+              description: Values for the template's placeholders.
+            format:
+              type: string
+              enum: [png, jpeg, webp]
+              default: png
+
+    SignRequest:
+      type: object
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [screenshot, image]
+          description: |
+            `screenshot` signs a URL capture and requires `url`; `image` signs a
+            template render and requires `template`.
+        url:
+          type: string
+          format: uri
+          description: Required when `kind` is `screenshot`.
+        template:
+          type: string
+          format: uuid
+          description: Required when `kind` is `image`.
+        vars:
+          type: object
+          additionalProperties: { type: string }
+        width: { type: integer, maximum: 4096 }
+        height: { type: integer, maximum: 4096 }
+        full_page: { type: boolean, default: false }
+        ttl_hours:
+          type: integer
+          default: 0
+          description: Hours until the URL expires. `0` never expires.
+
+    SignedUrl:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Absolute URL, ready to embed.
+        path:
+          type: string
+          description: Path only, for serving behind your own domain.
+
+    Usage:
+      type: object
+      properties:
+        period:
+          type: string
+          description: |
+            The period these numbers cover. Follows the billing anniversary for
+            subscribers, the calendar month otherwise.
+        credits:
+          type: integer
+          description: Credits spent so far this period. Cache hits are free and not counted.
+        renders:
+          type: integer
+          deprecated: true
+          description: The same number under the name the API shipped with.
+        limit:
+          type: integer
+          description: Credits included in the plan for this period, grants included.
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+          description: The period as [period_start, period_end) in UTC dates.
+        by_kind:
+          type: object
+          description: |
+            Where this period's credits went, keyed by render kind
+            (`screenshot`, `pdf`, `image`, `qr`, `clip`). Kinds with no spend
+            are absent.
+          additionalProperties:
+            type: object
+            properties:
+              credits: { type: integer }
+              count: { type: integer }
+        unattributed:
+          type: integer
+          description: |
+            Credits from before per-kind metering existed. The breakdown plus
+            this always equals `credits`.
+        daily:
+          type: array
+          description: The last 30 days of spend, oldest first, zero days included.
+          items:
+            type: object
+            properties:
+              day: { type: string, format: date }
+              credits: { type: integer }
+              by_kind:
+                type: object
+                additionalProperties: { type: integer }
+      example:
+        period: '2026-08'
+        credits: 412
+        renders: 412
+        limit: 5000
+        period_start: '2026-08-01'
+        period_end: '2026-09-01'
+        by_kind:
+          screenshot: { credits: 231, count: 231 }
+          pdf: { credits: 118, count: 59 }
+          qr: { credits: 63, count: 63 }
+        daily:
+          - day: '2026-08-25'
+            credits: 41
+            by_kind: { screenshot: 30, pdf: 8, qr: 3 }

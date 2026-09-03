@@ -1,0 +1,91 @@
+generated: '2026-09-02'
+method: searched
+source: >-
+  registry.npmjs.org, pypi.org/pypi/*/json, api.github.com/orgs/ironfang-ltd, and the
+  "Client libraries" section of https://ironfang.uk/renderwolf/docs
+note: >-
+  Ironfang's own /v1/capabilities endpoint still lists "Official language SDKs and CLI" with
+  status "planned" as of its 2026-08-28 update, but the TypeScript client, the Python client
+  and the CLI all shipped 0.1.0 on 2026-09-01. The capability feed is one release behind.
+packages:
+  - language: typescript
+    registry: npm
+    name: '@ironfang/renderwolf'
+    url: https://www.npmjs.com/package/@ironfang/renderwolf
+    install: npm install @ironfang/renderwolf
+    official: true
+    version: 0.1.0
+    published: '2026-09-01'
+    description: >-
+      Renderwolf API client: screenshots, PDFs, QR codes, template images, clips and site
+      previews from a URL or HTML.
+    requires: Node 20+
+    features: [typed requests, webhook signature verifier, result downloads]
+  - language: python
+    registry: pypi
+    name: ironfang-renderwolf
+    url: https://pypi.org/project/ironfang-renderwolf/
+    install: pip install ironfang-renderwolf
+    official: true
+    version: 0.1.0
+    published: '2026-09-01'
+    description: >-
+      Renderwolf API client: screenshots, PDFs, QR codes, template images, clips and site
+      previews from a URL or HTML.
+    features: [typed requests, webhook signature verifier, result downloads]
+  - language: go
+    registry: github-releases
+    name: renderwolf-cli
+    url: https://github.com/ironfang-ltd/renderwolf-cli
+    install: >-
+      Download the archive for your platform from
+      https://github.com/ironfang-ltd/renderwolf-cli/releases, verify against checksums.txt,
+      put the binary on PATH.
+    official: true
+    version: v0.1.0
+    published: '2026-09-01'
+    description: >-
+      Standalone command-line client. Single signed binaries for Linux, macOS (Intel and Apple
+      Silicon) and Windows with checksums.
+    note: >-
+      Distributed as GitHub release archives, not through a language registry - there is no
+      Homebrew tap, Go module path or npm wrapper published. See cli/renderwolf-cli.yml.
+  - language: typescript
+    registry: npm
+    name: '@ironfang/n8n-nodes-ironfang'
+    url: https://www.npmjs.com/package/@ironfang/n8n-nodes-ironfang
+    install: npm install @ironfang/n8n-nodes-ironfang
+    official: true
+    version: 0.2.1
+    published: '2026-08-20'
+    description: >-
+      n8n community node for Ironfang APIs - screenshots, PDFs and templated images from
+      Renderwolf.
+    kind: workflow-integration
+    source: https://github.com/ironfang-ltd/n8n-nodes-ironfang
+  - language: javascript
+    registry: github-actions
+    name: ironfang-ltd/renderwolf-action
+    url: https://github.com/ironfang-ltd/renderwolf-action
+    install: 'uses: ironfang-ltd/renderwolf-action@v1'
+    official: true
+    version: null
+    published: null
+    note: >-
+      GitHub Action, not a registry package - the Marketplace publishes no versioned metadata
+      endpoint, and the repository carries no tagged release, so no version could be read.
+      Last push 2026-08-26.
+    kind: ci-integration
+    description: Capture pages from a workflow - deploy previews, visual audits, generated images.
+absent:
+  - registry: maven-central
+  - registry: nuget
+  - registry: rubygems
+  - registry: packagist
+  - registry: crates.io
+  - registry: pkg.go.dev
+    note: renderwolf-cli publishes binaries only; no importable module path is documented.
+  - registry: npm
+    name: renderwolf
+    note: Unscoped name is unregistered; the official client is the scoped @ironfang/renderwolf.
+official_sdk_count: 3

@@ -1,0 +1,67 @@
+# Ironfang
+
+> Ironfang is a UK software company that builds developer APIs and operates the
+> infrastructure behind them. Renderwolf, its first product, turns a URL or a
+> block of HTML into screenshots, PDFs, templated images and short captioned
+> video clips over plain HTTPS and JSON.
+
+Renderwolf is self-service: create an account, mint an API key, POST a URL and
+get the bytes back. There is no browser to run and no queue to poll - a warm
+Chromium fleet answers in the request. Plans are hard-capped rather than
+metered into overage, so a runaway loop stops rather than bills. Identical
+requests are served from cache and cost nothing.
+
+A free account renders 250 credits a month and needs no card. Free output
+carries a small Renderwolf badge in the corner; every paid plan removes it, and
+nothing else differs between free and paid.
+
+## Auditwolf
+
+- [Product overview](https://ironfang.uk/auditwolf): Website auditing with signed and independently timestamped evidence.
+- [API reference](https://ironfang.uk/auditwolf/docs): Sites, rules, audits, evidence bundles, verification and integrations.
+- [Verify evidence](https://ironfang.uk/auditwolf/verify): Upload an evidence ZIP or download the open-source offline verifier.
+- [Auditwolf Verify source](https://github.com/ironfang-ltd/auditwolf-verify): Apache 2.0 verifier source and signed cross-platform releases.
+
+## Renderwolf
+
+- [API reference](https://ironfang.uk/renderwolf/docs): Every endpoint, parameter, quota and error code on one page - screenshots, PDFs, templated images, video clips, signed URLs and usage.
+- [OpenAPI specification](https://api.ironfang.uk/openapi.yaml): The machine-readable contract for the whole v1 API. Authoritative - the reference page is written from it, not the other way round.
+- [Product overview](https://ironfang.uk/renderwolf): What it does, what it costs, and where the limits are.
+
+## Comparison
+
+- [Renderwolf vs ScreenshotOne and Urlbox](https://ironfang.uk/renderwolf/compare): Price per thousand renders, feature by feature, and a section naming what the rivals do better. Checked against their own pricing pages and dated.
+- [ScreenshotOne alternative](https://ironfang.uk/renderwolf/screenshotone-alternative): Direct comparison with parameter mappings for switching.
+- [Urlbox alternative](https://ironfang.uk/renderwolf/urlbox-alternative): Direct comparison with parameter mappings for switching.
+
+## Guides
+
+- [Open Graph images](https://ironfang.uk/renderwolf/guides/open-graph-images): Store one card as a template, mint a signed URL per page, and let social crawlers fetch it directly. Editing the template updates every card.
+- [Invoices as PDFs](https://ironfang.uk/renderwolf/guides/invoice-pdfs): Render existing invoice HTML rather than rebuilding it in a PDF library, with real page numbers in the footer.
+- [Screenshots in GitHub Actions](https://ironfang.uk/renderwolf/guides/screenshots-in-github-actions): Capture deploy previews on every pull request and keep them as build artefacts.
+- [Screenshot a page behind a login](https://ironfang.uk/renderwolf/guides/authenticated-pages): Send headers, cookies and an Authorization token with the render, applied before navigation so the first request is already signed in.
+- [Clean screenshots](https://ironfang.uk/renderwolf/guides/clean-screenshots): Block ad and tracker requests, hide cookie banners without clicking accept for anyone, and remove anything else by selector.
+
+## Quickstarts
+
+- [Python](https://ironfang.uk/renderwolf/guides/quickstart-python): One request with `requests`, writing the bytes to a file, with error handling.
+- [Node.js](https://ironfang.uk/renderwolf/guides/quickstart-node): Built-in `fetch`, no dependencies.
+- [PHP](https://ironfang.uk/renderwolf/guides/quickstart-php): cURL, with the two options that catch people out.
+- [Go](https://ironfang.uk/renderwolf/guides/quickstart-go): `net/http`, streaming the response straight to disk.
+
+## Integrations
+
+- [n8n community node](https://www.npmjs.com/package/@ironfang/n8n-nodes-ironfang): Screenshots, PDFs, template images, signed URLs and usage as n8n steps.
+- [GitHub Action](https://github.com/ironfang-ltd/renderwolf-action): Capture pages from a workflow - deploy previews, visual audits, generated images.
+
+## Company
+
+- [About Ironfang](https://ironfang.uk/company): Who builds it and where it runs.
+- [Contact](https://ironfang.uk/contact): Support, technical questions, billing.
+
+## Optional
+
+- [Terms of Service](https://ironfang.uk/legal/terms)
+- [Privacy Policy](https://ironfang.uk/legal/privacy)
+- [Acceptable Use Policy](https://ironfang.uk/legal/acceptable-use)
+- [Refunds and Cancellation](https://ironfang.uk/legal/refunds)

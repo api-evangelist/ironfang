@@ -1,0 +1,78 @@
+generated: '2026-09-02'
+method: searched
+source: https://ironfang.uk/renderwolf/docs#options
+docs: https://ironfang.uk/renderwolf/docs
+limit_count: 2
+note: >-
+  Two rate limits operate independently of the monthly credit allowance. Each render can
+  generate multiple requests against the target page, so one limit protects the target site and
+  one protects the account. Cache hits count against neither because they send no target
+  traffic, and a request blocked by a rate limit spends no credits.
+limits:
+  - scope: per-target-host
+    window: 1 minute
+    limit: 60
+    unit: renders
+    burst: null
+    counted_across: all customers
+    status_on_exhaustion: 429
+    error_code: target_rate_limited
+    note: >-
+      Shared across every Renderwolf customer rendering the same host. Ironfang will raise it
+      for a site you own on request.
+  - scope: per-account
+    window: 1 minute
+    limit: 120
+    unit: renders
+    burst: null
+    status_on_exhaustion: 429
+    error_code: rate_limited
+  - scope: per-account-quota
+    window: billing period (calendar month on free, billing anniversary on paid)
+    limit: plan-dependent - 250 / 5,000 / 15,000 / 50,000 credits
+    status_on_exhaustion: 429
+    error_code: quota_exhausted
+    note: >-
+      A hard cap, not a rate limit - it pauses work rather than creating an overage charge.
+      Recorded here because it shares the 429 status. See plans/renderwolf-plans-pricing.yml.
+  - scope: per-mcp-connection
+    window: billing period
+    limit: 'max(25, 10% of the plan monthly credits)'
+    status_on_exhaustion: MCP error
+    error_code: mcp_budget_exhausted
+    note: Agent spend cap, capped by the organisation's remaining allowance. Reset time is returned.
+response_headers:
+  rate_limit_headers:
+    published: false
+    note: >-
+      GAP. Ironfang documents no X-RateLimit-*, RateLimit-* or Retry-After header on a 429 from
+      the render API. A client learns it is limited only from the 429 status and the error code
+      in the body, and has nothing to read for remaining quota or reset time. Retry-After IS
+      honoured on the outbound webhook delivery path, but that is Ironfang reading a customer's
+      header, not emitting one.
+  usage_headers:
+    - header: X-Renderwolf-Credits
+      meaning: >-
+        Credits used by this request on every metered endpoint. Cache hits report 0. Ironfang
+        recommends logging it to track usage per request without polling /v1/usage.
+    - header: 'X-Renderwolf-Cache'
+      meaning: '`hit` when served from cache - a cache hit is free and counts against no limit.'
+    - header: X-Renderwolf-Render-Ms
+      meaning: Server-side render time.
+    - header: X-Renderwolf-Delay-Ms
+      meaning: The requested delay_ms portion of the render.
+    - header: X-Renderwolf-Captured-At
+      meaning: UTC capture time on a live (no_cache) capture.
+    - header: X-Ironfang-Request-ID
+      meaning: >-
+        Present on every response and repeated in error bodies as request_id. Observed live on
+        an anonymous GET of /renderwolf/v1/capabilities.
+    - header: X-Request-ID
+      meaning: >-
+        Client-supplied correlation id (printable ASCII, up to 128 chars), echoed back unchanged.
+webhook_delivery_retries:
+  ladder: one minute out to a day, with jitter
+  honours: bounded Retry-After from the receiving endpoint
+  retried_statuses: [408, 429, 5xx]
+  terminal_statuses: other 4xx - stop immediately
+  disable_after: 10 consecutive failures, until re-enabled in the portal

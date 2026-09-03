@@ -1,8 +1,16 @@
 name: Renderwolf
 description: >-
-  A rendering API by Ironfang Ltd that turns a URL or raw HTML into screenshots, PDFs, templated images, QR codes and
-  short captioned video clips over plain HTTPS and JSON. Offers a REST API, OpenAPI contract, a hosted MCP server, and
-  an llms.txt.
+  Renderwolf is the rendering API from Ironfang Ltd, a UK software company that builds and
+  operates self-service developer APIs. It turns a URL or a block of raw HTML into screenshots,
+  PDFs, templated images, QR codes, captioned video clips and scrolling site previews over plain
+  HTTPS and JSON, with no browser fleet for the customer to run. The v1 REST API is described by
+  a published OpenAPI 3.1 contract covering 33 operations across synchronous rendering, reusable
+  HTML templates, signed render URLs, durable asynchronous jobs, batches of up to 100, and
+  webhook or S3-compatible delivery destinations. A remote MCP server at mcp.ironfang.uk exposes
+  the same core to AI assistants over OAuth 2.1 with a per-connection credit budget, and an
+  llms.txt, a TypeScript and Python SDK, a CLI and an n8n node round out the surface. Plans are
+  hard-capped rather than metered into overage, cache hits are free, and failed renders are
+  refunded.
 url: https://raw.githubusercontent.com/api-evangelist/renderwolf/refs/heads/main/apis.yml
 created: '2026-09-02'
 modified: '2026-09-02'
@@ -42,18 +50,93 @@ apis:
       - UK-hosted
     properties:
       - type: OpenAPI
+        url: openapi/renderwolf-openapi.yaml
+      - type: OpenAPI
         url: https://api.ironfang.uk/openapi.yaml
+      - type: Overlay
+        url: overlays/renderwolf-openapi-overlay.yaml
       - type: Documentation
         url: https://ironfang.uk/renderwolf/docs
+      - type: APIReference
+        url: https://ironfang.uk/renderwolf/docs
+      - type: LLMsTxt
+        url: llms/renderwolf-llms.txt
       - type: LLMsTxt
         url: https://ironfang.uk/llms.txt
       - type: MCPServer
+        url: mcp/renderwolf-mcp.yml
+      - type: MCPServer
         url: https://mcp.ironfang.uk/mcp
+      - type: ToolCrosswalk
+        url: mcp/renderwolf-tool-crosswalk.yml
+      - type: DataModel
+        url: data-model/renderwolf-data-model.yml
+      - type: ErrorCatalog
+        url: errors/renderwolf-problem-types.yml
+      - type: Webhooks
+        url: asyncapi/renderwolf-webhooks.yml
+image: https://ironfang.uk/logo-wolf-white.svg
 maintainers:
   - FN: Ironfang Ltd
+    email: hello@ironfang.uk
     url: https://ironfang.uk
 generated:
   by: apis.io/add
   model: claude-opus-4-8
   confidence: 98
   at: '2026-09-02T12:33:19.116Z'
+common:
+- type: DomainSecurity
+  url: security/renderwolf-domain-security.yml
+- type: Authentication
+  url: authentication/renderwolf-authentication.yml
+- type: OAuthScopes
+  url: scopes/renderwolf-scopes.yml
+- type: Conventions
+  url: conventions/renderwolf-conventions.yml
+- type: Idempotency
+  url: conventions/renderwolf-conventions.yml
+- type: Packages
+  url: packages/renderwolf-packages.yml
+- type: SDKs
+  url: packages/renderwolf-packages.yml
+- type: CLI
+  url: cli/renderwolf-cli.yml
+- type: WellKnown
+  url: well-known/renderwolf-well-known.yml
+- type: Conformance
+  url: conformance/renderwolf-conformance.yml
+- type: Lifecycle
+  url: lifecycle/renderwolf-lifecycle.yml
+- type: StatusPage
+  url: https://status.ironfang.uk
+- type: Sandbox
+  url: sandbox/renderwolf-sandbox.yml
+- type: AgentSkill
+  url: skills/_index.yml
+- type: Plans
+  url: plans/renderwolf-plans-pricing.yml
+- type: RateLimits
+  url: rate-limits/renderwolf-rate-limits.yml
+- type: DeveloperPortal
+  url: https://ironfang.uk/renderwolf
+- type: GettingStarted
+  url: https://ironfang.uk/renderwolf/guides
+- type: Support
+  url: https://ironfang.uk/contact
+- type: GitHubOrganization
+  url: https://github.com/ironfang-ltd
+- type: Pricing
+  url: https://ironfang.uk/renderwolf
+- type: SignUp
+  url: https://id.ironfang.uk/signup
+- type: TermsOfService
+  url: https://ironfang.uk/legal/terms
+- type: PrivacyPolicy
+  url: https://ironfang.uk/legal/privacy
+
+x-enrichment:
+  date: '2026-09-02'
+  status: enriched
+  artifacts_added: 29
+  pass: local-v1

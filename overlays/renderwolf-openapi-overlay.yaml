@@ -1,0 +1,155 @@
+overlay: 1.0.0
+info:
+  title: API Evangelist enhancements for the Renderwolf API
+  version: 1.0.0
+x-provenance:
+  generated: '2026-09-02'
+  method: generated
+  source: >-
+    Derived from https://ironfang.uk/renderwolf/docs, https://ironfang.uk/docs/mcp and the
+    artifacts in this repo. Every value below is Ironfang's own published statement; nothing is
+    invented. The harvested spec at openapi/renderwolf-openapi.yaml is never mutated.
+extends: openapi/renderwolf-openapi.yaml
+actions:
+  - target: $.info
+    description: >-
+      Record the runtime semantics documented in the API reference but absent from the contract,
+      plus the sibling agent surface.
+    update:
+      x-apis-io-enrichment:
+        artifacts:
+          conventions: conventions/renderwolf-conventions.yml
+          errors: errors/renderwolf-problem-types.yml
+          rate_limits: rate-limits/renderwolf-rate-limits.yml
+          plans: plans/renderwolf-plans-pricing.yml
+          webhooks: asyncapi/renderwolf-webhooks.yml
+          mcp: mcp/renderwolf-mcp.yml
+          data_model: data-model/renderwolf-data-model.yml
+      x-mcp-server:
+        url: https://mcp.ironfang.uk/mcp
+        transport: streamable-http
+        auth: oauth2
+        registry: 'uk.ironfang/ironfang'
+        docs: https://ironfang.uk/docs/mcp
+      x-rate-limits:
+        headers_published: false
+        limits:
+          - scope: per-target-host
+            window: 1 minute
+            limit: 60
+            error_code: target_rate_limited
+          - scope: per-account
+            window: 1 minute
+            limit: 120
+            error_code: rate_limited
+          - scope: quota
+            window: billing period
+            error_code: quota_exhausted
+      x-response-headers:
+        X-Ironfang-Request-ID: Correlation id on every response, repeated in error bodies.
+        X-Request-ID: Client-supplied correlation id, echoed unchanged (ASCII, max 128 chars).
+        X-Renderwolf-Credits: Credits used by this request. 0 on a cache hit.
+        X-Renderwolf-Cache: '`hit` when served from cache - free, and counts against no limit.'
+        X-Renderwolf-Render-Ms: Server-side render time.
+        X-Renderwolf-Delay-Ms: The requested delay_ms portion.
+        X-Renderwolf-Captured-At: UTC capture time on a live (no_cache) capture.
+  - target: $.components.securitySchemes.apiKey
+    description: >-
+      Flag the key-prefix disagreement between the contract and the API reference / CLI README.
+    update:
+      x-key-prefix-discrepancy:
+        spec_says: 'rw_live_'
+        docs_say: 'if_live_'
+        docs_url: https://ironfang.uk/renderwolf/docs#auth
+        cli_readme: https://github.com/ironfang-ltd/renderwolf-cli
+      x-scopes:
+        - 'renderwolf:render'
+        - 'renderwolf:sign'
+        - 'renderwolf:templates:read'
+        - 'renderwolf:templates:write'
+        - 'renderwolf:usage:read'
+        - 'renderwolf:destinations'
+      x-scope-failure: '403 insufficient_scope, naming the missing scope'
+  - target: $.paths['/v1/jobs'].post
+    description: >-
+      Add the Idempotency-Key header the docs instruct clients to send on every submission but
+      which does not appear in the contract.
+    update:
+      x-idempotency:
+        header: Idempotency-Key
+        required_by_docs: true
+        semantics: >-
+          Same key + same request returns the existing job. Same key + a different request is
+          409 idempotency_conflict.
+        docs: https://ironfang.uk/renderwolf/docs#jobs
+      x-reversibility:
+        reversal_operation: cancelJob
+        window: >-
+          Queued jobs stop at once and are refunded in full; a running job stops at its next
+          safe point and is charged only if it produced a usable output.
+        grade: verified
+  - target: $.paths['/v1/batches'].post
+    description: Same undeclared idempotency header, plus the all-or-nothing acceptance rule.
+    update:
+      x-idempotency:
+        header: Idempotency-Key
+        required_by_docs: true
+        docs: https://ironfang.uk/renderwolf/docs#batches
+      x-atomicity: >-
+        A batch is accepted or refused whole. Every item is validated before any is stored and
+        credits for all are reserved in one transaction, so a batch exceeding the monthly
+        credits returns 429 quota_exhausted having charged nothing and left no jobs behind.
+      x-reversibility:
+        reversal_operation: cancelJob
+        scope: per item - there is no batch-level cancel
+        grade: documented
+  - target: $.paths['/v1/sign'].post
+    description: Mark the one-way door - a signed URL has no revoke operation.
+    update:
+      x-reversibility:
+        reversal_operation: null
+        window: 'ttl_hours; 0 means never expires'
+        grade: documented
+        warning: >-
+          A ttl_hours:0 URL is a public, non-revocable, indefinitely metering render URL.
+          Ironfang's MCP surface refuses permanent links and caps the lifetime at 24 hours for
+          exactly this reason.
+  - target: $.paths['/v1/usage'].get
+    description: Mark the deprecated response field the contract does not flag.
+    update:
+      x-deprecated-fields:
+        - field: renders
+          replacement: credits
+          removal: 'after connector migrations are complete (no date published)'
+          docs: https://ironfang.uk/renderwolf/docs#usage
+  - target: $.paths['/v1/capabilities'].get
+    description: Note that this operation answers without authentication.
+    update:
+      x-public: true
+      x-auth-required: false
+      x-verified: 'HTTP 200 on an anonymous GET, 2026-09-02'
+      x-content: >-
+        Per-capability live / planned / not_offered status with `since` dates and `gap_heading`
+        labels for what Ironfang deliberately does not offer.
+  - target: $.components.schemas.Error
+    description: Record that the envelope is a vendor shape, not RFC 9457.
+    update:
+      x-error-format: vendor-json
+      x-rfc9457: false
+      x-catalog: errors/renderwolf-problem-types.yml
+  - target: $
+    description: >-
+      Record the event surface the contract omits. OpenAPI 3.1 supports a top-level webhooks
+      block; this spec ships an empty one.
+    update:
+      x-webhooks-documented:
+        events:
+          - render.job.succeeded
+          - render.job.failed
+          - render.job.cancelled
+          - render.delivery.failed
+        signature: 'Renderwolf-Signature: v1=hmac_sha256(secret, timestamp + "." + raw_body)'
+        timestamp_header: Renderwolf-Timestamp
+        dedupe_header: Renderwolf-Event-Id
+        catalog: asyncapi/renderwolf-webhooks.yml
+        docs: https://ironfang.uk/renderwolf/docs#delivery

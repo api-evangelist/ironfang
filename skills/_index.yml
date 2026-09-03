@@ -1,0 +1,40 @@
+generated: '2026-09-02'
+method: generated
+source: >-
+  openapi/renderwolf-openapi.yaml, conventions/renderwolf-conventions.yml,
+  errors/renderwolf-problem-types.yml, asyncapi/renderwolf-webhooks.yml and Ironfang's own
+  guides at https://ironfang.uk/renderwolf/guides
+note: >-
+  Ironfang publishes no skills/ directory and no AGENTS.md. These four are generated from the
+  live contract and the published docs; every operationId referenced was grepped out of
+  openapi/renderwolf-openapi.yaml, and every rule, limit and window is Ironfang's own published
+  statement.
+skills:
+  - name: renderwolf-og-image-pipeline
+    file: renderwolf-og-image-pipeline.md
+    summary: >-
+      Store one HTML template, mint a signed URL per page, let crawlers fetch the card directly.
+      Covers the ttl_hours:0 one-way door.
+    operations: [createTemplate, listTemplates, getTemplate, updateTemplate, renderTemplate, createSignedUrl, renderSignedUrl]
+    mirrors_guide: https://ironfang.uk/renderwolf/guides/open-graph-images
+  - name: renderwolf-durable-render-jobs
+    file: renderwolf-durable-render-jobs.md
+    summary: >-
+      The job lifecycle an agent should use - Idempotency-Key on submit, poll, collect inside
+      the 24-hour window, cancel safely, and the all-or-nothing batch rule.
+    operations: [submitJob, listJobs, getJob, cancelJob, getJobResult, getSignedResult, submitBatch, getBatch]
+  - name: renderwolf-signed-webhook-delivery
+    file: renderwolf-signed-webhook-delivery.md
+    summary: >-
+      Register a destination, verify the HMAC over raw bytes, dedupe on Renderwolf-Event-Id,
+      survive the retry ladder, and handle the once-only signing secret.
+    operations: [createDestination, listDestinations, getDestination, updateDestination, deleteDestination, testDestination, listDeliveries, getDelivery, redeliverDelivery]
+  - name: renderwolf-clean-authenticated-capture
+    file: renderwolf-clean-authenticated-capture.md
+    summary: >-
+      The RenderCommon option block - session headers and cookies applied before navigation, ad
+      and consent-banner blocking, selector waits - and which of it the MCP surface refuses.
+    operations: [createScreenshot, createPdf, createSitePreview, renderTemplate, submitJob]
+    mirrors_guides:
+      - https://ironfang.uk/renderwolf/guides/authenticated-pages
+      - https://ironfang.uk/renderwolf/guides/clean-screenshots
