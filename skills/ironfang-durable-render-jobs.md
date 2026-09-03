@@ -17,7 +17,7 @@ operations:
   - getBatch
 generated: '2026-09-02'
 method: generated
-source: openapi/renderwolf-openapi.yaml + https://ironfang.uk/renderwolf/docs
+source: openapi/ironfang-openapi.yaml + https://ironfang.uk/renderwolf/docs
 ---
 
 # Durable render jobs

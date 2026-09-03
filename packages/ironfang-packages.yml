@@ -49,7 +49,7 @@ packages:
       Silicon) and Windows with checksums.
     note: >-
       Distributed as GitHub release archives, not through a language registry - there is no
-      Homebrew tap, Go module path or npm wrapper published. See cli/renderwolf-cli.yml.
+      Homebrew tap, Go module path or npm wrapper published. See cli/ironfang-cli.yml.
   - language: typescript
     registry: npm
     name: '@ironfang/n8n-nodes-ironfang'

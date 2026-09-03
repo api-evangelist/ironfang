@@ -2,7 +2,7 @@ generated: '2026-09-02'
 method: searched
 source: https://ironfang.uk/renderwolf/docs#auth
 docs: https://ironfang.uk/renderwolf/docs#auth
-derived_from: openapi/renderwolf-openapi.yaml
+derived_from: openapi/ironfang-openapi.yaml
 summary:
   types:
     - http
@@ -37,7 +37,7 @@ schemes:
         code: insufficient_scope
         meaning: key does not carry the scope the operation needs
     sources:
-      - openapi/renderwolf-openapi.yaml
+      - openapi/ironfang-openapi.yaml
       - https://ironfang.uk/renderwolf/docs#auth
   - name: ironfangOAuth
     type: oauth2
@@ -75,8 +75,8 @@ schemes:
       A scope is re-checked against the person's organisation permission on every call - losing
       a permission ends access the same minute.
     sources:
-      - well-known/renderwolf-oauth-protected-resource.json
-      - well-known/renderwolf-oauth-authorization-server.json
+      - well-known/ironfang-oauth-protected-resource.json
+      - well-known/ironfang-oauth-authorization-server.json
       - https://ironfang.uk/docs/mcp
 signed_urls:
   description: >-

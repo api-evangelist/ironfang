@@ -16,7 +16,7 @@ operations:
   - renderSignedUrl
 generated: '2026-09-02'
 method: generated
-source: openapi/renderwolf-openapi.yaml + https://ironfang.uk/renderwolf/guides/open-graph-images
+source: openapi/ironfang-openapi.yaml + https://ironfang.uk/renderwolf/guides/open-graph-images
 ---
 
 # Open Graph images from a reusable template

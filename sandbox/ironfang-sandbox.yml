@@ -13,7 +13,7 @@ note: >-
 test_mode:
   exists: false
   key_prefixes:
-    live: 'if_live_ (per the API reference and the CLI README); the OpenAPI info.description says rw_live_ - see authentication/renderwolf-authentication.yml'
+    live: 'if_live_ (per the API reference and the CLI README); the OpenAPI info.description says rw_live_ - see authentication/ironfang-authentication.yml'
     test: none - there is no test key prefix
   note: >-
     Because there is no test mode, every call an integration makes during development is a real

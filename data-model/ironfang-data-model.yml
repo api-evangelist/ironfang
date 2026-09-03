@@ -1,6 +1,6 @@
 generated: '2026-09-02'
 method: derived
-source: openapi/renderwolf-openapi.yaml
+source: openapi/ironfang-openapi.yaml
 enriched_from: https://ironfang.uk/renderwolf/docs
 note: >-
   Renderwolf's core is a render request, not a stored record. Only four entities persist -
@@ -73,7 +73,7 @@ entities:
     deprecated_fields:
       - field: renders
         replacement: credits
-        see: lifecycle/renderwolf-lifecycle.yml
+        see: lifecycle/ironfang-lifecycle.yml
   - name: RequestRecord
     persistent: true
     operations: [listRequests]
@@ -85,7 +85,7 @@ entities:
     fields: [key, name, status, since, gap_heading]
     status_enum: [live, planned, not_offered]
     operations: [getCapabilities]
-    note: Public and unauthenticated. See lifecycle/renderwolf-capabilities.json.
+    note: Public and unauthenticated. See lifecycle/ironfang-capabilities.json.
 request_shapes:
   note: >-
     These are input-only value objects, not entities. They are the spec's real reuse story -

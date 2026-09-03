@@ -1,7 +1,7 @@
 generated: '2026-09-02'
 method: searched
 source: https://ironfang.uk/renderwolf/docs#errors
-derived_from: openapi/renderwolf-openapi.yaml
+derived_from: openapi/ironfang-openapi.yaml
 docs: https://ironfang.uk/renderwolf/docs#errors
 format: vendor-json
 rfc9457: false

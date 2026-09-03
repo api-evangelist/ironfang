@@ -61,91 +61,91 @@ tools:
     scope: 'renderwolf:usage:read'
     credits: 0
     description: Credits used this period, the plan limit and the reset date.
-    source_operation: openapi/renderwolf-openapi.yaml#getUsage
+    source_operation: openapi/ironfang-openapi.yaml#getUsage
   - name: renderwolf.template.list
     scope: 'renderwolf:templates:read'
     credits: 0
     description: Template ids, names, sizes and variable names.
-    source_operation: openapi/renderwolf-openapi.yaml#listTemplates
+    source_operation: openapi/ironfang-openapi.yaml#listTemplates
   - name: renderwolf.template.get
     scope: 'renderwolf:templates:read'
     credits: 0
     description: One template's metadata.
-    source_operation: openapi/renderwolf-openapi.yaml#getTemplate
+    source_operation: openapi/ironfang-openapi.yaml#getTemplate
   - name: renderwolf.screenshot.create
     scope: 'renderwolf:render'
     credits: 1
     description: Capture a page or HTML as PNG, JPEG or WebP. Durable job.
-    source_operation: openapi/renderwolf-openapi.yaml#createScreenshot
+    source_operation: openapi/ironfang-openapi.yaml#createScreenshot
   - name: renderwolf.pdf.create
     scope: 'renderwolf:render'
     credits: 2
     description: Render a page or HTML to PDF. Durable job.
-    source_operation: openapi/renderwolf-openapi.yaml#createPdf
+    source_operation: openapi/ironfang-openapi.yaml#createPdf
   - name: renderwolf.qr.create
     scope: 'renderwolf:render'
     credits: 0
     description: A QR code for text or a URL, returned inline as a data URL.
-    source_operation: openapi/renderwolf-openapi.yaml#createQr
+    source_operation: openapi/ironfang-openapi.yaml#createQr
   - name: renderwolf.template.render
     scope: 'renderwolf:render + renderwolf:templates:read'
     credits: 1
     description: Render one of your templates with variables into an image. Durable job.
-    source_operation: openapi/renderwolf-openapi.yaml#renderTemplate
+    source_operation: openapi/ironfang-openapi.yaml#renderTemplate
   - name: renderwolf.clip.create
     scope: 'renderwolf:render'
     credits: per second
     description: A short captioned clip (1-60s). Always a durable job; a task where supported.
-    source_operation: openapi/renderwolf-openapi.yaml#createClip
+    source_operation: openapi/ironfang-openapi.yaml#createClip
   - name: renderwolf.signed_url.create
     scope: 'renderwolf:sign'
     credits: 0 until fetched
     description: >-
       A signed URL that renders when fetched, lifetime 1 second to 24 hours. Permanent links
       are refused through MCP even though the REST API allows them.
-    source_operation: openapi/renderwolf-openapi.yaml#createSignedUrl
+    source_operation: openapi/ironfang-openapi.yaml#createSignedUrl
   - name: renderwolf.job.get
     scope: the creating scope
     credits: 0
     description: A job's state, cost, result metadata and a fresh download link.
-    source_operation: openapi/renderwolf-openapi.yaml#getJob
+    source_operation: openapi/ironfang-openapi.yaml#getJob
   - name: renderwolf.job.cancel
     scope: the creating scope
     credits: 0
     description: Cooperative cancel. Queued work refunded in full; running work charged only if it produced usable output.
-    source_operation: openapi/renderwolf-openapi.yaml#cancelJob
+    source_operation: openapi/ironfang-openapi.yaml#cancelJob
   - name: renderwolf.batch.create
     scope: 'renderwolf:render'
     credits: 1 per screenshot, 2 per PDF
     description: Up to 100 screenshot or PDF jobs in one call, with a shared default and optional delivery.
-    source_operation: openapi/renderwolf-openapi.yaml#submitBatch
+    source_operation: openapi/ironfang-openapi.yaml#submitBatch
   - name: renderwolf.batch.get
     scope: 'renderwolf:render'
     credits: 0
     description: A batch's progress - counts by status and every job with state, cost and result link.
-    source_operation: openapi/renderwolf-openapi.yaml#getBatch
+    source_operation: openapi/ironfang-openapi.yaml#getBatch
   - name: renderwolf.destination.list
     scope: 'renderwolf:destinations'
     credits: 0
     description: The webhook endpoints and storage buckets on the account.
-    source_operation: openapi/renderwolf-openapi.yaml#listDestinations
+    source_operation: openapi/ironfang-openapi.yaml#listDestinations
   - name: renderwolf.destination.create
     scope: 'renderwolf:destinations'
     credits: 0
     description: >-
       Register a public https webhook endpoint; signing secret returned once. Storage
       destinations carry credentials and are registered in the portal, not through an assistant.
-    source_operation: openapi/renderwolf-openapi.yaml#createDestination
+    source_operation: openapi/ironfang-openapi.yaml#createDestination
   - name: renderwolf.destination.test
     scope: 'renderwolf:destinations'
     credits: 0
     description: Send a test delivery now and report what happened.
-    source_operation: openapi/renderwolf-openapi.yaml#testDestination
+    source_operation: openapi/ironfang-openapi.yaml#testDestination
   - name: renderwolf.destination.delete
     scope: 'renderwolf:destinations'
     credits: 0
     description: Stop deliveries to a destination and forget it.
-    source_operation: openapi/renderwolf-openapi.yaml#deleteDestination
+    source_operation: openapi/ironfang-openapi.yaml#deleteDestination
 reserved_tools:
   note: >-
     Ironfang documents nine auditwolf.* tools on the same endpoint, marked "Not yet available"

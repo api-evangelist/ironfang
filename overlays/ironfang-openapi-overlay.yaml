@@ -8,8 +8,8 @@ x-provenance:
   source: >-
     Derived from https://ironfang.uk/renderwolf/docs, https://ironfang.uk/docs/mcp and the
     artifacts in this repo. Every value below is Ironfang's own published statement; nothing is
-    invented. The harvested spec at openapi/renderwolf-openapi.yaml is never mutated.
-extends: openapi/renderwolf-openapi.yaml
+    invented. The harvested spec at openapi/ironfang-openapi.yaml is never mutated.
+extends: openapi/ironfang-openapi.yaml
 actions:
   - target: $.info
     description: >-
@@ -18,13 +18,13 @@ actions:
     update:
       x-apis-io-enrichment:
         artifacts:
-          conventions: conventions/renderwolf-conventions.yml
-          errors: errors/renderwolf-problem-types.yml
-          rate_limits: rate-limits/renderwolf-rate-limits.yml
-          plans: plans/renderwolf-plans-pricing.yml
-          webhooks: asyncapi/renderwolf-webhooks.yml
-          mcp: mcp/renderwolf-mcp.yml
-          data_model: data-model/renderwolf-data-model.yml
+          conventions: conventions/ironfang-conventions.yml
+          errors: errors/ironfang-problem-types.yml
+          rate_limits: rate-limits/ironfang-rate-limits.yml
+          plans: plans/ironfang-plans-pricing.yml
+          webhooks: asyncapi/ironfang-webhooks.yml
+          mcp: mcp/ironfang-mcp.yml
+          data_model: data-model/ironfang-data-model.yml
       x-mcp-server:
         url: https://mcp.ironfang.uk/mcp
         transport: streamable-http
@@ -136,7 +136,7 @@ actions:
     update:
       x-error-format: vendor-json
       x-rfc9457: false
-      x-catalog: errors/renderwolf-problem-types.yml
+      x-catalog: errors/ironfang-problem-types.yml
   - target: $
     description: >-
       Record the event surface the contract omits. OpenAPI 3.1 supports a top-level webhooks
@@ -151,5 +151,5 @@ actions:
         signature: 'Renderwolf-Signature: v1=hmac_sha256(secret, timestamp + "." + raw_body)'
         timestamp_header: Renderwolf-Timestamp
         dedupe_header: Renderwolf-Event-Id
-        catalog: asyncapi/renderwolf-webhooks.yml
+        catalog: asyncapi/ironfang-webhooks.yml
         docs: https://ironfang.uk/renderwolf/docs#delivery

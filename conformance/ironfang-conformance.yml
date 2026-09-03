@@ -1,9 +1,9 @@
 generated: '2026-09-02'
 method: searched
 source: >-
-  well-known/renderwolf-oauth-authorization-server.json,
-  well-known/renderwolf-oauth-protected-resource.json,
-  openapi/renderwolf-openapi.yaml, https://ironfang.uk/docs/mcp
+  well-known/ironfang-oauth-authorization-server.json,
+  well-known/ironfang-oauth-protected-resource.json,
+  openapi/ironfang-openapi.yaml, https://ironfang.uk/docs/mcp
 note: >-
   Renderwolf's conformance story is concentrated in one place: the agent-authorization stack.
   The identity host implements the modern OAuth discovery and delegation RFCs properly, and the
@@ -14,7 +14,7 @@ entries:
     name: OpenAPI 3.1.0
     conforms: true
     evidence:
-      - 'openapi/renderwolf-openapi.yaml - openapi: 3.1.0, 25 paths, 33 operations, 17 schemas'
+      - 'openapi/ironfang-openapi.yaml - openapi: 3.1.0, 25 paths, 33 operations, 17 schemas'
       - https://api.ironfang.uk/openapi.yaml (HTTP 200, application/yaml)
     note: >-
       Every operation carries a unique operationId, a summary, tags and enumerated 2xx/4xx
@@ -25,7 +25,7 @@ entries:
     conforms: true
     scope: MCP surface only
     evidence:
-      - 'well-known/renderwolf-oauth-authorization-server.json - code_challenge_methods_supported: [S256], response_types_supported: [code]'
+      - 'well-known/ironfang-oauth-authorization-server.json - code_challenge_methods_supported: [S256], response_types_supported: [code]'
       - https://ironfang.uk/docs/mcp
   - id: rfc8414
     name: OAuth 2.0 Authorization Server Metadata
@@ -94,8 +94,8 @@ entries:
     name: 'RFC 9457 Problem Details (application/problem+json)'
     conforms: false
     evidence:
-      - 'No operation in openapi/renderwolf-openapi.yaml declares application/problem+json'
-      - 'Error envelope is {"error": {"code", "message"}} - see errors/renderwolf-problem-types.yml'
+      - 'No operation in openapi/ironfang-openapi.yaml declares application/problem+json'
+      - 'Error envelope is {"error": {"code", "message"}} - see errors/ironfang-problem-types.yml'
   - id: rfc9116
     name: 'RFC 9116 security.txt'
     conforms: false
@@ -115,7 +115,7 @@ entries:
     evidence:
       - >-
         The docs publish two rate limits and their 429 error codes but no response header. See
-        rate-limits/renderwolf-rate-limits.yml.
+        rate-limits/ironfang-rate-limits.yml.
     note: >-
       Ironfang does honour a bounded Retry-After on the OUTBOUND webhook delivery path - it
       reads the header, it does not emit one.
@@ -153,6 +153,6 @@ compliance_certifications:
   published: false
   note: >-
     No SOC 2, ISO 27001, PCI, HIPAA or FedRAMP claim is published, and no trust centre exists.
-    See security/renderwolf-trust-center.yml. The only regulatory identifiers Ironfang publishes
+    See security/ironfang-trust-center.yml. The only regulatory identifiers Ironfang publishes
     are UK corporate ones: Companies House registration 12764014 (England & Wales) and ICO data
     protection registration ZB444797, both in the site footer.

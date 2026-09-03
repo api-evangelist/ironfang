@@ -34,7 +34,7 @@ limits:
     error_code: quota_exhausted
     note: >-
       A hard cap, not a rate limit - it pauses work rather than creating an overage charge.
-      Recorded here because it shares the 429 status. See plans/renderwolf-plans-pricing.yml.
+      Recorded here because it shares the 429 status. See plans/ironfang-plans-pricing.yml.
   - scope: per-mcp-connection
     window: billing period
     limit: 'max(25, 10% of the plan monthly credits)'

@@ -1,13 +1,13 @@
 generated: '2026-09-02'
 method: generated
 source: >-
-  openapi/renderwolf-openapi.yaml, conventions/renderwolf-conventions.yml,
-  errors/renderwolf-problem-types.yml, asyncapi/renderwolf-webhooks.yml and Ironfang's own
+  openapi/ironfang-openapi.yaml, conventions/ironfang-conventions.yml,
+  errors/ironfang-problem-types.yml, asyncapi/ironfang-webhooks.yml and Ironfang's own
   guides at https://ironfang.uk/renderwolf/guides
 note: >-
   Ironfang publishes no skills/ directory and no AGENTS.md. These four are generated from the
   live contract and the published docs; every operationId referenced was grepped out of
-  openapi/renderwolf-openapi.yaml, and every rule, limit and window is Ironfang's own published
+  openapi/ironfang-openapi.yaml, and every rule, limit and window is Ironfang's own published
   statement.
 skills:
   - name: renderwolf-og-image-pipeline

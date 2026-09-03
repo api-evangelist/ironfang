@@ -4,13 +4,13 @@ source: https://ironfang.uk/renderwolf/docs
 docs:
   - https://ironfang.uk/renderwolf/docs
   - https://ironfang.uk/docs/mcp
-derived_from: openapi/renderwolf-openapi.yaml
+derived_from: openapi/ironfang-openapi.yaml
 cross_links:
-  errors: errors/renderwolf-problem-types.yml
-  lifecycle: lifecycle/renderwolf-lifecycle.yml
-  authentication: authentication/renderwolf-authentication.yml
-  rate_limits: rate-limits/renderwolf-rate-limits.yml
-  scopes: scopes/renderwolf-scopes.yml
+  errors: errors/ironfang-problem-types.yml
+  lifecycle: lifecycle/ironfang-lifecycle.yml
+  authentication: authentication/ironfang-authentication.yml
+  rate_limits: rate-limits/ironfang-rate-limits.yml
+  scopes: scopes/ironfang-scopes.yml
 base_url:
   production: https://api.ironfang.uk/renderwolf
   legacy: https://api.ironfang.uk/v1/
@@ -21,7 +21,7 @@ base_url:
 auth:
   style: bearer API key (REST), OAuth 2.1 (MCP)
   header: 'Authorization: Bearer <key>'
-  see: authentication/renderwolf-authentication.yml
+  see: authentication/ironfang-authentication.yml
 idempotency:
   supported: true
   header: Idempotency-Key
@@ -80,15 +80,15 @@ versioning:
   style: URI path
   current: v1
   spec_version: '1.0.0'
-  see: lifecycle/renderwolf-lifecycle.yml
+  see: lifecycle/ironfang-lifecycle.yml
 error_envelope:
   shape: '{"error": {"code": "...", "message": "..."}}'
   rfc9457: false
-  see: errors/renderwolf-problem-types.yml
+  see: errors/ironfang-problem-types.yml
 rate_limit_signaling:
   headers_published: false
   signal: 429 plus a stable error code (rate_limited, target_rate_limited, quota_exhausted)
-  see: rate-limits/renderwolf-rate-limits.yml
+  see: rate-limits/ironfang-rate-limits.yml
 caching:
   default: >-
     Identical render requests are served from cache, cost zero credits, and carry
@@ -117,7 +117,7 @@ delivery:
   isolation: >-
     Delivery never changes a render. A job that rendered is succeeded whatever the endpoint did;
     an unreachable webhook does not spend a render attempt or fail the job.
-  see: asyncapi/renderwolf-webhooks.yml
+  see: asyncapi/ironfang-webhooks.yml
 dry_run_mode:
   supported: false
   substitute: >-

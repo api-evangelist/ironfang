@@ -20,7 +20,7 @@ operations:
   - submitBatch
 generated: '2026-09-02'
 method: generated
-source: openapi/renderwolf-openapi.yaml + https://ironfang.uk/renderwolf/docs
+source: openapi/ironfang-openapi.yaml + https://ironfang.uk/renderwolf/docs
 ---
 
 # Delivery destinations and signed webhooks

@@ -44,7 +44,7 @@ deprecation:
         no generated client or linter will surface it.
   deprecated_operations_in_spec: 0
   spec_scan: >-
-    No `deprecated: true` appears anywhere in openapi/renderwolf-openapi.yaml.
+    No `deprecated: true` appears anywhere in openapi/ironfang-openapi.yaml.
 sla:
   published: false
   note: >-

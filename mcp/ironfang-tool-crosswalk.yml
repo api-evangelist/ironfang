@@ -1,6 +1,6 @@
 generated: '2026-09-02'
 method: derived
-source: mcp/renderwolf-mcp.yml + openapi/renderwolf-openapi.yaml
+source: mcp/ironfang-mcp.yml + openapi/ironfang-openapi.yaml
 note: >-
   Ironfang's MCP tool table and the REST OpenAPI are two projections of one core. Because
   tools/list is auth-gated (401), tools were bound to operations by published name, scope and
@@ -8,7 +8,7 @@ note: >-
   A bound tool's real input contract is the linked operation's requestBody in the OpenAPI.
 surfaces:
   openapi:
-    file: openapi/renderwolf-openapi.yaml
+    file: openapi/ironfang-openapi.yaml
     url: https://api.ironfang.uk/openapi.yaml
     gated: false
     operations: 33

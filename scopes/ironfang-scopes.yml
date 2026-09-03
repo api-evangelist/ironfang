@@ -11,8 +11,8 @@ note: >-
   scopes chosen at key creation (REST), and OAuth scopes granted at MCP consent.
 authorization_server: https://id.ironfang.uk
 advertised_at:
-  - well-known/renderwolf-oauth-authorization-server.json
-  - well-known/renderwolf-oauth-protected-resource.json
+  - well-known/ironfang-oauth-authorization-server.json
+  - well-known/ironfang-oauth-protected-resource.json
 advertised_scopes_note: >-
   The two discovery documents advertise only three scopes (ironfang:mcp, renderwolf:render,
   renderwolf:usage:read). The MCP reference documents six more that the metadata does not list.

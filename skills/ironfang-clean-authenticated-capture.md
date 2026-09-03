@@ -15,7 +15,7 @@ operations:
 generated: '2026-09-02'
 method: generated
 source: >-
-  openapi/renderwolf-openapi.yaml (components.schemas.RenderCommon),
+  openapi/ironfang-openapi.yaml (components.schemas.RenderCommon),
   https://ironfang.uk/renderwolf/guides/authenticated-pages,
   https://ironfang.uk/renderwolf/guides/clean-screenshots
 ---

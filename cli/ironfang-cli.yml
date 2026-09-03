@@ -55,7 +55,7 @@ commands:
     rest: listRequests
     note: >-
       These filter flags are the only evidence of query parameters on listRequests - the
-      OpenAPI declares none. See conventions/renderwolf-conventions.yml.
+      OpenAPI declares none. See conventions/ironfang-conventions.yml.
   - command: usage
     does: Credits used this period.
     rest: getUsage
