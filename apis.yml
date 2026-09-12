@@ -86,6 +86,8 @@ generated:
   confidence: 98
   at: '2026-09-02T12:33:19.116Z'
 common:
+- type: Website
+  url: https://www.ironfang.uk/
 - type: DomainSecurity
   url: security/ironfang-domain-security.yml
 - type: Authentication
