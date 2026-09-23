@@ -6,7 +6,7 @@ x-provenance:
   generated: '2026-09-02'
   method: generated
   source: >-
-    Derived from https://ironfang.uk/renderwolf/docs, https://ironfang.uk/docs/mcp and the
+    Derived from https://ironfang.uk/render/docs, https://ironfang.uk/docs/mcp and the
     artifacts in this repo. Every value below is Ironfang's own published statement; nothing is
     invented. The harvested spec at openapi/ironfang-openapi.yaml is never mutated.
 extends: openapi/ironfang-openapi.yaml
@@ -60,7 +60,7 @@ actions:
       x-key-prefix-discrepancy:
         spec_says: 'rw_live_'
         docs_say: 'if_live_'
-        docs_url: https://ironfang.uk/renderwolf/docs#auth
+        docs_url: https://ironfang.uk/render/docs#auth
         cli_readme: https://github.com/ironfang-ltd/renderwolf-cli
       x-scopes:
         - 'renderwolf:render'
@@ -81,7 +81,7 @@ actions:
         semantics: >-
           Same key + same request returns the existing job. Same key + a different request is
           409 idempotency_conflict.
-        docs: https://ironfang.uk/renderwolf/docs#jobs
+        docs: https://ironfang.uk/render/docs#jobs
       x-reversibility:
         reversal_operation: cancelJob
         window: >-
@@ -94,7 +94,7 @@ actions:
       x-idempotency:
         header: Idempotency-Key
         required_by_docs: true
-        docs: https://ironfang.uk/renderwolf/docs#batches
+        docs: https://ironfang.uk/render/docs#batches
       x-atomicity: >-
         A batch is accepted or refused whole. Every item is validated before any is stored and
         credits for all are reserved in one transaction, so a batch exceeding the monthly
@@ -121,7 +121,7 @@ actions:
         - field: renders
           replacement: credits
           removal: 'after connector migrations are complete (no date published)'
-          docs: https://ironfang.uk/renderwolf/docs#usage
+          docs: https://ironfang.uk/render/docs#usage
   - target: $.paths['/v1/capabilities'].get
     description: Note that this operation answers without authentication.
     update:
@@ -152,4 +152,4 @@ actions:
         timestamp_header: Renderwolf-Timestamp
         dedupe_header: Renderwolf-Event-Id
         catalog: asyncapi/ironfang-webhooks.yml
-        docs: https://ironfang.uk/renderwolf/docs#delivery
+        docs: https://ironfang.uk/render/docs#delivery

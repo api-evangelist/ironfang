@@ -1,7 +1,7 @@
 generated: '2026-09-02'
 method: searched
-source: https://ironfang.uk/renderwolf/docs#delivery
-docs: https://ironfang.uk/renderwolf/docs#delivery
+source: https://ironfang.uk/render/docs#delivery
+docs: https://ironfang.uk/render/docs#delivery
 asyncapi_published: false
 asyncapi_note: >-
   Ironfang publishes no AsyncAPI document. /asyncapi.yaml and /asyncapi.json are not served on

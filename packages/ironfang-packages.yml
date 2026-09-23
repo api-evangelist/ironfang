@@ -2,7 +2,7 @@ generated: '2026-09-02'
 method: searched
 source: >-
   registry.npmjs.org, pypi.org/pypi/*/json, api.github.com/orgs/ironfang-ltd, and the
-  "Client libraries" section of https://ironfang.uk/renderwolf/docs
+  "Client libraries" section of https://ironfang.uk/render/docs
 note: >-
   Ironfang's own /v1/capabilities endpoint still lists "Official language SDKs and CLI" with
   status "planned" as of its 2026-08-28 update, but the TypeScript client, the Python client

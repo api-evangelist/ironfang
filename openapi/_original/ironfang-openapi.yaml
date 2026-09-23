@@ -88,7 +88,7 @@ info:
 # clients written before the partition and is not going away, but new
 # integrations should use the first server below.
 servers:
-  - url: https://api.ironfang.uk/renderwolf
+  - url: https://api.ironfang.uk/render
     description: Production
   - url: https://api.ironfang.uk
     description: Production, unpartitioned - retained for existing clients
@@ -322,7 +322,7 @@ paths:
         only. It has no unprefixed `/v1/site-preview` compatibility route.
       operationId: createSitePreview
       servers:
-        - url: https://api.ironfang.uk/renderwolf
+        - url: https://api.ironfang.uk/render
           description: Production
       requestBody:
         required: true

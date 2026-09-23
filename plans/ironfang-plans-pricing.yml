@@ -1,9 +1,9 @@
 generated: '2026-09-02'
 method: searched
-source: https://ironfang.uk/renderwolf
+source: https://ironfang.uk/render
 docs:
-  - https://ironfang.uk/renderwolf
-  - https://ironfang.uk/renderwolf/docs#credits
+  - https://ironfang.uk/render
+  - https://ironfang.uk/render/docs#credits
 currency: GBP
 billing_period: month
 unit: credit

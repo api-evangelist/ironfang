@@ -1,8 +1,8 @@
 generated: '2026-09-02'
 method: searched
-source: https://ironfang.uk/renderwolf/docs
+source: https://ironfang.uk/render/docs
 docs:
-  - https://ironfang.uk/renderwolf/docs
+  - https://ironfang.uk/render/docs
   - https://ironfang.uk/docs/mcp
 derived_from: openapi/ironfang-openapi.yaml
 cross_links:
@@ -12,7 +12,7 @@ cross_links:
   rate_limits: rate-limits/ironfang-rate-limits.yml
   scopes: scopes/ironfang-scopes.yml
 base_url:
-  production: https://api.ironfang.uk/renderwolf
+  production: https://api.ironfang.uk/render
   legacy: https://api.ironfang.uk/v1/
   note: >-
     api.ironfang.uk hosts every Ironfang product, so the product name is in the path. The
@@ -141,7 +141,7 @@ reversibility:
         Until the job leaves the queue for a queued job (stops at once, refunded in full);
         a running job stops at its next safe point and is charged only if it produced a usable
         output.
-      docs: https://ironfang.uk/renderwolf/docs#jobs
+      docs: https://ironfang.uk/render/docs#jobs
       credit_effect: >-
         The maximum cost is reserved on acceptance and settled on completion; the difference is
         released. Failed work is refunded automatically.
@@ -151,7 +151,7 @@ reversibility:
       reversal: cancelJob per item
       reversal_operation_id: cancelJob
       window: Same per-item window as a single job; there is no batch-level cancel operation.
-      docs: https://ironfang.uk/renderwolf/docs#batches
+      docs: https://ironfang.uk/render/docs#batches
       grade: documented
       note: >-
         Partial reversal only - each item must be cancelled individually. Recorded as a real
@@ -172,7 +172,7 @@ reversibility:
       window: >-
         No stated window - deleteTemplate is available for the life of the template. Deletion is
         permanent; Ironfang publishes no restore or trash window.
-      docs: https://ironfang.uk/renderwolf/docs#templates
+      docs: https://ironfang.uk/render/docs#templates
       grade: documented
     - action: mint a signed render URL
       operations: [createSignedUrl]
@@ -180,7 +180,7 @@ reversibility:
       window: >-
         ttl_hours on REST, where 0 means never expires - an unbounded, non-revocable public URL.
         Through MCP the same tool is capped at 24 hours and permanent links are refused.
-      docs: https://ironfang.uk/renderwolf/docs#signed-urls
+      docs: https://ironfang.uk/render/docs#signed-urls
       grade: documented
       note: >-
         THE ONE-WAY DOOR. Ironfang publishes no revoke operation for a signed URL. A REST-minted
@@ -191,7 +191,7 @@ reversibility:
       reversal: deleteDestination
       reversal_operation_id: deleteDestination
       window: Available at any time. updateDestination can also disable it without deleting.
-      docs: https://ironfang.uk/renderwolf/docs#delivery
+      docs: https://ironfang.uk/render/docs#delivery
       grade: documented
       note: >-
         The signing secret is shown once and is not recoverable, so a delete is not undoable -

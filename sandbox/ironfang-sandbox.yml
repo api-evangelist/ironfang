@@ -3,7 +3,7 @@ method: searched
 source: https://ironfang.uk/tools
 docs:
   - https://ironfang.uk/tools
-  - https://ironfang.uk/renderwolf
+  - https://ironfang.uk/render
 note: >-
   Renderwolf publishes NO test mode and NO sandbox environment - there is one set of endpoints,
   one fleet, one key prefix and one billing path. What it publishes instead are two things that

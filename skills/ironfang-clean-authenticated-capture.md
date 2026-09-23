@@ -5,7 +5,7 @@ description: >-
   Renderwolf's RenderCommon options — headers, cookies, blocking, selector waits — and know
   which of them the MCP surface refuses.
 api: Renderwolf API
-base_url: https://api.ironfang.uk/renderwolf
+base_url: https://api.ironfang.uk/render
 operations:
   - createScreenshot
   - createPdf
@@ -16,8 +16,8 @@ generated: '2026-09-02'
 method: generated
 source: >-
   openapi/ironfang-openapi.yaml (components.schemas.RenderCommon),
-  https://ironfang.uk/renderwolf/guides/authenticated-pages,
-  https://ironfang.uk/renderwolf/guides/clean-screenshots
+  https://ironfang.uk/render/guides/authenticated-pages,
+  https://ironfang.uk/render/guides/clean-screenshots
 ---
 
 # Clean and authenticated captures

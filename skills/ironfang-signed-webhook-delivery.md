@@ -5,7 +5,7 @@ description: >-
   attach it to jobs, verify the HMAC signature correctly, and handle the retry ladder — so
   finished renders arrive instead of being polled for.
 api: Renderwolf API
-base_url: https://api.ironfang.uk/renderwolf
+base_url: https://api.ironfang.uk/render
 operations:
   - createDestination
   - listDestinations
@@ -20,7 +20,7 @@ operations:
   - submitBatch
 generated: '2026-09-02'
 method: generated
-source: openapi/ironfang-openapi.yaml + https://ironfang.uk/renderwolf/docs
+source: openapi/ironfang-openapi.yaml + https://ironfang.uk/render/docs
 ---
 
 # Delivery destinations and signed webhooks

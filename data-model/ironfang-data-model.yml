@@ -1,7 +1,7 @@
 generated: '2026-09-02'
 method: derived
 source: openapi/ironfang-openapi.yaml
-enriched_from: https://ironfang.uk/renderwolf/docs
+enriched_from: https://ironfang.uk/render/docs
 note: >-
   Renderwolf's core is a render request, not a stored record. Only four entities persist -
   Template, Job, Batch and Destination (plus the Delivery attempts a Destination produces).
@@ -31,7 +31,7 @@ entities:
     operations: [submitJob, listJobs, getJob, cancelJob, getJobResult, getSignedResult]
     field_source: >-
       The 202/200 job envelope is inline in the spec; the field list is from
-      https://ironfang.uk/renderwolf/docs#jobs and https://ironfang.uk/docs/mcp.
+      https://ironfang.uk/render/docs#jobs and https://ironfang.uk/docs/mcp.
   - name: Batch
     persistent: true
     id: uuid
@@ -55,7 +55,7 @@ entities:
     id: uuid
     fields_from_docs: [id, destination, job, status, attempts, error, body]
     operations: [listDeliveries, getDelivery, redeliverDelivery]
-    field_source: https://ironfang.uk/renderwolf/docs#delivery
+    field_source: https://ironfang.uk/render/docs#delivery
   - name: SignedUrl
     schema: SignedUrl
     persistent: false

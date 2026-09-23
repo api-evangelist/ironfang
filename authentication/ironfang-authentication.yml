@@ -1,7 +1,7 @@
 generated: '2026-09-02'
 method: searched
-source: https://ironfang.uk/renderwolf/docs#auth
-docs: https://ironfang.uk/renderwolf/docs#auth
+source: https://ironfang.uk/render/docs#auth
+docs: https://ironfang.uk/render/docs#auth
 derived_from: openapi/ironfang-openapi.yaml
 summary:
   types:
@@ -38,7 +38,7 @@ schemes:
         meaning: key does not carry the scope the operation needs
     sources:
       - openapi/ironfang-openapi.yaml
-      - https://ironfang.uk/renderwolf/docs#auth
+      - https://ironfang.uk/render/docs#auth
   - name: ironfangOAuth
     type: oauth2
     surface: MCP
@@ -92,12 +92,12 @@ x-findings:
   - id: key-prefix-disagreement
     detail: >-
       The published OpenAPI's info.description documents the key prefix as `rw_live_...`, while
-      the API reference at ironfang.uk/renderwolf/docs and the renderwolf-cli README both
+      the API reference at ironfang.uk/render/docs and the renderwolf-cli README both
       document `if_live_...`. Recorded, not resolved - a consumer reading only the contract gets
       the wrong prefix.
     evidence:
       - https://api.ironfang.uk/openapi.yaml
-      - https://ironfang.uk/renderwolf/docs
+      - https://ironfang.uk/render/docs
       - https://raw.githubusercontent.com/ironfang-ltd/renderwolf-cli/main/README.md
   - id: oauth-absent-from-contract
     detail: >-

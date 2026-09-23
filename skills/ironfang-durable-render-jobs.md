@@ -5,7 +5,7 @@ description: >-
   signed webhook, collect the result inside its 24-hour window, and cancel safely — the correct
   pattern for agents, batches and anything slow.
 api: Renderwolf API
-base_url: https://api.ironfang.uk/renderwolf
+base_url: https://api.ironfang.uk/render
 operations:
   - submitJob
   - listJobs
@@ -17,7 +17,7 @@ operations:
   - getBatch
 generated: '2026-09-02'
 method: generated
-source: openapi/ironfang-openapi.yaml + https://ironfang.uk/renderwolf/docs
+source: openapi/ironfang-openapi.yaml + https://ironfang.uk/render/docs
 ---
 
 # Durable render jobs

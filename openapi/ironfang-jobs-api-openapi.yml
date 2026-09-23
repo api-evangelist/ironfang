@@ -13,7 +13,7 @@ info:
     name: Proprietary - use governed by the Ironfang terms of service
     url: https://ironfang.uk/legal/terms
 servers:
-- url: https://api.ironfang.uk/renderwolf
+- url: https://api.ironfang.uk/render
   description: Production
 - url: https://api.ironfang.uk
   description: Production, unpartitioned - retained for existing clients

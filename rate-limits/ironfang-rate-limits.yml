@@ -1,7 +1,7 @@
 generated: '2026-09-02'
 method: searched
-source: https://ironfang.uk/renderwolf/docs#options
-docs: https://ironfang.uk/renderwolf/docs
+source: https://ironfang.uk/render/docs#options
+docs: https://ironfang.uk/render/docs
 limit_count: 2
 note: >-
   Two rate limits operate independently of the monthly credit allowance. Each render can

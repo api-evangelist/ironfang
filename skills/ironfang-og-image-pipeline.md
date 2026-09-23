@@ -5,7 +5,7 @@ description: >-
   template and minting a signed URL per page, so crawlers fetch the image directly and editing
   the template updates every card.
 api: Renderwolf API
-base_url: https://api.ironfang.uk/renderwolf
+base_url: https://api.ironfang.uk/render
 operations:
   - createTemplate
   - listTemplates
@@ -16,7 +16,7 @@ operations:
   - renderSignedUrl
 generated: '2026-09-02'
 method: generated
-source: openapi/ironfang-openapi.yaml + https://ironfang.uk/renderwolf/guides/open-graph-images
+source: openapi/ironfang-openapi.yaml + https://ironfang.uk/render/guides/open-graph-images
 ---
 
 # Open Graph images from a reusable template

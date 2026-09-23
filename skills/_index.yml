@@ -3,7 +3,7 @@ method: generated
 source: >-
   openapi/ironfang-openapi.yaml, conventions/ironfang-conventions.yml,
   errors/ironfang-problem-types.yml, asyncapi/ironfang-webhooks.yml and Ironfang's own
-  guides at https://ironfang.uk/renderwolf/guides
+  guides at https://ironfang.uk/render/guides
 note: >-
   Ironfang publishes no skills/ directory and no AGENTS.md. These four are generated from the
   live contract and the published docs; every operationId referenced was grepped out of
@@ -16,7 +16,7 @@ skills:
       Store one HTML template, mint a signed URL per page, let crawlers fetch the card directly.
       Covers the ttl_hours:0 one-way door.
     operations: [createTemplate, listTemplates, getTemplate, updateTemplate, renderTemplate, createSignedUrl, renderSignedUrl]
-    mirrors_guide: https://ironfang.uk/renderwolf/guides/open-graph-images
+    mirrors_guide: https://ironfang.uk/render/guides/open-graph-images
   - name: renderwolf-durable-render-jobs
     file: renderwolf-durable-render-jobs.md
     summary: >-
@@ -36,5 +36,5 @@ skills:
       and consent-banner blocking, selector waits - and which of it the MCP surface refuses.
     operations: [createScreenshot, createPdf, createSitePreview, renderTemplate, submitJob]
     mirrors_guides:
-      - https://ironfang.uk/renderwolf/guides/authenticated-pages
-      - https://ironfang.uk/renderwolf/guides/clean-screenshots
+      - https://ironfang.uk/render/guides/authenticated-pages
+      - https://ironfang.uk/render/guides/clean-screenshots

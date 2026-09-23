@@ -1,63 +1,144 @@
 # Ironfang
 
-> Ironfang is a UK software company that builds developer APIs and operates the
-> infrastructure behind them. Renderwolf, its first product, turns a URL or a
-> block of HTML into screenshots, PDFs, templated images and short captioned
-> video clips over plain HTTPS and JSON.
+> Ironfang Ltd builds developer infrastructure products and operates the UK infrastructure behind them: rendering, website evidence, e-invoice validation, disposable integration test environments and session replay. One account, one API key format and one portal cover every product.
 
-Renderwolf is self-service: create an account, mint an API key, POST a URL and
-get the bytes back. There is no browser to run and no queue to poll - a warm
-Chromium fleet answers in the request. Plans are hard-capped rather than
-metered into overage, so a runaway loop stops rather than bills. Identical
-requests are served from cache and cost nothing.
+The products are Ironfang Render, Ironfang Audit, Ironfang Finance, Ironfang Rig and Ironfang Analytics. Each is self-service and has a REST API under https://api.ironfang.uk with an OpenAPI 3.1 contract. One platform API key format, minted in the portal at https://portal.ironfang.uk and sent as a bearer token, works across them; each key carries the scopes of the products it may use. An MCP server at https://mcp.ironfang.uk/mcp offers the products as tools to AI assistants over OAuth.
 
-A free account renders 250 credits a month and needs no card. Free output
-carries a small Renderwolf badge in the corner; every paid plan removes it, and
-nothing else differs between free and paid.
+- Ironfang Render: Screenshots, PDFs, templated images, QR codes and short video clips from a URL or a block of HTML.
+- Ironfang Audit: Website audits run against rules and rule packs, on demand or on a schedule, producing findings and signed, independently timestamped evidence bundles that anyone can verify offline.
+- Ironfang Finance: UBL invoice and credit note validation against EN 16931 and Peppol BIS Billing 3, JSON-to-UBL generation, readable PDFs and signed validation reports.
+- Ironfang Rig: Disposable external environments for integration tests: temporary inboxes, public callback URLs, mock HTTP endpoints and connector routes to a local port, allocated per run.
+- Ironfang Analytics: Consent-first session replay for websites: records visits after the visitor agrees, masks input in the browser, and keeps each recording with the visitor's IP address, browser and page details for 28 days.
 
-## Auditwolf
+Renderwolf, Auditwolf and Financewolf are the names Ironfang Render, Ironfang Audit and Ironfang Finance launched under. They are not separate products, and nothing new uses them. Each survives only as a compatibility alias of something with a current name, or inside an identifier that cannot change without breaking a client. None is deprecated with a removal date; all are superseded.
 
-- [Product overview](https://ironfang.uk/auditwolf): Website auditing with signed and independently timestamped evidence.
-- [API reference](https://ironfang.uk/auditwolf/docs): Sites, rules, audits, evidence bundles, verification and integrations.
-- [Verify evidence](https://ironfang.uk/auditwolf/verify): Upload an evidence ZIP or download the open-source offline verifier.
-- [Auditwolf Verify source](https://github.com/ironfang-ltd/auditwolf-verify): Apache 2.0 verifier source and signed cross-platform releases.
+- Renderwolf is Ironfang Render. Aliases that still answer: API base https://api.ironfang.uk/renderwolf; API base https://api.ironfang.uk; site paths under /renderwolf (301 to /render); scopes renderwolf:* (read as render:*); MCP tools renderwolf.* (callable, never listed; use render.*). Stable identifiers that keep the old spelling: HTTP response headers X-Renderwolf-*; webhook headers Renderwolf-Signature, Renderwolf-Timestamp and Renderwolf-Event-Id; default storage key prefix renderwolf/; packages @ironfang/renderwolf (npm) and ironfang-renderwolf (PyPI); repository ironfang-ltd/renderwolf-action.
+- Auditwolf is Ironfang Audit. Aliases that still answer: API base https://api.ironfang.uk/auditwolf; site paths under /auditwolf (301 to /audit); scopes auditwolf:* (read as audit:*); MCP tools auditwolf.* (callable, never listed; use audit.*). Stable identifiers that keep the old spelling: webhook headers Auditwolf-Signature, Auditwolf-Timestamp and Auditwolf-Event-Id; crawler User-Agent Auditwolf-Spiderwolf/1.0; default export key prefix auditwolf/; the product value auditwolf in the plans catalogue served at /audit/v1/plans.
+- Financewolf is Ironfang Finance. Aliases that still answer: API base https://api.ironfang.uk/financewolf; site paths under /financewolf (301 to /finance); scopes financewolf:* (read as finance:*). Stable identifiers that keep the old spelling: schema identifiers financewolf/einvoice/.../v1 in API payloads; canonicalisation identifiers financewolf-json/1 and financewolf-ubl/...; the product value financewolf-einvoicing in signed reports; HTTP headers X-Financewolf-* and webhook headers Financewolf-Signature, Financewolf-Timestamp and Financewolf-Event-Id; packages @ironfang/financewolf (npm) and ironfang-financewolf (PyPI); repository ironfang-ltd/financewolf-integrations.
 
-## Renderwolf
+## Ironfang Render
 
-- [API reference](https://ironfang.uk/renderwolf/docs): Every endpoint, parameter, quota and error code on one page - screenshots, PDFs, templated images, video clips, signed URLs and usage.
-- [OpenAPI specification](https://api.ironfang.uk/openapi.yaml): The machine-readable contract for the whole v1 API. Authoritative - the reference page is written from it, not the other way round.
-- [Product overview](https://ironfang.uk/renderwolf): What it does, what it costs, and where the limits are.
+Use it when: You need an image, PDF or clip of a web page or of your own HTML without running a browser. Free tier: 250 credits a month, no card; free output carries a small Ironfang Render badge.
 
-## Comparison
+- [Product overview](https://ironfang.uk/render): Screenshots, PDFs, templated images, QR codes and short video clips from a URL or a block of HTML.
+- [Documentation](https://ironfang.uk/render/docs): The reference for the API at https://api.ironfang.uk/render.
+- [OpenAPI specification](https://api.ironfang.uk/render/openapi.yaml): The machine-readable contract, version 1.0.0. Also served as JSON at the same path with a .json extension.
+- [Authentication](https://ironfang.uk/render/docs#auth): A platform API key sent as a bearer token. Scopes begin render: (render:*, render:render, render:sign, render:templates:read, render:templates:write, render:destinations, render:usage:read).
+- [Errors](https://ironfang.uk/render/docs#errors): One JSON error body with a stable code, a message, a documentation link and the request id.
+- [MCP tools](https://ironfang.uk/docs/mcp): Available, 17 tools named render.*. Screenshots, PDFs, QR codes, template renders, clips, batches, signed render URLs, webhook delivery destinations, jobs and usage. Storage destinations carry credentials and stay in the portal.
+- [Ironfang Render vs ScreenshotOne and Urlbox](https://ironfang.uk/render/compare): Price per thousand renders, feature by feature, and a section naming what the rivals do better. Checked against their own pricing pages and dated.
+- [ScreenshotOne alternative](https://ironfang.uk/render/screenshotone-alternative): Direct comparison with parameter mappings for switching.
+- [Urlbox alternative](https://ironfang.uk/render/urlbox-alternative): Direct comparison with parameter mappings for switching.
+- [Guides and quickstarts](https://ironfang.uk/render/guides): Worked examples and one-request quickstarts; each is listed under Guides below.
+- [n8n community node](https://www.npmjs.com/package/@ironfang/n8n-nodes-ironfang): Screenshots, PDFs, template images, signed URLs and usage as n8n steps.
+- [GitHub Action](https://github.com/ironfang-ltd/renderwolf-action): Capture pages from a workflow. The repository keeps its launch-era name; the product is Ironfang Render.
 
-- [Renderwolf vs ScreenshotOne and Urlbox](https://ironfang.uk/renderwolf/compare): Price per thousand renders, feature by feature, and a section naming what the rivals do better. Checked against their own pricing pages and dated.
-- [ScreenshotOne alternative](https://ironfang.uk/renderwolf/screenshotone-alternative): Direct comparison with parameter mappings for switching.
-- [Urlbox alternative](https://ironfang.uk/renderwolf/urlbox-alternative): Direct comparison with parameter mappings for switching.
+## Ironfang Audit
+
+Use it when: You need to check a website against your own rules and keep verifiable evidence of what it showed and when. Free tier: 100 credits a month, 1 site, 7 days of hosted retention; no card.
+
+- [Product overview](https://ironfang.uk/audit): Website audits run against rules and rule packs, on demand or on a schedule, producing findings and signed, independently timestamped evidence bundles that anyone can verify offline.
+- [Documentation](https://ironfang.uk/audit/docs): The reference for the API at https://api.ironfang.uk/audit.
+- [OpenAPI specification](https://api.ironfang.uk/audit/openapi.yaml): The machine-readable contract, version 1.0.0. Also served as JSON at the same path with a .json extension.
+- [Authentication](https://ironfang.uk/audit/docs#api-keys): A platform API key sent as a bearer token. Scopes begin audit: (audit:*, audit:read, audit:run, audit:manage, audit:evidence, audit:integrations).
+- [Errors](https://ironfang.uk/audit/docs#errors): One JSON error body with a stable code, a message, a documentation link and the request id.
+- [MCP tools](https://ironfang.uk/docs/mcp): Available, 9 tools named audit.*. Read sites, audits, findings, rules and usage, and start a bounded audit of a site. Changing a rule, a site, a monitor or a finding stays in the portal and the REST API.
+- [Verify evidence](https://ironfang.uk/audit/verify): Upload an evidence ZIP or download the open-source offline verifier.
+- [Verifier and CLI source](https://github.com/ironfang-ltd/cli): Apache 2.0 source and signed cross-platform releases of the ironfang command-line client.
+
+## Ironfang Finance
+
+Use it when: You need to check or produce a Peppol BIS Billing 3 invoice or credit note, or to understand a validation rule such as BR-CO-10. Ironfang Finance does not transmit invoices, operate a certified Peppol Access Point, register participants, certify legal or tax compliance, or guarantee recipient acceptance. Plans: Free includes 250 validations per UTC calendar month, with no card. Build is £29 for 5,000, Pro is £99 for 25,000, Platform is £299 for 100,000 operations per subscription month. Paid plans share validation and generation allowance; authenticated generation requires a paid plan; paid plans serve UK and EU businesses. GBP prices include applicable tax, with no automatic overage. The anonymous validator and JSON playground are free with request and rate limits, and anonymous results are transient. Ironfang Render credits do not pay for Ironfang Finance operations.
+
+- [Product overview](https://ironfang.uk/finance): UBL invoice and credit note validation against EN 16931 and Peppol BIS Billing 3, JSON-to-UBL generation, readable PDFs and signed validation reports.
+- [Documentation](https://ironfang.uk/docs/finance): The reference for the API at https://api.ironfang.uk/finance.
+- [OpenAPI specification](https://api.ironfang.uk/finance/openapi.yaml): The machine-readable contract, version 1.4. Also served as JSON at the same path with a .json extension.
+- [Authentication](https://ironfang.uk/docs/finance#api): A platform API key sent as a bearer token. Scopes begin finance: (finance:einvoices:rulesets:read, finance:einvoices:read, finance:einvoices:write).
+- [Errors](https://ironfang.uk/problems): RFC 9457 problems; each stable code has a page saying what it means and whether to retry.
+- [MCP tools](https://ironfang.uk/docs/mcp): Reference tools only, 3 tools named finance.*. Reference only: what a validation rule means and how to fix it, and which rulesets the validator runs. Validating and generating documents, results and jobs are REST-only; the Ironfang Finance API takes a platform API key and has no OAuth delegation yet.
+- [Validation rule reference](https://ironfang.uk/docs/finance/rules): What each explained EN 16931 and Peppol BIS Billing 3 rule means, why it fails and how to fix the invoice, with failing and corrected documents.
+- [Validation rule reference as Markdown](https://ironfang.uk/docs/finance/rules.md): The same index without page chrome; every rule page also answers with .md appended.
+- [Free Peppol invoice validator](https://ironfang.uk/tools/peppol-validator): Validate a UBL invoice or credit note in the browser, anonymously, with no account and no key.
+- [JSON to UBL generation](https://ironfang.uk/docs/finance/generation): The generation schema, examples and quickstarts in curl, TypeScript, Python and Go.
+- [Signed validation reports](https://ironfang.uk/docs/finance/reports): Issuing a signed report and verifying one offline.
+- [Runtime rulesets](https://api.ironfang.uk/finance/v1/einvoices/rulesets): Immutable ruleset identities, specification releases and observed runtime versions, as JSON, with no key.
+- [Postman collection](https://ironfang.uk/finance/postman.collection.json): Generated from the OpenAPI contract; supply credentials privately.
+
+## Ironfang Rig
+
+Use it when: You are testing an application that sends email, receives webhooks or calls third-party HTTP APIs, and need real addresses that exist only for the run. Ironfang Rig records what reached the addresses it allocated; it does not run tests. Free tier: Included with an Ironfang account in the initial release: no separate plan and no charge for runs, resources or events, within the documented limits (runs up to 24 hours; 32 resources and 64 expectations per suite; 500 messages, 1,000 callbacks and 5,000 mock calls per run). Pricing will be published before anything is charged.
+
+- [Product overview](https://ironfang.uk/rig): Disposable external environments for integration tests: temporary inboxes, public callback URLs, mock HTTP endpoints and connector routes to a local port, allocated per run.
+- [Documentation](https://ironfang.uk/rig/docs): The reference for the API at https://api.ironfang.uk/rig.
+- [OpenAPI specification](https://api.ironfang.uk/rig/openapi.yaml): The machine-readable contract, version 0.1.0. Also served as JSON at the same path with a .json extension.
+- [Authentication](https://ironfang.uk/rig/docs#api-keys): A platform API key sent as a bearer token. Scopes begin rig: (rig:read, rig:write, rig:run, rig:connector).
+- [Errors](https://ironfang.uk/rig/docs#errors): One JSON error body with a stable code, a message, a documentation link and the request id.
+- [MCP tools](https://ironfang.uk/docs/mcp): Available, 19 tools named rig.*. Projects and suites, runs and their resources, the timeline and waits, replay, deterministic faults, the local connector bootstrap, evidence manifests and signed receipts.
+- [GitHub Actions and clients](https://github.com/ironfang-ltd/rig-action): The start and finish actions, and checksummed releases of the ironfang rig command-line client and connector for Linux, macOS and Windows.
+
+## Ironfang Analytics
+
+Use it when: You need to see what a visitor actually did on your website, investigate a failed journey or check a suspicious application, with the visitor's consent and without sending their typed values anywhere. Ironfang Analytics records only after the page grants consent, never records form input values or tool areas the site blocks, and does not decide whether a visit was fraudulent. Free tier: 1,000 recordings a month and 2 GiB of storage, kept 28 days; no card.
+
+- [Product overview](https://ironfang.uk/analytics): Consent-first session replay for websites: records visits after the visitor agrees, masks input in the browser, and keeps each recording with the visitor's IP address, browser and page details for 28 days.
+- [Documentation](https://ironfang.uk/analytics/docs): The reference for the API at https://api.ironfang.uk/analytics.
+- [OpenAPI specification](https://api.ironfang.uk/analytics/openapi.yaml): The machine-readable contract, version 0.1.0. Also served as JSON at the same path with a .json extension.
+- [Authentication](https://ironfang.uk/analytics/docs#api-keys): A platform API key sent as a bearer token. Scopes begin analytics: (analytics:*, analytics:sites:read, analytics:sites:write, analytics:sessions:read, analytics:sessions:delete).
+- [Errors](https://ironfang.uk/analytics/docs#errors): One JSON error body with a stable code, a message, a documentation link and the request id.
+- [MCP tools](https://ironfang.uk/docs/mcp): Not available. Not yet available over MCP. Sites, recordings, playback and deletion are in the portal and the REST API.
+- [Install snippet and consent](https://ironfang.uk/analytics/docs#install): One script tag pinned by Subresource Integrity, and the consent calls that start and stop recording.
+
+## MCP
+
+- [MCP server reference](https://ironfang.uk/docs/mcp): Endpoint https://mcp.ironfang.uk/mcp (POST, streamable HTTP, protocol revisions 2026-07-28, 2025-11-25, 2025-06-18, 2025-03-26). OAuth 2.1 with PKCE against https://id.ironfang.uk; API keys are refused. Registry name uk.ironfang/ironfang. Ironfang Render: available; Ironfang Audit: available; Ironfang Finance: reference tools only; Ironfang Rig: available; Ironfang Analytics: not available.
+- [MCP server reference as Markdown](https://ironfang.uk/docs/mcp.md): The same reference without page chrome, generated from the same data.
+- [MCP capability catalogue](https://ironfang.uk/.well-known/ironfang-mcp.json): Every tool (49) with its input schema, required scopes, read-only, destructive, idempotent and open-world hints, credit cost and task support, plus resources and authentication. JSON, no token needed, generated from the server's own definitions. An Ironfang document, not a standard.
+- [MCP overview](https://ironfang.uk/mcp): What connecting an assistant looks like, which products it reaches and what it costs.
+
+Start with ironfang.connection.get, which returns the organisation, scopes, products and credit budgets. Typical first tools: render.screenshot.create, audit.finding.list, finance.rule.get, rig.run.create. 4 Ironfang Render creation tools can run as MCP Tasks; every tool that spends credits says so in its description.
+
+## Machine-readable
+
+- [APIs.json](https://ironfang.uk/apis.json): The index of Ironfang's public APIs: contracts, documentation, pricing, rate limits, sign-up, support and status, in APIs.json 0.23.
+- [API catalogue](https://ironfang.uk/.well-known/api-catalog): The same APIs as an RFC 9727 linkset.
+- [API onboarding](https://ironfang.uk/.well-known/api-onboarding): How to get an API key: sign up, mint a key in the portal, send it as a bearer token. Per-product versions sit under /render, /audit, /finance, /rig, /analytics.
+- [API governance ruleset](https://ironfang.uk/api/governance/spectral.yaml): The Spectral rules the published contracts pass in CI.
+- [Sitemap](https://ironfang.uk/sitemap.xml): Every indexable page; articles have their own at /sitemap-articles.xml.
+
+## Articles
+
+- [Articles](https://ironfang.uk/articles): Technical articles from Ironfang.
+- [Articles feed](https://ironfang.uk/articles/feed.xml): RSS.
 
 ## Guides
 
-- [Open Graph images](https://ironfang.uk/renderwolf/guides/open-graph-images): Store one card as a template, mint a signed URL per page, and let social crawlers fetch it directly. Editing the template updates every card.
-- [Invoices as PDFs](https://ironfang.uk/renderwolf/guides/invoice-pdfs): Render existing invoice HTML rather than rebuilding it in a PDF library, with real page numbers in the footer.
-- [Screenshots in GitHub Actions](https://ironfang.uk/renderwolf/guides/screenshots-in-github-actions): Capture deploy previews on every pull request and keep them as build artefacts.
-- [Screenshot a page behind a login](https://ironfang.uk/renderwolf/guides/authenticated-pages): Send headers, cookies and an Authorization token with the render, applied before navigation so the first request is already signed in.
-- [Clean screenshots](https://ironfang.uk/renderwolf/guides/clean-screenshots): Block ad and tracker requests, hide cookie banners without clicking accept for anyone, and remove anything else by selector.
+- [Generate Open Graph images from reusable templates](https://ironfang.uk/render/guides/open-graph-images): Store one template, create a signed URL for each page, and update the design centrally without replacing those URLs.
+- [Generate invoice PDFs from existing HTML](https://ironfang.uk/render/guides/invoice-pdfs): Download a complete HTML invoice template, render it to PDF with one API request, and get page numbers, repeated table headers and clean page breaks right.
+- [Screenshots in GitHub Actions](https://ironfang.uk/render/guides/screenshots-in-github-actions): Capture deployment previews during pull request workflows and upload them as build artefacts for review.
+- [Screenshot a page behind a login](https://ironfang.uk/render/guides/authenticated-pages): Capture authenticated pages by supplying headers, cookies or an Authorization token before browser navigation.
+- [Capture screenshots without ads or cookie banners](https://ironfang.uk/render/guides/clean-screenshots): Block ad and tracker requests, hide consent banners without recording consent, and remove additional page elements by CSS selector.
+- [Generate verified, branded QR codes](https://ironfang.uk/render/guides/qr-codes): Generate styled QR codes with optional logos. Ironfang Render decodes every result before delivery and returns an error if it cannot be scanned.
+- [Dark mode QR codes and scanner compatibility](https://ironfang.uk/render/guides/dark-mode-qr-codes): Compare standard and inverted QR codes for dark designs, including scanner compatibility and Ironfang Render verification behaviour.
+- [Website screenshots in Python](https://ironfang.uk/render/guides/quickstart-python): Take a website screenshot from Python with one HTTPS request. Includes working code, binary response handling and API error handling.
+- [Website screenshots in Node.js](https://ironfang.uk/render/guides/quickstart-node): Take a website screenshot from Node.js with one HTTPS request. Includes working code, binary response handling and API error handling.
+- [Website screenshots in PHP](https://ironfang.uk/render/guides/quickstart-php): Take a website screenshot from PHP with one HTTPS request. Includes working code, binary response handling and API error handling.
+- [Website screenshots in Go](https://ironfang.uk/render/guides/quickstart-go): Take a website screenshot from Go with one HTTPS request. Includes working code, binary response handling and API error handling.
 
-## Quickstarts
+## Free tools
 
-- [Python](https://ironfang.uk/renderwolf/guides/quickstart-python): One request with `requests`, writing the bytes to a file, with error handling.
-- [Node.js](https://ironfang.uk/renderwolf/guides/quickstart-node): Built-in `fetch`, no dependencies.
-- [PHP](https://ironfang.uk/renderwolf/guides/quickstart-php): cURL, with the two options that catch people out.
-- [Go](https://ironfang.uk/renderwolf/guides/quickstart-go): `net/http`, streaming the response straight to disk.
-
-## Integrations
-
-- [n8n community node](https://www.npmjs.com/package/@ironfang/n8n-nodes-ironfang): Screenshots, PDFs, template images, signed URLs and usage as n8n steps.
-- [GitHub Action](https://github.com/ironfang-ltd/renderwolf-action): Capture pages from a workflow - deploy previews, visual audits, generated images.
+- [Favicon & app icon generator](https://ironfang.uk/tools/favicon-generator): One image in, an icon package out: favicon, touch and PWA icons, manifest.
+- [Full page screenshot](https://ironfang.uk/tools/full-page-screenshot): Capture any website as a full page image in PNG, JPEG or WebP, at desktop, tablet or mobile size.
+- [Image converter](https://ironfang.uk/tools/image-converter): Convert PNG, JPEG or WebP, with optional resizing. Metadata is stripped.
+- [Peppol invoice validator](https://ironfang.uk/tools/peppol-validator): Check a UBL invoice or credit note against EN 16931 and Peppol BIS Billing 3 rules, no account needed.
+- [QR code generator](https://ironfang.uk/tools/qr-code-generator): Generate a QR code as PNG. Every code is decoded to verify it before delivery.
+- [QR code verifier](https://ironfang.uk/tools/qr-code-verifier): Decode any QR image and see exactly what it contains before anything scans it.
+- [UUID generator & inspector](https://ironfang.uk/tools/uuid-generator): Generate UUIDv4 and time-ordered UUIDv7, validate and decode any UUID.
 
 ## Company
 
 - [About Ironfang](https://ironfang.uk/company): Who builds it and where it runs.
 - [Contact](https://ironfang.uk/contact): Support, technical questions, billing.
+- [Status](https://status.ironfang.uk)
 
 ## Optional
 
