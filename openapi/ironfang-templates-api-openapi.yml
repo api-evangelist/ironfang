@@ -1,0 +1,502 @@
+openapi: 3.2.0
+info:
+  title: Renderwolf Templates API
+  version: 1.0.0
+  summary: Screenshots, PDFs, dynamic images and video through one API.
+  description: Renderwolf renders web pages to images, PDFs and video.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.uk
+  termsOfService: https://ironfang.uk/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.uk/legal/terms
+servers:
+- url: https://api.ironfang.uk/renderwolf
+  description: Production
+- url: https://api.ironfang.uk
+  description: Production, unpartitioned - retained for existing clients
+security:
+- apiKey: []
+tags:
+- name: Templates
+  description: Stored HTML with `{{variable}}` placeholders, rendered on demand.
+paths:
+  /v1/templates:
+    get:
+      tags:
+      - Templates
+      summary: List templates
+      operationId: listTemplates
+      responses:
+        '200':
+          description: 'Your templates, wrapped in a `templates` property - not a bare
+
+            array. Clients that iterate must read `templates`.
+
+            '
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - templates
+                properties:
+                  templates:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Template'
+              example:
+                templates:
+                - id: 01a01c7c-682e-7b2a-95cd-ffb2f2a4d9be
+                  name: og-card
+                  width: 1200
+                  height: 630
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+      - Templates
+      summary: Create a template
+      description: 'Store HTML containing `{{placeholders}}`. Render it with
+
+        `POST /v1/image/{id}`, supplying values for the placeholders.'
+      operationId: createTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateInput'
+            examples:
+              og:
+                summary: An Open Graph card
+                value:
+                  name: og-card
+                  html: <div style="font:700 64px sans-serif;padding:80px">{{title}}</div>
+                  width: 1200
+                  height: 630
+      responses:
+        '201':
+          description: Created.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+  /v1/templates/{id}:
+    parameters:
+    - $ref: '#/components/parameters/TemplateId'
+    get:
+      tags:
+      - Templates
+      summary: Fetch a template
+      operationId: getTemplate
+      responses:
+        '200':
+          description: The template.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Templates
+      summary: Replace a template
+      operationId: updateTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TemplateInput'
+      responses:
+        '200':
+          description: Updated.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Template'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+      - Templates
+      summary: Delete a template
+      operationId: deleteTemplate
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/image/{id}:
+    parameters:
+    - $ref: '#/components/parameters/TemplateId'
+    post:
+      tags:
+      - Templates
+      summary: Render a template
+      description: 'Substitutes `vars` into the template''s `{{placeholders}}` and renders it
+
+        at the template''s own width and height. Returns the image bytes.'
+      operationId: renderTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RenderTemplateRequest'
+            examples:
+              card:
+                value:
+                  vars:
+                    title: Shipping UUIDv7 everywhere
+                  format: png
+      responses:
+        '200':
+          $ref: '#/components/responses/Image'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/RenderFailed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+components:
+  responses:
+    RateLimited:
+      description: "Three distinct conditions share this status, separated by `error.code`:\n\n- `rate_limited` - your account exceeded 120 renders/minute\n- `target_rate_limited` - the site being rendered is being hit too hard\n  across all customers (60/minute per host)\n- `quota_exhausted` - the plan's monthly allowance is spent\n\nThe first two clear within the minute, so retry with backoff. The third\ndoes not: upgrade in the portal or wait for the period to roll over.\nBranch on the code rather than the status.\n"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such template, or not yours.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Image:
+      description: 'The rendered image. `png` unless `format: jpeg` was requested.
+
+        '
+      headers:
+        X-Renderwolf-Cache:
+          description: '`hit` when served from cache, in which case it was free.'
+          schema:
+            type: string
+            enum:
+            - hit
+        X-Renderwolf-Credits:
+          description: 'What this call cost. `0` on a cache hit, because a cache hit is
+
+            free. Read it to log spend per request without polling
+
+            `/v1/usage`.
+
+            '
+          schema:
+            type: integer
+        X-Renderwolf-Render-Ms:
+          description: Render time in milliseconds, excluding any requested delay.
+          schema:
+            type: integer
+        X-Renderwolf-Delay-Ms:
+          description: The `delay_ms` actually waited, when one was requested.
+          schema:
+            type: integer
+        X-Renderwolf-Captured-At:
+          description: 'RFC 3339 timestamp of a fresh capture. Present only on
+
+            `no_cache` renders, where the response is also `no-store` - the
+
+            pairing is what makes a capture usable as evidence.
+
+            '
+          schema:
+            type: string
+            format: date-time
+      content:
+        image/png:
+          schema:
+            type: string
+            format: binary
+        image/jpeg:
+          schema:
+            type: string
+            format: binary
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RenderFailed:
+      description: 'The page did not render: the host did not resolve, it never finished
+
+        loading, it timed out, or it was blocked. Try `delay_ms`, and check the
+
+        target loads in a normal browser.
+
+        '
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Malformed body, or neither/both of `url` and `html`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    RenderTemplateRequest:
+      allOf:
+      - $ref: '#/components/schemas/RenderCommon'
+      - type: object
+        properties:
+          vars:
+            type: object
+            additionalProperties:
+              type: string
+            description: Values for the template's placeholders.
+          format:
+            type: string
+            enum:
+            - png
+            - jpeg
+            - webp
+            default: png
+    Template:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        html:
+          type: string
+        width:
+          type: integer
+        height:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    RenderCommon:
+      type: object
+      properties:
+        no_cache:
+          type: boolean
+          default: false
+          description: 'Force a fresh render instead of serving a cached one. Always
+
+            billable. Excluded from the cache key, so repeated fresh requests
+
+            do not collide.
+
+            '
+        block_ads:
+          type: boolean
+          default: false
+          description: 'Drop requests to known ad and tracker networks before they load.
+
+            Stopped as network requests rather than hidden afterwards, so the
+
+            page never spends time fetching them.
+
+            '
+        block_cookie_banners:
+          type: boolean
+          default: false
+          description: 'Hide common consent banners, and undo the scroll lock they set -
+
+            without which a full-page capture is one viewport tall.
+
+
+            Hidden, not accepted. Clicking "accept" would be a decision made
+
+            on the site owner''s behalf and recorded as theirs.
+
+            '
+        hide_selectors:
+          type: array
+          items:
+            type: string
+          description: 'CSS selectors to hide before capturing. Applied after load, so
+
+            elements injected by script are covered.
+
+            '
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+          description: Extra HTTP headers sent with every request for the page.
+        cookies:
+          type: array
+          items:
+            $ref: '#/components/schemas/Cookie'
+          description: 'Cookies to set before navigating. Set beforehand because a session
+
+            cookie that arrives after load has missed the request it was meant
+
+            to authenticate.
+
+            '
+        authorization:
+          type: string
+          description: 'Sets the `Authorization` header - the common case, spelled once.
+
+            An explicit `Authorization` in `headers` wins over this.
+
+            '
+        user_agent:
+          type: string
+          description: 'Overrides the user agent, including any set by `device`.
+
+            '
+        wait_until:
+          type: string
+          enum:
+          - load
+          - domcontentloaded
+          - networkidle
+          default: load
+          description: 'When the page counts as ready. `networkidle` waits for traffic to
+
+            stop and is bounded by the render timeout, because a page with
+
+            polling never truly idles.
+
+            '
+        wait_for_selector:
+          type: string
+          description: 'Wait for this element before capturing. Fails the render if it
+
+            never appears, rather than returning a half-drawn page.
+
+            '
+        timeout_ms:
+          type: integer
+          description: 'Per-render timeout. Clamped to the service maximum - it can lower
+
+            the ceiling but not raise it.
+
+            '
+        device_scale_factor:
+          type: number
+          minimum: 1
+          maximum: 3
+          description: 'Pixel density. 2 is retina: the same CSS size at twice the pixels.
+
+            '
+    Cookie:
+      type: object
+      required:
+      - name
+      - domain
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        domain:
+          type: string
+          description: 'Required. Chromium silently drops a domainless cookie set before
+
+            navigation, so the render would quietly come back logged out.
+
+            '
+        path:
+          type: string
+          default: /
+    TemplateInput:
+      type: object
+      required:
+      - name
+      - html
+      properties:
+        name:
+          type: string
+        html:
+          type: string
+          description: HTML with `{{placeholder}}` markers.
+        width:
+          type: integer
+          default: 1280
+        height:
+          type: integer
+          default: 800
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: Stable, safe to branch on.
+              enum:
+              - bad_request
+              - unauthorized
+              - invalid_api_key
+              - auth_failed
+              - forbidden
+              - email_unverified
+              - not_found
+              - quota_exhausted
+              - rate_limited
+              - target_rate_limited
+              - render_failed
+              - bad_signature
+              - signing_disabled
+            message:
+              type: string
+              description: Human-readable. May change; do not match on it.
+      example:
+        error:
+          code: target_rate_limited
+          message: too many renders for that host, try again shortly
+  parameters:
+    TemplateId:
+      name: id
+      in: path
+      required: true
+      description: Template id (UUIDv7).
+      schema:
+        type: string
+        format: uuid
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: 'An API key from the portal, sent as `Authorization: Bearer rw_live_...`.
+
+        '

@@ -1,0 +1,33 @@
+{
+  "provider": "ironfang",
+  "sources": [
+    "_original/ironfang-openapi.yaml"
+  ],
+  "outputs": [
+    "ironfang-account-api-openapi.yml",
+    "ironfang-batches-api-openapi.yml",
+    "ironfang-destinations-api-openapi.yml",
+    "ironfang-jobs-api-openapi.yml",
+    "ironfang-render-api-openapi.yml",
+    "ironfang-signed-urls-api-openapi.yml",
+    "ironfang-templates-api-openapi.yml"
+  ],
+  "archived": [],
+  "errors": [],
+  "warnings": [],
+  "notes": [
+    "sourced from openapi/_original/ (1 archived document(s)); previously refined output at the top level was skipped rather than re-split",
+    "ironfang-openapi.yaml: upgraded openapi 3.1.0 -> OpenAPI 3.2.0",
+    "ironfang-openapi.yaml: declared missing tag: Jobs",
+    "apis.yml register: already-registered"
+  ],
+  "skipped": [
+    "ironfang-account-api-openapi.yml: previously refined output, superseded by openapi/_original/",
+    "ironfang-batches-api-openapi.yml: previously refined output, superseded by openapi/_original/",
+    "ironfang-destinations-api-openapi.yml: previously refined output, superseded by openapi/_original/",
+    "ironfang-jobs-api-openapi.yml: previously refined output, superseded by openapi/_original/",
+    "ironfang-render-api-openapi.yml: previously refined output, superseded by openapi/_original/",
+    "ironfang-signed-urls-api-openapi.yml: previously refined output, superseded by openapi/_original/",
+    "ironfang-templates-api-openapi.yml: previously refined output, superseded by openapi/_original/"
+  ]
+}

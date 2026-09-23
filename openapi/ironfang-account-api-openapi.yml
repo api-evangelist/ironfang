@@ -1,0 +1,334 @@
+openapi: 3.2.0
+info:
+  title: Renderwolf Account API
+  version: 1.0.0
+  summary: Screenshots, PDFs, dynamic images and video through one API.
+  description: Renderwolf renders web pages to images, PDFs and video.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.uk
+  termsOfService: https://ironfang.uk/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.uk/legal/terms
+servers:
+- url: https://api.ironfang.uk/renderwolf
+  description: Production
+- url: https://api.ironfang.uk
+  description: Production, unpartitioned - retained for existing clients
+security:
+- apiKey: []
+tags:
+- name: Account
+  description: Usage against quota.
+paths:
+  /v1/capabilities:
+    get:
+      tags:
+      - Account
+      security: []
+      summary: What Renderwolf does, is building and does not offer
+      description: 'A dated statement of capabilities with a status of `live`, `planned`
+
+        or `not_offered`. Public and cacheable; the comparison pages are
+
+        checked against the same file, so nothing is advertised before it is
+
+        live.'
+      operationId: getCapabilities
+      responses:
+        '200':
+          description: The capability catalogue.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  product:
+                    type: string
+                  updated:
+                    type: string
+                    format: date
+                  free_credits_per_month:
+                    type: integer
+                  capabilities:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        key:
+                          type: string
+                        name:
+                          type: string
+                        status:
+                          type: string
+                          enum:
+                          - live
+                          - planned
+                          - not_offered
+                        since:
+                          type: string
+                          format: date
+  /v1/requests:
+    get:
+      tags:
+      - Account
+      summary: Request history
+      description: 'One row per authenticated render in the last seven days, newest
+
+        first, synchronous calls and jobs alike: kind, outcome, safe error
+
+        code, cache hit or miss, credits charged and refunded, response size
+
+        and type, duration, the target''s origin and path, the names of the
+
+        option fields supplied, and the request id you can quote to support.
+
+
+        It is diagnostic, not replay. Nothing here can rebuild the request:
+
+        header and cookie values, HTML, template variables, URL query strings
+
+        and signatures are never recorded. Retention is seven days on every
+
+        plan.
+
+
+        `id` matches the request id, a job id or your own `X-Request-ID`,
+
+        which is how you arrive here from an error message.'
+      operationId: listRequests
+      parameters:
+      - name: since
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: until
+        in: query
+        schema:
+          type: string
+          format: date-time
+      - name: outcome
+        in: query
+        schema:
+          type: string
+          enum:
+          - ok
+          - error
+          - cancelled
+      - name: kind
+        in: query
+        schema:
+          type: string
+          enum:
+          - screenshot
+          - pdf
+          - qr
+          - image
+          - clip
+          - site_preview
+      - name: cache
+        in: query
+        schema:
+          type: string
+          enum:
+          - hit
+          - miss
+      - name: key
+        in: query
+        description: API key id
+        schema:
+          type: string
+      - name: error
+        in: query
+        description: Safe error code
+        schema:
+          type: string
+      - name: id
+        in: query
+        description: Request id
+        job id or your X-Request-ID: null
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          maximum: 200
+          default: 50
+      - name: offset
+        in: query
+        schema:
+          type: integer
+          default: 0
+      responses:
+        '200':
+          description: '`requests` and `retention_days`.'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v1/usage:
+    get:
+      tags:
+      - Account
+      summary: Usage this period
+      description: 'For subscribers the period runs from the billing anniversary, not the
+
+        first of the month, so it lines up with invoices.'
+      operationId: getUsage
+      responses:
+        '200':
+          description: Current period usage.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+components:
+  responses:
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Malformed body, or neither/both of `url` and `html`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: Stable, safe to branch on.
+              enum:
+              - bad_request
+              - unauthorized
+              - invalid_api_key
+              - auth_failed
+              - forbidden
+              - email_unverified
+              - not_found
+              - quota_exhausted
+              - rate_limited
+              - target_rate_limited
+              - render_failed
+              - bad_signature
+              - signing_disabled
+            message:
+              type: string
+              description: Human-readable. May change; do not match on it.
+      example:
+        error:
+          code: target_rate_limited
+          message: too many renders for that host, try again shortly
+    Usage:
+      type: object
+      properties:
+        period:
+          type: string
+          description: 'The period these numbers cover. Follows the billing anniversary for
+
+            subscribers, the calendar month otherwise.
+
+            '
+        credits:
+          type: integer
+          description: Credits spent so far this period. Cache hits are free and not counted.
+        renders:
+          type: integer
+          deprecated: true
+          description: The same number under the name the API shipped with.
+        limit:
+          type: integer
+          description: Credits included in the plan for this period, grants included.
+        period_start:
+          type: string
+          format: date
+        period_end:
+          type: string
+          format: date
+          description: The period as [period_start, period_end) in UTC dates.
+        by_kind:
+          type: object
+          description: 'Where this period''s credits went, keyed by render kind
+
+            (`screenshot`, `pdf`, `image`, `qr`, `clip`). Kinds with no spend
+
+            are absent.
+
+            '
+          additionalProperties:
+            type: object
+            properties:
+              credits:
+                type: integer
+              count:
+                type: integer
+        unattributed:
+          type: integer
+          description: 'Credits from before per-kind metering existed. The breakdown plus
+
+            this always equals `credits`.
+
+            '
+        daily:
+          type: array
+          description: The last 30 days of spend, oldest first, zero days included.
+          items:
+            type: object
+            properties:
+              day:
+                type: string
+                format: date
+              credits:
+                type: integer
+              by_kind:
+                type: object
+                additionalProperties:
+                  type: integer
+      example:
+        period: 2026-08
+        credits: 412
+        renders: 412
+        limit: 5000
+        period_start: '2026-08-01'
+        period_end: '2026-09-01'
+        by_kind:
+          screenshot:
+            credits: 231
+            count: 231
+          pdf:
+            credits: 118
+            count: 59
+          qr:
+            credits: 63
+            count: 63
+        daily:
+        - day: '2026-08-25'
+          credits: 41
+          by_kind:
+            screenshot: 30
+            pdf: 8
+            qr: 3
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: 'An API key from the portal, sent as `Authorization: Bearer rw_live_...`.
+
+        '

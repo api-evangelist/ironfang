@@ -1,0 +1,310 @@
+openapi: 3.2.0
+info:
+  title: Renderwolf Destinations API
+  version: 1.0.0
+  summary: Screenshots, PDFs, dynamic images and video through one API.
+  description: Renderwolf renders web pages to images, PDFs and video.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.uk
+  termsOfService: https://ironfang.uk/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.uk/legal/terms
+servers:
+- url: https://api.ironfang.uk/renderwolf
+  description: Production
+- url: https://api.ironfang.uk
+  description: Production, unpartitioned - retained for existing clients
+security:
+- apiKey: []
+tags:
+- name: Destinations
+  description: Where a finished job goes - a signed webhook, or your own S3 bucket.
+paths:
+  /v1/destinations:
+    post:
+      tags:
+      - Destinations
+      summary: Register a delivery destination
+      description: 'A destination is created once and named by id from every job, so a
+
+        signing secret or a set of S3 keys is sent to us on one request and
+
+        never appears in a job body again.
+
+
+        A `webhook` destination needs a public `https` URL. The response
+
+        carries `signing_secret` **once**: we keep only an encrypted copy,
+
+        so there is no endpoint that can show it to you again.
+
+
+        An `s3` destination needs `bucket`, `region`, `access_key` and
+
+        `secret_key`; `endpoint` (for a non-AWS provider), `path_style` and
+
+        `prefix` are optional. Scope the credentials to the prefix you give
+
+        us. They are never returned after creation.
+
+
+        Needs the `renderwolf:destinations` scope, which maps to the
+
+        `destinations.manage` permission.'
+      operationId: createDestination
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - type
+              properties:
+                type:
+                  type: string
+                  enum:
+                  - webhook
+                  - s3
+                name:
+                  type: string
+                  maxLength: 120
+                url:
+                  type: string
+                  format: uri
+                  description: 'webhook: a public https URL.'
+                endpoint:
+                  type: string
+                  format: uri
+                region:
+                  type: string
+                bucket:
+                  type: string
+                prefix:
+                  type: string
+                  maxLength: 256
+                path_style:
+                  type: boolean
+                access_key:
+                  type: string
+                secret_key:
+                  type: string
+                session_token:
+                  type: string
+      responses:
+        '201':
+          description: The destination. A webhook also carries `signing_secret`, shown once.
+        '400':
+          description: '`bad_destination`: not a public https URL, or missing bucket credentials.'
+        '403':
+          description: The key carries no `renderwolf:destinations` scope.
+        '501':
+          description: This deployment has no credential vault configured.
+    get:
+      tags:
+      - Destinations
+      summary: List destinations
+      description: Live destinations, newest first. Secrets and credentials are never included.
+      operationId: listDestinations
+      responses:
+        '200':
+          description: The account's destinations.
+  /v1/destinations/{id}:
+    get:
+      tags:
+      - Destinations
+      summary: Get a destination
+      operationId: getDestination
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The destination.
+        '404':
+          description: No such destination on this account.
+    patch:
+      tags:
+      - Destinations
+      summary: Rename or enable a destination
+      description: '`name` and `enabled` only. An address or a credential is not edited in
+
+        place - create a new destination and point your jobs at it, so a
+
+        delivery''s history always says where it actually went. Re-enabling
+
+        clears the failure count.'
+      operationId: updateDestination
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  maxLength: 120
+                enabled:
+                  type: boolean
+      responses:
+        '200':
+          description: The destination.
+        '404':
+          description: No such destination on this account.
+    delete:
+      tags:
+      - Destinations
+      summary: Remove a destination
+      description: 'It stops receiving anything and leaves the list. Its past deliveries
+
+        stay, so history still reads true.'
+      operationId: deleteDestination
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '204':
+          description: Removed.
+        '404':
+          description: No such destination on this account.
+  /v1/destinations/{id}/test:
+    post:
+      tags:
+      - Destinations
+      summary: Test a destination now
+      description: 'A webhook receives a signed `renderwolf.destination.test` event; a
+
+        bucket has a uniquely named object written to it. Always `200`: the
+
+        body''s `ok` says whether the destination answered, and `error` says
+
+        what went wrong if it did not.'
+      operationId: testDestination
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: '`ok` and, on failure, `error`.'
+        '404':
+          description: No such destination on this account.
+  /v1/deliveries:
+    get:
+      tags:
+      - Destinations
+      summary: List deliveries
+      description: 'Newest first, optionally for one `destination`. A delivery is
+
+        `pending`, `delivering`, `delivered` or `failed`; `failed` means it
+
+        used up its attempts. Delivery state never affects the job''s own
+
+        outcome.'
+      operationId: listDeliveries
+      parameters:
+      - name: destination
+        in: query
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          maximum: 100
+      - name: cursor
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Deliveries and `next_cursor`.
+  /v1/deliveries/{id}:
+    get:
+      tags:
+      - Destinations
+      summary: One delivery, with the body it posted
+      description: 'The list omits payloads because they are the largest part of a
+
+        delivery and are wanted one at a time, when something has gone wrong.
+
+        This returns the body exactly as it went on the wire, plus
+
+        `payload_timestamp` and `payload_signature` - the two values the
+
+        signature is computed over - so you can reproduce the HMAC check
+
+        against your own secret and see where it diverges.
+
+
+        `response_body` is what your endpoint sent back, bounded to 4 KB.
+
+
+        Bodies are kept for `payload_retention_days` (7) after the attempt
+
+        and then blanked; the delivery row itself stays, so the history of
+
+        what was sent and how it went is not lost with it.'
+      operationId: getDelivery
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The delivery. `payload` is absent once purged.
+        '404':
+          description: No such delivery on this account.
+  /v1/deliveries/{id}/redeliver:
+    post:
+      tags:
+      - Destinations
+      summary: Send a delivery again
+      description: 'Puts a delivery back on the queue with a fresh attempt ladder, for
+
+        after you have fixed whatever was wrong. The webhook body is rebuilt
+
+        at send time, so the result link in it is good for 15 minutes from
+
+        then rather than from the original attempt.'
+      operationId: redeliverDelivery
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The delivery
+          queued again.: null
+        '404':
+          description: No such delivery on this account.
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: 'An API key from the portal, sent as `Authorization: Bearer rw_live_...`.
+
+        '

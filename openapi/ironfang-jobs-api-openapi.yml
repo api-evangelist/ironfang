@@ -1,0 +1,287 @@
+openapi: 3.2.0
+info:
+  title: Renderwolf Jobs API
+  version: 1.0.0
+  summary: Screenshots, PDFs, dynamic images and video through one API.
+  description: Renderwolf renders web pages to images, PDFs and video.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.uk
+  termsOfService: https://ironfang.uk/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.uk/legal/terms
+servers:
+- url: https://api.ironfang.uk/renderwolf
+  description: Production
+- url: https://api.ironfang.uk
+  description: Production, unpartitioned - retained for existing clients
+security:
+- apiKey: []
+tags:
+- name: Jobs
+paths:
+  /v1/jobs:
+    post:
+      tags:
+      - Jobs
+      summary: Submit a durable render job
+      description: 'The same renders as the synchronous endpoints - `kind` is one of
+
+        `screenshot`, `pdf`, `qr`, `image`, `clip` or `site_preview` and
+
+        `request` is that endpoint''s body (an `image` job names its
+
+        `template` inside `request`) - accepted with `202` and run by a
+
+        worker. Poll the job, or cancel it, then collect the result while it
+
+        is hosted: 24 hours, private, through a signed link valid for 15
+
+        minutes. A process restart after the `202` never loses the job.
+
+
+        Send `Idempotency-Key` on every submission. The same key with the same
+
+        request returns the existing job with `200`; the same key with a
+
+        different request is a `409 idempotency_conflict`. `external_id` is
+
+        your own reference, up to 120 characters.
+
+
+        Credits: the job''s maximum cost is reserved when it is accepted and
+
+        settled when it finishes - a site preview reserves the 60-second
+
+        ceiling and releases the difference. Failed work is refunded. A
+
+        queued job cancels for free; a running one is charged only if it
+
+        produced a usable output.'
+      operationId: submitJob
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - kind
+              - request
+              properties:
+                kind:
+                  type: string
+                  enum:
+                  - screenshot
+                  - pdf
+                  - qr
+                  - image
+                  - clip
+                  - site_preview
+                request:
+                  type: object
+                  description: The synchronous endpoint's request body for that kind.
+                external_id:
+                  type: string
+                  maxLength: 120
+                delivery:
+                  $ref: '#/components/schemas/JobDelivery'
+      responses:
+        '202':
+          description: The job was accepted; the body is the job resource.
+        '200':
+          description: The same Idempotency-Key and request were seen before; this is that job.
+        '400':
+          description: Invalid submission.
+        '403':
+          description: The key carries no `renderwolf:render` scope
+          or is not account-backed.: null
+        '404':
+          description: The template named by an image job does not exist.
+        '409':
+          description: '`idempotency_conflict`: the key was used with a different request.'
+        '429':
+          description: Monthly credits exhausted.
+        '501':
+          description: This deployment cannot render clips or site previews.
+    get:
+      tags:
+      - Jobs
+      summary: List jobs
+      description: Newest first. `status` filters; `limit` up to 100; pass `next_cursor` back to continue.
+      operationId: listJobs
+      parameters:
+      - name: status
+        in: query
+        schema:
+          type: string
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          maximum: 100
+      - name: cursor
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: Jobs and `next_cursor`.
+  /v1/jobs/{id}:
+    get:
+      tags:
+      - Jobs
+      summary: Poll a job
+      description: '`status` is `queued`, `running`, `cancellation_requested`,
+
+        `succeeded`, `failed` or `cancelled`. A succeeded job carries
+
+        `result` with `content_type`, `bytes`, `sha256`, `expires_at` and,
+
+        while hosted, a signed `url` valid for 15 minutes. A failed job
+
+        carries `error.code` and `error.message`. The submitted request is
+
+        never returned; `request_summary` is the redacted shape.'
+      operationId: getJob
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The job resource.
+        '404':
+          description: No such job on this account.
+    delete:
+      tags:
+      - Jobs
+      summary: Cancel a job
+      description: A queued job is cancelled and refunded at once; a running one stops at its next safe point.
+      operationId: cancelJob
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The job
+          cancelled or with cancellation requested.: null
+        '404':
+          description: No such job on this account.
+        '409':
+          description: '`job_finished`: nothing left to cancel.'
+  /v1/jobs/{id}/result:
+    get:
+      tags:
+      - Jobs
+      summary: Collect a job's result
+      description: 'Redirects (`302`) to a signed download link valid for 15 minutes; the
+
+        link needs no API key. The hosted result is kept for 24 hours after
+
+        success, privately, on Ironfang''s side - not permanent hosting.'
+      operationId: getJobResult
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '302':
+          description: Redirect to the signed download link.
+        '404':
+          description: No such job on this account.
+        '409':
+          description: '`result_not_ready`: the job has not succeeded.'
+        '410':
+          description: '`result_expired`: the hosted result is gone; run the job again.'
+  /v1/results/{exp}/{sig}:
+    get:
+      tags:
+      - Jobs
+      security: []
+      summary: Signed result download
+      description: The link a job's `result.url` points at. The signature is the authorisation; it expires after 15 minutes.
+      operationId: getSignedResult
+      parameters:
+      - name: exp
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: sig
+        in: path
+        required: true
+        schema:
+          type: string
+      - name: job
+        in: query
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The result bytes with their recorded content type.
+        '403':
+          description: Bad or expired signature.
+        '410':
+          description: The hosted result has expired.
+components:
+  schemas:
+    JobDelivery:
+      type: object
+      description: 'Where this job goes when it finishes, by destination id. Register the
+
+        destination first; credentials are never sent here.
+
+
+        A webhook fires on success, failure and cancellation. Storage only
+
+        carries a result, so it fires on success alone - and a storage
+
+        delivery that gives up raises `render.delivery.failed` on the webhook
+
+        destination, which is how you find out that a bucket stopped
+
+        accepting uploads.
+
+        '
+      properties:
+        webhook_destination:
+          type: string
+          description: Id of a `webhook` destination.
+        storage_destination:
+          type: string
+          description: Id of an `s3` destination.
+        storage_key:
+          type: string
+          maxLength: 700
+          description: 'The object key, relative to the destination''s prefix. Fixed text
+
+            plus `{job_id}`, `{external_id}` and `{date}` (`YYYY/MM/DD`) -
+
+            no other field, and nothing evaluated. Segments may hold letters,
+
+            digits, dot, dash and underscore; anything that would climb out
+
+            of the prefix is refused when the job is submitted, not quietly
+
+            rewritten. Defaults to `renderwolf/{date}/{job_id}`.
+
+            '
+          example: captures/{external_id}/{job_id}.png
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: 'An API key from the portal, sent as `Authorization: Bearer rw_live_...`.
+
+        '

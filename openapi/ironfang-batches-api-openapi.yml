@@ -1,0 +1,186 @@
+openapi: 3.2.0
+info:
+  title: Renderwolf Batches API
+  version: 1.0.0
+  summary: Screenshots, PDFs, dynamic images and video through one API.
+  description: Renderwolf renders web pages to images, PDFs and video.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.uk
+  termsOfService: https://ironfang.uk/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.uk/legal/terms
+servers:
+- url: https://api.ironfang.uk/renderwolf
+  description: Production
+- url: https://api.ironfang.uk
+  description: Production, unpartitioned - retained for existing clients
+security:
+- apiKey: []
+tags:
+- name: Batches
+  description: Up to 100 renders submitted, and refused, together.
+paths:
+  /v1/batches:
+    post:
+      tags:
+      - Batches
+      summary: Submit up to 100 jobs together
+      description: 'One `default` request plus `items` that override parts of it, merged
+
+        one level deep: an item''s field wins, everything else comes from the
+
+        default. The default is written for the batch''s `kind`, so it applies
+
+        only to items of that kind; an item that names a different kind stands
+
+        on its own request, and any item may carry its own `delivery`. Every item is validated as a single job would be,
+
+        and an unknown field is refused rather than ignored, because a typo
+
+        that is silently dropped is a credit spent on the wrong render.
+
+
+        The batch is accepted or refused whole. Every item is validated before
+
+        any is stored, and the credits for all of them are reserved in one
+
+        transaction, so a batch that would exceed your monthly credits is a
+
+        `429` that charged nothing and left no jobs behind. The error names
+
+        the item that was wrong.
+
+
+        Items are ordinary jobs: poll them individually, or poll the batch for
+
+        the aggregate. There is no ZIP of results - configure a storage
+
+        destination if you want the output collected in one place.'
+      operationId: submitBatch
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - items
+              properties:
+                kind:
+                  type: string
+                  enum:
+                  - screenshot
+                  - pdf
+                  - qr
+                  - image
+                  - clip
+                  - site_preview
+                default:
+                  type: object
+                  description: The request every item starts from.
+                delivery:
+                  $ref: '#/components/schemas/JobDelivery'
+                external_id:
+                  type: string
+                  maxLength: 120
+                items:
+                  type: array
+                  minItems: 1
+                  maxItems: 100
+                  items:
+                    type: object
+                    properties:
+                      kind:
+                        type: string
+                      request:
+                        type: object
+                      external_id:
+                        type: string
+                        maxLength: 120
+                      delivery:
+                        $ref: '#/components/schemas/JobDelivery'
+      responses:
+        '202':
+          description: The batch was accepted; the body carries the batch and one job per item.
+        '400':
+          description: Invalid submission, or `batch_too_large`. The message names the item.
+        '403':
+          description: The key carries no `renderwolf:render` scope
+          or is not account-backed.: null
+        '429':
+          description: '`quota_exhausted`: the whole batch was refused and nothing was charged.'
+  /v1/batches/{id}:
+    get:
+      tags:
+      - Batches
+      summary: Poll a batch
+      description: '`counts` totals the items by state and `done` is true once none of
+
+        them can change. `jobs` is the full job resource for every item.'
+      operationId: getBatch
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          type: string
+      responses:
+        '200':
+          description: The batch
+          its counts and its jobs.: null
+        '404':
+          description: No such batch on this account.
+components:
+  schemas:
+    JobDelivery:
+      type: object
+      description: 'Where this job goes when it finishes, by destination id. Register the
+
+        destination first; credentials are never sent here.
+
+
+        A webhook fires on success, failure and cancellation. Storage only
+
+        carries a result, so it fires on success alone - and a storage
+
+        delivery that gives up raises `render.delivery.failed` on the webhook
+
+        destination, which is how you find out that a bucket stopped
+
+        accepting uploads.
+
+        '
+      properties:
+        webhook_destination:
+          type: string
+          description: Id of a `webhook` destination.
+        storage_destination:
+          type: string
+          description: Id of an `s3` destination.
+        storage_key:
+          type: string
+          maxLength: 700
+          description: 'The object key, relative to the destination''s prefix. Fixed text
+
+            plus `{job_id}`, `{external_id}` and `{date}` (`YYYY/MM/DD`) -
+
+            no other field, and nothing evaluated. Segments may hold letters,
+
+            digits, dot, dash and underscore; anything that would climb out
+
+            of the prefix is refused when the job is submitted, not quietly
+
+            rewritten. Defaults to `renderwolf/{date}/{job_id}`.
+
+            '
+          example: captures/{external_id}/{job_id}.png
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: 'An API key from the portal, sent as `Authorization: Bearer rw_live_...`.
+
+        '

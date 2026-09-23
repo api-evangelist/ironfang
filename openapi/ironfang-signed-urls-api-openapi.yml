@@ -1,0 +1,289 @@
+openapi: 3.2.0
+info:
+  title: Renderwolf Signed URLs API
+  version: 1.0.0
+  summary: Screenshots, PDFs, dynamic images and video through one API.
+  description: Renderwolf renders web pages to images, PDFs and video.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.uk
+  termsOfService: https://ironfang.uk/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.uk/legal/terms
+servers:
+- url: https://api.ironfang.uk/renderwolf
+  description: Production
+- url: https://api.ironfang.uk
+  description: Production, unpartitioned - retained for existing clients
+security:
+- apiKey: []
+tags:
+- name: Signed URLs
+  description: Shareable render URLs that need no API key.
+paths:
+  /v1/sign:
+    post:
+      tags:
+      - Signed URLs
+      summary: Mint a signed render URL
+      description: 'Returns a URL that renders on GET without an API key - safe to put in an
+
+        `` tag or an email. The URL is bound to your account, so renders
+
+        through it meter against your quota.
+
+
+        Requires signing to be configured on the deployment; returns `501`
+
+        otherwise.'
+      operationId: createSignedUrl
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignRequest'
+            examples:
+              screenshot:
+                value:
+                  kind: screenshot
+                  url: https://example.com
+                  width: 1280
+                  ttl_hours: 24
+              template:
+                value:
+                  kind: image
+                  template: 0193f0c4-1f4e-7a91-9c3e-2b6f5d8a1e77
+                  vars:
+                    title: Hello
+      responses:
+        '200':
+          description: The signed URL.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedUrl'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '501':
+          description: Signing is not configured on this deployment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/r/{exp}/{sig}:
+    get:
+      tags:
+      - Signed URLs
+      summary: Render from a signed URL
+      description: 'The endpoint a signed URL points at. Takes no API key - the signature is
+
+        the credential - so it can be embedded directly in HTML or email. Call
+
+        `POST /v1/sign` to mint one rather than constructing it by hand.'
+      operationId: renderSignedUrl
+      security: []
+      parameters:
+      - name: exp
+        in: path
+        required: true
+        description: Expiry stamp, part of the signed payload. `0` never expires.
+        schema:
+          type: string
+      - name: sig
+        in: path
+        required: true
+        description: The signature.
+        schema:
+          type: string
+      responses:
+        '200':
+          $ref: '#/components/responses/Image'
+        '403':
+          description: Signature invalid or expired.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Signing is not configured on this deployment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+components:
+  responses:
+    RateLimited:
+      description: "Three distinct conditions share this status, separated by `error.code`:\n\n- `rate_limited` - your account exceeded 120 renders/minute\n- `target_rate_limited` - the site being rendered is being hit too hard\n  across all customers (60/minute per host)\n- `quota_exhausted` - the plan's monthly allowance is spent\n\nThe first two clear within the minute, so retry with backoff. The third\ndoes not: upgrade in the portal or wait for the period to roll over.\nBranch on the code rather than the status.\n"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such template, or not yours.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Image:
+      description: 'The rendered image. `png` unless `format: jpeg` was requested.
+
+        '
+      headers:
+        X-Renderwolf-Cache:
+          description: '`hit` when served from cache, in which case it was free.'
+          schema:
+            type: string
+            enum:
+            - hit
+        X-Renderwolf-Credits:
+          description: 'What this call cost. `0` on a cache hit, because a cache hit is
+
+            free. Read it to log spend per request without polling
+
+            `/v1/usage`.
+
+            '
+          schema:
+            type: integer
+        X-Renderwolf-Render-Ms:
+          description: Render time in milliseconds, excluding any requested delay.
+          schema:
+            type: integer
+        X-Renderwolf-Delay-Ms:
+          description: The `delay_ms` actually waited, when one was requested.
+          schema:
+            type: integer
+        X-Renderwolf-Captured-At:
+          description: 'RFC 3339 timestamp of a fresh capture. Present only on
+
+            `no_cache` renders, where the response is also `no-store` - the
+
+            pairing is what makes a capture usable as evidence.
+
+            '
+          schema:
+            type: string
+            format: date-time
+      content:
+        image/png:
+          schema:
+            type: string
+            format: binary
+        image/jpeg:
+          schema:
+            type: string
+            format: binary
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Malformed body, or neither/both of `url` and `html`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    SignedUrl:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Absolute URL, ready to embed.
+        path:
+          type: string
+          description: Path only, for serving behind your own domain.
+    SignRequest:
+      type: object
+      required:
+      - kind
+      properties:
+        kind:
+          type: string
+          enum:
+          - screenshot
+          - image
+          description: '`screenshot` signs a URL capture and requires `url`; `image` signs a
+
+            template render and requires `template`.
+
+            '
+        url:
+          type: string
+          format: uri
+          description: Required when `kind` is `screenshot`.
+        template:
+          type: string
+          format: uuid
+          description: Required when `kind` is `image`.
+        vars:
+          type: object
+          additionalProperties:
+            type: string
+        width:
+          type: integer
+          maximum: 4096
+        height:
+          type: integer
+          maximum: 4096
+        full_page:
+          type: boolean
+          default: false
+        ttl_hours:
+          type: integer
+          default: 0
+          description: Hours until the URL expires. `0` never expires.
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: Stable, safe to branch on.
+              enum:
+              - bad_request
+              - unauthorized
+              - invalid_api_key
+              - auth_failed
+              - forbidden
+              - email_unverified
+              - not_found
+              - quota_exhausted
+              - rate_limited
+              - target_rate_limited
+              - render_failed
+              - bad_signature
+              - signing_disabled
+            message:
+              type: string
+              description: Human-readable. May change; do not match on it.
+      example:
+        error:
+          code: target_rate_limited
+          message: too many renders for that host, try again shortly
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      description: 'An API key from the portal, sent as `Authorization: Bearer rw_live_...`.
+
+        '
