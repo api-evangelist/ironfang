@@ -120,6 +120,92 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
 components:
+  schemas:
+    SignedUrl:
+      type: object
+      properties:
+        url:
+          type: string
+          format: uri
+          description: Absolute URL, ready to embed.
+        path:
+          type: string
+          description: Path only, for serving behind your own domain.
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: Stable, safe to branch on.
+              enum:
+              - bad_request
+              - unauthorized
+              - invalid_api_key
+              - auth_failed
+              - forbidden
+              - email_unverified
+              - not_found
+              - quota_exhausted
+              - rate_limited
+              - target_rate_limited
+              - render_failed
+              - bad_signature
+              - signing_disabled
+            message:
+              type: string
+              description: Human-readable. May change; do not match on it.
+      example:
+        error:
+          code: target_rate_limited
+          message: too many renders for that host, try again shortly
+    SignRequest:
+      type: object
+      required:
+      - kind
+      properties:
+        kind:
+          type: string
+          enum:
+          - screenshot
+          - image
+          description: '`screenshot` signs a URL capture and requires `url`; `image` signs a
+
+            template render and requires `template`.
+
+            '
+        url:
+          type: string
+          format: uri
+          description: Required when `kind` is `screenshot`.
+        template:
+          type: string
+          format: uuid
+          description: Required when `kind` is `image`.
+        vars:
+          type: object
+          additionalProperties:
+            type: string
+        width:
+          type: integer
+          maximum: 4096
+        height:
+          type: integer
+          maximum: 4096
+        full_page:
+          type: boolean
+          default: false
+        ttl_hours:
+          type: integer
+          default: 0
+          description: Hours until the URL expires. `0` never expires.
   responses:
     RateLimited:
       description: "Three distinct conditions share this status, separated by `error.code`:\n\n- `rate_limited` - your account exceeded 120 renders/minute\n- `target_rate_limited` - the site being rendered is being hit too hard\n  across all customers (60/minute per host)\n- `quota_exhausted` - the plan's monthly allowance is spent\n\nThe first two clear within the minute, so retry with backoff. The third\ndoes not: upgrade in the portal or wait for the period to roll over.\nBranch on the code rather than the status.\n"
@@ -182,104 +268,18 @@ components:
           schema:
             type: string
             format: binary
-    Unauthorized:
-      description: Missing, malformed, revoked or unknown API key.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
     BadRequest:
       description: Malformed body, or neither/both of `url` and `html`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-  schemas:
-    SignedUrl:
-      type: object
-      properties:
-        url:
-          type: string
-          format: uri
-          description: Absolute URL, ready to embed.
-        path:
-          type: string
-          description: Path only, for serving behind your own domain.
-    SignRequest:
-      type: object
-      required:
-      - kind
-      properties:
-        kind:
-          type: string
-          enum:
-          - screenshot
-          - image
-          description: '`screenshot` signs a URL capture and requires `url`; `image` signs a
-
-            template render and requires `template`.
-
-            '
-        url:
-          type: string
-          format: uri
-          description: Required when `kind` is `screenshot`.
-        template:
-          type: string
-          format: uuid
-          description: Required when `kind` is `image`.
-        vars:
-          type: object
-          additionalProperties:
-            type: string
-        width:
-          type: integer
-          maximum: 4096
-        height:
-          type: integer
-          maximum: 4096
-        full_page:
-          type: boolean
-          default: false
-        ttl_hours:
-          type: integer
-          default: 0
-          description: Hours until the URL expires. `0` never expires.
-    Error:
-      type: object
-      required:
-      - error
-      properties:
-        error:
-          type: object
-          required:
-          - code
-          - message
-          properties:
-            code:
-              type: string
-              description: Stable, safe to branch on.
-              enum:
-              - bad_request
-              - unauthorized
-              - invalid_api_key
-              - auth_failed
-              - forbidden
-              - email_unverified
-              - not_found
-              - quota_exhausted
-              - rate_limited
-              - target_rate_limited
-              - render_failed
-              - bad_signature
-              - signing_disabled
-            message:
-              type: string
-              description: Human-readable. May change; do not match on it.
-      example:
-        error:
-          code: target_rate_limited
-          message: too many renders for that host, try again shortly
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   securitySchemes:
     apiKey:
       type: http

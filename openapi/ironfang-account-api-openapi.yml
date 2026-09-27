@@ -187,55 +187,7 @@ paths:
         '401':
           $ref: '#/components/responses/Unauthorized'
 components:
-  responses:
-    Unauthorized:
-      description: Missing, malformed, revoked or unknown API key.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    BadRequest:
-      description: Malformed body, or neither/both of `url` and `html`.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
   schemas:
-    Error:
-      type: object
-      required:
-      - error
-      properties:
-        error:
-          type: object
-          required:
-          - code
-          - message
-          properties:
-            code:
-              type: string
-              description: Stable, safe to branch on.
-              enum:
-              - bad_request
-              - unauthorized
-              - invalid_api_key
-              - auth_failed
-              - forbidden
-              - email_unverified
-              - not_found
-              - quota_exhausted
-              - rate_limited
-              - target_rate_limited
-              - render_failed
-              - bad_signature
-              - signing_disabled
-            message:
-              type: string
-              description: Human-readable. May change; do not match on it.
-      example:
-        error:
-          code: target_rate_limited
-          message: too many renders for that host, try again shortly
     Usage:
       type: object
       properties:
@@ -325,6 +277,54 @@ components:
             screenshot: 30
             pdf: 8
             qr: 3
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: Stable, safe to branch on.
+              enum:
+              - bad_request
+              - unauthorized
+              - invalid_api_key
+              - auth_failed
+              - forbidden
+              - email_unverified
+              - not_found
+              - quota_exhausted
+              - rate_limited
+              - target_rate_limited
+              - render_failed
+              - bad_signature
+              - signing_disabled
+            message:
+              type: string
+              description: Human-readable. May change; do not match on it.
+      example:
+        error:
+          code: target_rate_limited
+          message: too many renders for that host, try again shortly
+  responses:
+    BadRequest:
+      description: Malformed body, or neither/both of `url` and `html`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   securitySchemes:
     apiKey:
       type: http

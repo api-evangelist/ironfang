@@ -333,6 +333,45 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    SitePreview:
+      description: The poster image and scrolling MP4 returned as two file parts.
+      headers:
+        X-Renderwolf-Cache:
+          schema:
+            type: string
+            enum:
+            - hit
+        X-Renderwolf-Render-Ms:
+          schema:
+            type: integer
+        X-Renderwolf-Credits:
+          description: 'What this preview cost. `0` on a cache hit, because a cache hit is
+
+            free. The poster is included in the video cost.
+
+            '
+          schema:
+            type: integer
+        X-Renderwolf-Output-Seconds:
+          description: Calculated video length in seconds. Present on fresh renders.
+          schema:
+            type: number
+      content:
+        multipart/form-data:
+          schema:
+            type: object
+            required:
+            - poster
+            - video
+            properties:
+              poster:
+                type: string
+                format: binary
+                description: JPEG first frame, suitable for a video poster.
+              video:
+                type: string
+                format: binary
+                description: H.264 MP4 with fast-start metadata.
     Clip:
       description: The rendered clip.
       headers:
@@ -354,6 +393,44 @@ components:
             type: integer
       content:
         video/mp4:
+          schema:
+            type: string
+            format: binary
+    RenderFailed:
+      description: 'The page did not render: the host did not resolve, it never finished
+
+        loading, it timed out, or it was blocked. Try `delay_ms`, and check the
+
+        target loads in a normal browser.
+
+        '
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Pdf:
+      description: The rendered PDF.
+      headers:
+        X-Renderwolf-Cache:
+          schema:
+            type: string
+            enum:
+            - hit
+        X-Renderwolf-Credits:
+          description: 'What this call cost. `0` on a cache hit, because a cache hit is
+
+            free. Read it to log spend per request without polling
+
+            `/v1/usage`.
+
+            '
+          schema:
+            type: integer
+        X-Renderwolf-Render-Ms:
+          schema:
+            type: integer
+      content:
+        application/pdf:
           schema:
             type: string
             format: binary
@@ -406,255 +483,149 @@ components:
           schema:
             type: string
             format: binary
-    Unauthorized:
-      description: Missing, malformed, revoked or unknown API key.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    RenderFailed:
-      description: 'The page did not render: the host did not resolve, it never finished
-
-        loading, it timed out, or it was blocked. Try `delay_ms`, and check the
-
-        target loads in a normal browser.
-
-        '
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    Pdf:
-      description: The rendered PDF.
-      headers:
-        X-Renderwolf-Cache:
-          schema:
-            type: string
-            enum:
-            - hit
-        X-Renderwolf-Credits:
-          description: 'What this call cost. `0` on a cache hit, because a cache hit is
-
-            free. Read it to log spend per request without polling
-
-            `/v1/usage`.
-
-            '
-          schema:
-            type: integer
-        X-Renderwolf-Render-Ms:
-          schema:
-            type: integer
-      content:
-        application/pdf:
-          schema:
-            type: string
-            format: binary
     BadRequest:
       description: Malformed body, or neither/both of `url` and `html`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-    SitePreview:
-      description: The poster image and scrolling MP4 returned as two file parts.
-      headers:
-        X-Renderwolf-Cache:
-          schema:
-            type: string
-            enum:
-            - hit
-        X-Renderwolf-Render-Ms:
-          schema:
-            type: integer
-        X-Renderwolf-Credits:
-          description: 'What this preview cost. `0` on a cache hit, because a cache hit is
-
-            free. The poster is included in the video cost.
-
-            '
-          schema:
-            type: integer
-        X-Renderwolf-Output-Seconds:
-          description: Calculated video length in seconds. Present on fresh renders.
-          schema:
-            type: number
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
       content:
-        multipart/form-data:
+        application/json:
           schema:
-            type: object
-            required:
-            - poster
-            - video
-            properties:
-              poster:
-                type: string
-                format: binary
-                description: JPEG first frame, suitable for a video poster.
-              video:
-                type: string
-                format: binary
-                description: H.264 MP4 with fast-start metadata.
+            $ref: '#/components/schemas/Error'
   schemas:
-    PdfRequest:
+    SitePreviewRequest:
       allOf:
       - $ref: '#/components/schemas/RenderCommon'
       - type: object
+        required:
+        - url
         properties:
           url:
             type: string
             format: uri
-            description: Page to print. Mutually exclusive with `html`.
-          html:
-            type: string
-            description: Markup to print. Mutually exclusive with `url`.
-          landscape:
-            type: boolean
-            default: false
-          paper_format:
-            type: string
-            enum:
-            - a3
-            - a4
-            - a5
-            - letter
-            - legal
-            - tabloid
-            description: 'Named page size. Omit for Chromium''s default, which is Letter.
-
-              Sizes are portrait; `landscape` rotates them.
-
-              '
-          margin:
-            $ref: '#/components/schemas/Margin'
-          print_background:
-            type: boolean
-            default: false
-            description: 'Include background colours and images. Off by default, matching
-
-              a browser''s print dialog.
-
-              '
-          header_html:
-            type: string
-            description: Chromium print header template.
-          footer_html:
-            type: string
-            description: Chromium print footer template.
-          scale:
-            type: number
-            description: Print scale. Omit or `0` for 1.0.
-    ScreenshotRequest:
-      allOf:
-      - $ref: '#/components/schemas/RenderCommon'
-      - type: object
-        properties:
-          url:
-            type: string
-            format: uri
-            description: Page to capture. Mutually exclusive with `html`.
-          html:
-            type: string
-            description: Markup to render. Mutually exclusive with `url`.
+            description: Public HTTP or HTTPS page to record.
           width:
             type: integer
-            default: 1280
-            maximum: 4096
-            description: Viewport width in pixels.
+            default: 672
+            minimum: 320
+            maximum: 1280
+            multipleOf: 2
+            description: Output and browser viewport width in pixels.
           height:
             type: integer
-            default: 800
-            maximum: 4096
-            description: Viewport height. Ignored when `full_page` is set.
-          full_page:
-            type: boolean
-            default: false
-            description: Capture the whole scrollable page.
-          selector:
+            default: 494
+            minimum: 240
+            maximum: 1200
+            multipleOf: 2
+            description: 'Output and browser viewport height in pixels. Width multiplied
+
+              by height cannot exceed 1,200,000 pixels.
+
+              '
+          motion:
             type: string
-            description: 'CSS selector of a single element to capture instead of the
+            enum:
+            - per_page
+            - single_sweep
+            default: per_page
+            description: '`per_page` moves one viewport at a time with eased transitions
 
-              viewport.
+              and a 750ms reading pause. `single_sweep` makes one
 
-              '
-          clip:
-            $ref: '#/components/schemas/Clip'
-          omit_background:
-            type: boolean
-            default: false
-            description: 'Transparent background instead of the page''s own. Ignored for
-
-              `jpeg`, which has no alpha channel.
-
-              '
-          full_page_max_height:
-            type: integer
-            default: 20000
-            maximum: 20000
-            description: 'Cap a `full_page` capture at this many pixels. An
-
-              infinite-scroll page has no natural end, so 20000 applies when
-
-              none is given, and is also the most that can be asked for.
+              continuous eased pass from top to bottom.
 
               '
           dark_mode:
             type: boolean
             default: false
-            description: 'Render with `prefers-color-scheme: dark`.'
-          format:
-            type: string
-            enum:
-            - png
-            - jpeg
-            - webp
-            default: png
-            description: 'PNG is lossless and the default. WebP is typically a fraction of
-
-              the size for the same picture, which is what matters when the
-
-              output is served to browsers or social crawlers.
-
-              '
-          quality:
-            type: integer
-            minimum: 1
-            maximum: 100
-            default: 85
-            description: Quality for the lossy formats, `jpeg` and `webp`. Ignored for PNG.
+            description: 'Record with `prefers-color-scheme: dark`.'
           device:
             type: string
             enum:
             - desktop
             - tablet
             - mobile
-            description: 'Capture as a phone or tablet rather than a desktop window that
-
-              happens to be narrow. Sets the viewport, the device pixel ratio,
-
-              touch, and a matching mobile user agent together - width alone
-
-              gets media queries right and everything else wrong.
-
-
-              An explicit `width` or `height` still wins, so a preset can be
-
-              used for the density and user agent while overriding the size.
+            description: 'Use a full device preset. Explicit width and height still win.
 
               '
           delay_ms:
             type: integer
             minimum: 0
             maximum: 10000
-            description: 'Extra settle time after load. Renderwolf watches the page and
+            description: Extra settle time after page load and before lazy-content preloading. Capped at ten seconds.
+          no_cache:
+            type: boolean
+            default: false
+            description: Force a fresh recording instead of using a cached result.
+    ClipRequest:
+      type: object
+      description: 'Everything is optional. With no background a solid `colour` is used,
 
-              captures when it stops changing, so this is rarely needed - use
+        which is what most captioned clips want.
 
-              it for content that arrives on a timer, which quiescence cannot
+        '
+      properties:
+        size:
+          type: string
+          enum:
+          - vertical
+          - square
+          - landscape
+          - 720p
+          default: vertical
+          description: 'vertical 1080x1920, square 1080x1080, landscape 1920x1080,
 
-              anticipate. Capped at ten seconds.
+            720p 1280x720.
 
-              '
+            '
+        duration:
+          type: number
+          default: 15
+          minimum: 1
+          maximum: 60
+          description: Seconds of output.
+        colour:
+          type: string
+          pattern: ^#[0-9a-fA-F]{6}$
+          default: '#101820'
+          description: Background colour, used when no background asset is given.
+        background:
+          type: string
+          format: uri
+          description: An image or video to fill the canvas, cropped to fit.
+        watermark:
+          type: string
+          format: uri
+          description: A PNG placed in the bottom right corner.
+        audio:
+          type: string
+          format: uri
+          description: An audio track, trimmed to the clip's length.
+        font_size:
+          type: integer
+          minimum: 12
+          maximum: 200
+          description: Caption size in pixels; defaults to a fifteenth of the width.
+        captions:
+          type: array
+          maxItems: 12
+          items:
+            type: object
+            required:
+            - text
+            - to
+            properties:
+              text:
+                type: string
+                maxLength: 280
+              from:
+                type: number
+                description: Seconds from the start.
+              to:
+                type: number
     QrRequest:
       type: object
       required:
@@ -778,72 +749,6 @@ components:
         height:
           type: number
           maximum: 4096
-    ClipRequest:
-      type: object
-      description: 'Everything is optional. With no background a solid `colour` is used,
-
-        which is what most captioned clips want.
-
-        '
-      properties:
-        size:
-          type: string
-          enum:
-          - vertical
-          - square
-          - landscape
-          - 720p
-          default: vertical
-          description: 'vertical 1080x1920, square 1080x1080, landscape 1920x1080,
-
-            720p 1280x720.
-
-            '
-        duration:
-          type: number
-          default: 15
-          minimum: 1
-          maximum: 60
-          description: Seconds of output.
-        colour:
-          type: string
-          pattern: ^#[0-9a-fA-F]{6}$
-          default: '#101820'
-          description: Background colour, used when no background asset is given.
-        background:
-          type: string
-          format: uri
-          description: An image or video to fill the canvas, cropped to fit.
-        watermark:
-          type: string
-          format: uri
-          description: A PNG placed in the bottom right corner.
-        audio:
-          type: string
-          format: uri
-          description: An audio track, trimmed to the clip's length.
-        font_size:
-          type: integer
-          minimum: 12
-          maximum: 200
-          description: Caption size in pixels; defaults to a fifteenth of the width.
-        captions:
-          type: array
-          maxItems: 12
-          items:
-            type: object
-            required:
-            - text
-            - to
-            properties:
-              text:
-                type: string
-                maxLength: 280
-              from:
-                type: number
-                description: Seconds from the start.
-              to:
-                type: number
     RenderCommon:
       type: object
       properties:
@@ -952,70 +857,200 @@ components:
           description: 'Pixel density. 2 is retina: the same CSS size at twice the pixels.
 
             '
-    SitePreviewRequest:
+    PdfRequest:
       allOf:
       - $ref: '#/components/schemas/RenderCommon'
       - type: object
-        required:
-        - url
         properties:
           url:
             type: string
             format: uri
-            description: Public HTTP or HTTPS page to record.
-          width:
-            type: integer
-            default: 672
-            minimum: 320
-            maximum: 1280
-            multipleOf: 2
-            description: Output and browser viewport width in pixels.
-          height:
-            type: integer
-            default: 494
-            minimum: 240
-            maximum: 1200
-            multipleOf: 2
-            description: 'Output and browser viewport height in pixels. Width multiplied
-
-              by height cannot exceed 1,200,000 pixels.
-
-              '
-          motion:
+            description: Page to print. Mutually exclusive with `html`.
+          html:
+            type: string
+            description: Markup to print. Mutually exclusive with `url`.
+          landscape:
+            type: boolean
+            default: false
+          paper_format:
             type: string
             enum:
-            - per_page
-            - single_sweep
-            default: per_page
-            description: '`per_page` moves one viewport at a time with eased transitions
+            - a3
+            - a4
+            - a5
+            - letter
+            - legal
+            - tabloid
+            description: 'Named page size. Omit for Chromium''s default, which is Letter.
 
-              and a 750ms reading pause. `single_sweep` makes one
+              Sizes are portrait; `landscape` rotates them.
 
-              continuous eased pass from top to bottom.
+              '
+          margin:
+            $ref: '#/components/schemas/Margin'
+          print_background:
+            type: boolean
+            default: false
+            description: 'Include background colours and images. Off by default, matching
+
+              a browser''s print dialog.
+
+              '
+          header_html:
+            type: string
+            description: Chromium print header template.
+          footer_html:
+            type: string
+            description: Chromium print footer template.
+          scale:
+            type: number
+            description: Print scale. Omit or `0` for 1.0.
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: Stable, safe to branch on.
+              enum:
+              - bad_request
+              - unauthorized
+              - invalid_api_key
+              - auth_failed
+              - forbidden
+              - email_unverified
+              - not_found
+              - quota_exhausted
+              - rate_limited
+              - target_rate_limited
+              - render_failed
+              - bad_signature
+              - signing_disabled
+            message:
+              type: string
+              description: Human-readable. May change; do not match on it.
+      example:
+        error:
+          code: target_rate_limited
+          message: too many renders for that host, try again shortly
+    ScreenshotRequest:
+      allOf:
+      - $ref: '#/components/schemas/RenderCommon'
+      - type: object
+        properties:
+          url:
+            type: string
+            format: uri
+            description: Page to capture. Mutually exclusive with `html`.
+          html:
+            type: string
+            description: Markup to render. Mutually exclusive with `url`.
+          width:
+            type: integer
+            default: 1280
+            maximum: 4096
+            description: Viewport width in pixels.
+          height:
+            type: integer
+            default: 800
+            maximum: 4096
+            description: Viewport height. Ignored when `full_page` is set.
+          full_page:
+            type: boolean
+            default: false
+            description: Capture the whole scrollable page.
+          selector:
+            type: string
+            description: 'CSS selector of a single element to capture instead of the
+
+              viewport.
+
+              '
+          clip:
+            $ref: '#/components/schemas/Clip'
+          omit_background:
+            type: boolean
+            default: false
+            description: 'Transparent background instead of the page''s own. Ignored for
+
+              `jpeg`, which has no alpha channel.
+
+              '
+          full_page_max_height:
+            type: integer
+            default: 20000
+            maximum: 20000
+            description: 'Cap a `full_page` capture at this many pixels. An
+
+              infinite-scroll page has no natural end, so 20000 applies when
+
+              none is given, and is also the most that can be asked for.
 
               '
           dark_mode:
             type: boolean
             default: false
-            description: 'Record with `prefers-color-scheme: dark`.'
+            description: 'Render with `prefers-color-scheme: dark`.'
+          format:
+            type: string
+            enum:
+            - png
+            - jpeg
+            - webp
+            default: png
+            description: 'PNG is lossless and the default. WebP is typically a fraction of
+
+              the size for the same picture, which is what matters when the
+
+              output is served to browsers or social crawlers.
+
+              '
+          quality:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 85
+            description: Quality for the lossy formats, `jpeg` and `webp`. Ignored for PNG.
           device:
             type: string
             enum:
             - desktop
             - tablet
             - mobile
-            description: 'Use a full device preset. Explicit width and height still win.
+            description: 'Capture as a phone or tablet rather than a desktop window that
+
+              happens to be narrow. Sets the viewport, the device pixel ratio,
+
+              touch, and a matching mobile user agent together - width alone
+
+              gets media queries right and everything else wrong.
+
+
+              An explicit `width` or `height` still wins, so a preset can be
+
+              used for the density and user agent while overriding the size.
 
               '
           delay_ms:
             type: integer
             minimum: 0
             maximum: 10000
-            description: Extra settle time after page load and before lazy-content preloading. Capped at ten seconds.
-          no_cache:
-            type: boolean
-            default: false
-            description: Force a fresh recording instead of using a cached result.
+            description: 'Extra settle time after load. Renderwolf watches the page and
+
+              captures when it stops changing, so this is rarely needed - use
+
+              it for content that arrives on a timer, which quiescence cannot
+
+              anticipate. Capped at ten seconds.
+
+              '
     Margin:
       type: object
       description: 'Page margins in inches. Omitted sides keep Chromium''s default rather
@@ -1054,41 +1089,6 @@ components:
         path:
           type: string
           default: /
-    Error:
-      type: object
-      required:
-      - error
-      properties:
-        error:
-          type: object
-          required:
-          - code
-          - message
-          properties:
-            code:
-              type: string
-              description: Stable, safe to branch on.
-              enum:
-              - bad_request
-              - unauthorized
-              - invalid_api_key
-              - auth_failed
-              - forbidden
-              - email_unverified
-              - not_found
-              - quota_exhausted
-              - rate_limited
-              - target_rate_limited
-              - render_failed
-              - bad_signature
-              - signing_disabled
-            message:
-              type: string
-              description: Human-readable. May change; do not match on it.
-      example:
-        error:
-          code: target_rate_limited
-          message: too many renders for that host, try again shortly
   securitySchemes:
     apiKey:
       type: http

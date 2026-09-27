@@ -187,6 +187,18 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    RenderFailed:
+      description: 'The page did not render: the host did not resolve, it never finished
+
+        loading, it timed out, or it was blocked. Try `delay_ms`, and check the
+
+        target loads in a normal browser.
+
+        '
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     NotFound:
       description: No such template, or not yours.
       content:
@@ -242,48 +254,19 @@ components:
           schema:
             type: string
             format: binary
-    Unauthorized:
-      description: Missing, malformed, revoked or unknown API key.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    RenderFailed:
-      description: 'The page did not render: the host did not resolve, it never finished
-
-        loading, it timed out, or it was blocked. Try `delay_ms`, and check the
-
-        target loads in a normal browser.
-
-        '
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
     BadRequest:
       description: Malformed body, or neither/both of `url` and `html`.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   schemas:
-    RenderTemplateRequest:
-      allOf:
-      - $ref: '#/components/schemas/RenderCommon'
-      - type: object
-        properties:
-          vars:
-            type: object
-            additionalProperties:
-              type: string
-            description: Values for the template's placeholders.
-          format:
-            type: string
-            enum:
-            - png
-            - jpeg
-            - webp
-            default: png
     Template:
       type: object
       properties:
@@ -412,43 +395,6 @@ components:
           description: 'Pixel density. 2 is retina: the same CSS size at twice the pixels.
 
             '
-    Cookie:
-      type: object
-      required:
-      - name
-      - domain
-      properties:
-        name:
-          type: string
-        value:
-          type: string
-        domain:
-          type: string
-          description: 'Required. Chromium silently drops a domainless cookie set before
-
-            navigation, so the render would quietly come back logged out.
-
-            '
-        path:
-          type: string
-          default: /
-    TemplateInput:
-      type: object
-      required:
-      - name
-      - html
-      properties:
-        name:
-          type: string
-        html:
-          type: string
-          description: HTML with `{{placeholder}}` markers.
-        width:
-          type: integer
-          default: 1280
-        height:
-          type: integer
-          default: 800
     Error:
       type: object
       required:
@@ -484,6 +430,60 @@ components:
         error:
           code: target_rate_limited
           message: too many renders for that host, try again shortly
+    TemplateInput:
+      type: object
+      required:
+      - name
+      - html
+      properties:
+        name:
+          type: string
+        html:
+          type: string
+          description: HTML with `{{placeholder}}` markers.
+        width:
+          type: integer
+          default: 1280
+        height:
+          type: integer
+          default: 800
+    RenderTemplateRequest:
+      allOf:
+      - $ref: '#/components/schemas/RenderCommon'
+      - type: object
+        properties:
+          vars:
+            type: object
+            additionalProperties:
+              type: string
+            description: Values for the template's placeholders.
+          format:
+            type: string
+            enum:
+            - png
+            - jpeg
+            - webp
+            default: png
+    Cookie:
+      type: object
+      required:
+      - name
+      - domain
+      properties:
+        name:
+          type: string
+        value:
+          type: string
+        domain:
+          type: string
+          description: 'Required. Chromium silently drops a domainless cookie set before
+
+            navigation, so the render would quietly come back logged out.
+
+            '
+        path:
+          type: string
+          default: /
   parameters:
     TemplateId:
       name: id
