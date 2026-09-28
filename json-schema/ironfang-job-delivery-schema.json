@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/api-evangelist/ironfang/main/json-schema/ironfang-job-delivery-schema.json",
+  "title": "JobDelivery",
+  "description": "Where this job goes when it finishes, by destination id. Register the\ndestination first; credentials are never sent here.\n\nA webhook fires on success, failure and cancellation. Storage only\ncarries a result, so it fires on success alone - and a storage\ndelivery that gives up raises `render.delivery.failed` on the webhook\ndestination, which is how you find out that a bucket stopped\naccepting uploads.\n",
+  "x-generated": "2026-09-28",
+  "x-method": "derived",
+  "x-generator": "derive-json-schema.py",
+  "x-source": "openapi/ironfang-batches-api-openapi.yml#/components/schemas/JobDelivery",
+  "type": "object",
+  "properties": {
+    "webhook_destination": {
+      "type": "string",
+      "description": "Id of a `webhook` destination."
+    },
+    "storage_destination": {
+      "type": "string",
+      "description": "Id of an `s3` destination."
+    },
+    "storage_key": {
+      "type": "string",
+      "maxLength": 700,
+      "description": "The object key, relative to the destination's prefix. Fixed text\nplus `{job_id}`, `{external_id}` and `{date}` (`YYYY/MM/DD`) -\nno other field, and nothing evaluated. Segments may hold letters,\ndigits, dot, dash and underscore; anything that would climb out\nof the prefix is refused when the job is submitted, not quietly\nrewritten. Defaults to `renderwolf/{date}/{job_id}`.\n"
+    }
+  }
+}

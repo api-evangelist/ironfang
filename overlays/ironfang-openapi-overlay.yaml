@@ -9,7 +9,7 @@ x-provenance:
     Derived from https://ironfang.uk/renderwolf/docs, https://ironfang.uk/docs/mcp and the
     artifacts in this repo. Every value below is Ironfang's own published statement; nothing is
     invented. The harvested spec at openapi/ironfang-openapi.yaml is never mutated.
-extends: openapi/ironfang-openapi.yaml
+extends: ../openapi/_original/ironfang-openapi.yaml
 actions:
   - target: $.info
     description: >-

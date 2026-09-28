@@ -180,113 +180,7 @@ paths:
         '429':
           $ref: '#/components/responses/RateLimited'
 components:
-  responses:
-    RateLimited:
-      description: "Three distinct conditions share this status, separated by `error.code`:\n\n- `rate_limited` - your account exceeded 120 renders/minute\n- `target_rate_limited` - the site being rendered is being hit too hard\n  across all customers (60/minute per host)\n- `quota_exhausted` - the plan's monthly allowance is spent\n\nThe first two clear within the minute, so retry with backoff. The third\ndoes not: upgrade in the portal or wait for the period to roll over.\nBranch on the code rather than the status.\n"
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    RenderFailed:
-      description: 'The page did not render: the host did not resolve, it never finished
-
-        loading, it timed out, or it was blocked. Try `delay_ms`, and check the
-
-        target loads in a normal browser.
-
-        '
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    NotFound:
-      description: No such template, or not yours.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    Image:
-      description: 'The rendered image. `png` unless `format: jpeg` was requested.
-
-        '
-      headers:
-        X-Renderwolf-Cache:
-          description: '`hit` when served from cache, in which case it was free.'
-          schema:
-            type: string
-            enum:
-            - hit
-        X-Renderwolf-Credits:
-          description: 'What this call cost. `0` on a cache hit, because a cache hit is
-
-            free. Read it to log spend per request without polling
-
-            `/v1/usage`.
-
-            '
-          schema:
-            type: integer
-        X-Renderwolf-Render-Ms:
-          description: Render time in milliseconds, excluding any requested delay.
-          schema:
-            type: integer
-        X-Renderwolf-Delay-Ms:
-          description: The `delay_ms` actually waited, when one was requested.
-          schema:
-            type: integer
-        X-Renderwolf-Captured-At:
-          description: 'RFC 3339 timestamp of a fresh capture. Present only on
-
-            `no_cache` renders, where the response is also `no-store` - the
-
-            pairing is what makes a capture usable as evidence.
-
-            '
-          schema:
-            type: string
-            format: date-time
-      content:
-        image/png:
-          schema:
-            type: string
-            format: binary
-        image/jpeg:
-          schema:
-            type: string
-            format: binary
-    BadRequest:
-      description: Malformed body, or neither/both of `url` and `html`.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    Unauthorized:
-      description: Missing, malformed, revoked or unknown API key.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
   schemas:
-    Template:
-      type: object
-      properties:
-        id:
-          type: string
-          format: uuid
-        name:
-          type: string
-        html:
-          type: string
-        width:
-          type: integer
-        height:
-          type: integer
-        created_at:
-          type: string
-          format: date-time
-        updated_at:
-          type: string
-          format: date-time
     RenderCommon:
       type: object
       properties:
@@ -395,58 +289,6 @@ components:
           description: 'Pixel density. 2 is retina: the same CSS size at twice the pixels.
 
             '
-    Error:
-      type: object
-      required:
-      - error
-      properties:
-        error:
-          type: object
-          required:
-          - code
-          - message
-          properties:
-            code:
-              type: string
-              description: Stable, safe to branch on.
-              enum:
-              - bad_request
-              - unauthorized
-              - invalid_api_key
-              - auth_failed
-              - forbidden
-              - email_unverified
-              - not_found
-              - quota_exhausted
-              - rate_limited
-              - target_rate_limited
-              - render_failed
-              - bad_signature
-              - signing_disabled
-            message:
-              type: string
-              description: Human-readable. May change; do not match on it.
-      example:
-        error:
-          code: target_rate_limited
-          message: too many renders for that host, try again shortly
-    TemplateInput:
-      type: object
-      required:
-      - name
-      - html
-      properties:
-        name:
-          type: string
-        html:
-          type: string
-          description: HTML with `{{placeholder}}` markers.
-        width:
-          type: integer
-          default: 1280
-        height:
-          type: integer
-          default: 800
     RenderTemplateRequest:
       allOf:
       - $ref: '#/components/schemas/RenderCommon'
@@ -484,6 +326,164 @@ components:
         path:
           type: string
           default: /
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: Stable, safe to branch on.
+              enum:
+              - bad_request
+              - unauthorized
+              - invalid_api_key
+              - auth_failed
+              - forbidden
+              - email_unverified
+              - not_found
+              - quota_exhausted
+              - rate_limited
+              - target_rate_limited
+              - render_failed
+              - bad_signature
+              - signing_disabled
+            message:
+              type: string
+              description: Human-readable. May change; do not match on it.
+      example:
+        error:
+          code: target_rate_limited
+          message: too many renders for that host, try again shortly
+    Template:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        html:
+          type: string
+        width:
+          type: integer
+        height:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    TemplateInput:
+      type: object
+      required:
+      - name
+      - html
+      properties:
+        name:
+          type: string
+        html:
+          type: string
+          description: HTML with `{{placeholder}}` markers.
+        width:
+          type: integer
+          default: 1280
+        height:
+          type: integer
+          default: 800
+  responses:
+    RateLimited:
+      description: "Three distinct conditions share this status, separated by `error.code`:\n\n- `rate_limited` - your account exceeded 120 renders/minute\n- `target_rate_limited` - the site being rendered is being hit too hard\n  across all customers (60/minute per host)\n- `quota_exhausted` - the plan's monthly allowance is spent\n\nThe first two clear within the minute, so retry with backoff. The third\ndoes not: upgrade in the portal or wait for the period to roll over.\nBranch on the code rather than the status.\n"
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such template, or not yours.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RenderFailed:
+      description: 'The page did not render: the host did not resolve, it never finished
+
+        loading, it timed out, or it was blocked. Try `delay_ms`, and check the
+
+        target loads in a normal browser.
+
+        '
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Malformed body, or neither/both of `url` and `html`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Image:
+      description: 'The rendered image. `png` unless `format: jpeg` was requested.
+
+        '
+      headers:
+        X-Renderwolf-Cache:
+          description: '`hit` when served from cache, in which case it was free.'
+          schema:
+            type: string
+            enum:
+            - hit
+        X-Renderwolf-Credits:
+          description: 'What this call cost. `0` on a cache hit, because a cache hit is
+
+            free. Read it to log spend per request without polling
+
+            `/v1/usage`.
+
+            '
+          schema:
+            type: integer
+        X-Renderwolf-Render-Ms:
+          description: Render time in milliseconds, excluding any requested delay.
+          schema:
+            type: integer
+        X-Renderwolf-Delay-Ms:
+          description: The `delay_ms` actually waited, when one was requested.
+          schema:
+            type: integer
+        X-Renderwolf-Captured-At:
+          description: 'RFC 3339 timestamp of a fresh capture. Present only on
+
+            `no_cache` renders, where the response is also `no-store` - the
+
+            pairing is what makes a capture usable as evidence.
+
+            '
+          schema:
+            type: string
+            format: date-time
+      content:
+        image/png:
+          schema:
+            type: string
+            format: binary
+        image/jpeg:
+          schema:
+            type: string
+            format: binary
   parameters:
     TemplateId:
       name: id

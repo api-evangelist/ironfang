@@ -1,0 +1,175 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/api-evangelist/ironfang/main/json-schema/ironfang-site-preview-request-schema.json",
+  "title": "SitePreviewRequest",
+  "x-generated": "2026-09-28",
+  "x-method": "derived",
+  "x-generator": "derive-json-schema.py",
+  "x-source": "openapi/ironfang-render-api-openapi.yml#/components/schemas/SitePreviewRequest",
+  "allOf": [
+    {
+      "$ref": "#/$defs/RenderCommon"
+    },
+    {
+      "type": "object",
+      "required": [
+        "url"
+      ],
+      "properties": {
+        "url": {
+          "type": "string",
+          "format": "uri",
+          "description": "Public HTTP or HTTPS page to record."
+        },
+        "width": {
+          "type": "integer",
+          "default": 672,
+          "minimum": 320,
+          "maximum": 1280,
+          "multipleOf": 2,
+          "description": "Output and browser viewport width in pixels."
+        },
+        "height": {
+          "type": "integer",
+          "default": 494,
+          "minimum": 240,
+          "maximum": 1200,
+          "multipleOf": 2,
+          "description": "Output and browser viewport height in pixels. Width multiplied\nby height cannot exceed 1,200,000 pixels.\n"
+        },
+        "motion": {
+          "type": "string",
+          "enum": [
+            "per_page",
+            "single_sweep"
+          ],
+          "default": "per_page",
+          "description": "`per_page` moves one viewport at a time with eased transitions\nand a 750ms reading pause. `single_sweep` makes one\ncontinuous eased pass from top to bottom.\n"
+        },
+        "dark_mode": {
+          "type": "boolean",
+          "default": false,
+          "description": "Record with `prefers-color-scheme: dark`."
+        },
+        "device": {
+          "type": "string",
+          "enum": [
+            "desktop",
+            "tablet",
+            "mobile"
+          ],
+          "description": "Use a full device preset. Explicit width and height still win.\n"
+        },
+        "delay_ms": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 10000,
+          "description": "Extra settle time after page load and before lazy-content preloading. Capped at ten seconds."
+        },
+        "no_cache": {
+          "type": "boolean",
+          "default": false,
+          "description": "Force a fresh recording instead of using a cached result."
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "Cookie": {
+      "type": "object",
+      "required": [
+        "name",
+        "domain"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "value": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string",
+          "description": "Required. Chromium silently drops a domainless cookie set before\nnavigation, so the render would quietly come back logged out.\n"
+        },
+        "path": {
+          "type": "string",
+          "default": "/"
+        }
+      }
+    },
+    "RenderCommon": {
+      "type": "object",
+      "properties": {
+        "no_cache": {
+          "type": "boolean",
+          "default": false,
+          "description": "Force a fresh render instead of serving a cached one. Always\nbillable. Excluded from the cache key, so repeated fresh requests\ndo not collide.\n"
+        },
+        "block_ads": {
+          "type": "boolean",
+          "default": false,
+          "description": "Drop requests to known ad and tracker networks before they load.\nStopped as network requests rather than hidden afterwards, so the\npage never spends time fetching them.\n"
+        },
+        "block_cookie_banners": {
+          "type": "boolean",
+          "default": false,
+          "description": "Hide common consent banners, and undo the scroll lock they set -\nwithout which a full-page capture is one viewport tall.\n\nHidden, not accepted. Clicking \"accept\" would be a decision made\non the site owner's behalf and recorded as theirs.\n"
+        },
+        "hide_selectors": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "CSS selectors to hide before capturing. Applied after load, so\nelements injected by script are covered.\n"
+        },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Extra HTTP headers sent with every request for the page."
+        },
+        "cookies": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Cookie"
+          },
+          "description": "Cookies to set before navigating. Set beforehand because a session\ncookie that arrives after load has missed the request it was meant\nto authenticate.\n"
+        },
+        "authorization": {
+          "type": "string",
+          "description": "Sets the `Authorization` header - the common case, spelled once.\nAn explicit `Authorization` in `headers` wins over this.\n"
+        },
+        "user_agent": {
+          "type": "string",
+          "description": "Overrides the user agent, including any set by `device`.\n"
+        },
+        "wait_until": {
+          "type": "string",
+          "enum": [
+            "load",
+            "domcontentloaded",
+            "networkidle"
+          ],
+          "default": "load",
+          "description": "When the page counts as ready. `networkidle` waits for traffic to\nstop and is bounded by the render timeout, because a page with\npolling never truly idles.\n"
+        },
+        "wait_for_selector": {
+          "type": "string",
+          "description": "Wait for this element before capturing. Fails the render if it\nnever appears, rather than returning a half-drawn page.\n"
+        },
+        "timeout_ms": {
+          "type": "integer",
+          "description": "Per-render timeout. Clamped to the service maximum - it can lower\nthe ceiling but not raise it.\n"
+        },
+        "device_scale_factor": {
+          "type": "number",
+          "minimum": 1,
+          "maximum": 3,
+          "description": "Pixel density. 2 is retina: the same CSS size at twice the pixels.\n"
+        }
+      }
+    }
+  }
+}

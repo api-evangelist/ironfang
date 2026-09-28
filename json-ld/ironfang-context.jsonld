@@ -1,0 +1,297 @@
+{
+  "@context": {
+    "@vocab": "https://ironfang.com/schema#",
+    "schema": "https://schema.org/",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "dcterms": "http://purl.org/dc/terms/",
+    "ironfang": "https://ironfang.com/schema#",
+    "Usage": "ironfang:Usage",
+    "period": {
+      "@id": "ironfang:period",
+      "@type": "xsd:string"
+    },
+    "credits": {
+      "@id": "ironfang:credits",
+      "@type": "xsd:integer"
+    },
+    "renders": {
+      "@id": "ironfang:renders",
+      "@type": "xsd:integer"
+    },
+    "limit": {
+      "@id": "ironfang:limit",
+      "@type": "xsd:integer"
+    },
+    "period_start": {
+      "@id": "ironfang:period_start",
+      "@type": "xsd:date"
+    },
+    "period_end": {
+      "@id": "ironfang:period_end",
+      "@type": "xsd:date"
+    },
+    "by_kind": {
+      "@id": "ironfang:by_kind"
+    },
+    "unattributed": {
+      "@id": "ironfang:unattributed",
+      "@type": "xsd:integer"
+    },
+    "daily": {
+      "@id": "ironfang:daily",
+      "@container": "@list"
+    },
+    "Error": "ironfang:Error",
+    "error": {
+      "@id": "ironfang:error"
+    },
+    "JobDelivery": "ironfang:JobDelivery",
+    "webhook_destination": {
+      "@id": "ironfang:webhook_destination",
+      "@type": "xsd:string"
+    },
+    "storage_destination": {
+      "@id": "ironfang:storage_destination",
+      "@type": "xsd:string"
+    },
+    "storage_key": {
+      "@id": "ironfang:storage_key",
+      "@type": "xsd:string"
+    },
+    "ClipRequest": "ironfang:ClipRequest",
+    "size": {
+      "@id": "ironfang:size",
+      "@type": "xsd:string"
+    },
+    "duration": {
+      "@id": "ironfang:duration",
+      "@type": "xsd:decimal"
+    },
+    "colour": {
+      "@id": "ironfang:colour",
+      "@type": "xsd:string"
+    },
+    "background": {
+      "@id": "ironfang:background",
+      "@type": "@id"
+    },
+    "watermark": {
+      "@id": "ironfang:watermark",
+      "@type": "@id"
+    },
+    "audio": {
+      "@id": "ironfang:audio",
+      "@type": "@id"
+    },
+    "font_size": {
+      "@id": "ironfang:font_size",
+      "@type": "xsd:integer"
+    },
+    "captions": {
+      "@id": "ironfang:captions",
+      "@container": "@list"
+    },
+    "QrRequest": "ironfang:QrRequest",
+    "data": {
+      "@id": "ironfang:data",
+      "@type": "xsd:string"
+    },
+    "ecc": {
+      "@id": "ironfang:ecc",
+      "@type": "xsd:string"
+    },
+    "dark": {
+      "@id": "ironfang:dark",
+      "@type": "xsd:string"
+    },
+    "light": {
+      "@id": "ironfang:light",
+      "@type": "xsd:string"
+    },
+    "dots": {
+      "@id": "ironfang:dots",
+      "@type": "xsd:string"
+    },
+    "eyes": {
+      "@id": "ironfang:eyes",
+      "@type": "xsd:string"
+    },
+    "margin": {
+      "@id": "ironfang:margin",
+      "@type": "xsd:integer"
+    },
+    "invert": {
+      "@id": "ironfang:invert",
+      "@type": "xsd:boolean"
+    },
+    "logo": {
+      "@id": "ironfang:logo",
+      "@type": "xsd:string"
+    },
+    "logo_url": {
+      "@id": "ironfang:logo_url",
+      "@type": "@id"
+    },
+    "logo_size": {
+      "@id": "ironfang:logo_size",
+      "@type": "xsd:decimal"
+    },
+    "logo_pad": {
+      "@id": "ironfang:logo_pad",
+      "@type": "xsd:boolean"
+    },
+    "Clip": "ironfang:Clip",
+    "x": {
+      "@id": "ironfang:x",
+      "@type": "xsd:decimal"
+    },
+    "y": {
+      "@id": "ironfang:y",
+      "@type": "xsd:decimal"
+    },
+    "width": {
+      "@id": "ironfang:width",
+      "@type": "xsd:decimal"
+    },
+    "height": {
+      "@id": "ironfang:height",
+      "@type": "xsd:decimal"
+    },
+    "RenderCommon": "ironfang:RenderCommon",
+    "no_cache": {
+      "@id": "ironfang:no_cache",
+      "@type": "xsd:boolean"
+    },
+    "block_ads": {
+      "@id": "ironfang:block_ads",
+      "@type": "xsd:boolean"
+    },
+    "block_cookie_banners": {
+      "@id": "ironfang:block_cookie_banners",
+      "@type": "xsd:boolean"
+    },
+    "hide_selectors": {
+      "@id": "ironfang:hide_selectors",
+      "@container": "@list"
+    },
+    "headers": {
+      "@id": "ironfang:headers"
+    },
+    "cookies": {
+      "@id": "ironfang:cookies",
+      "@container": "@list"
+    },
+    "authorization": {
+      "@id": "ironfang:authorization",
+      "@type": "xsd:string"
+    },
+    "user_agent": {
+      "@id": "ironfang:user_agent",
+      "@type": "xsd:string"
+    },
+    "wait_until": {
+      "@id": "ironfang:wait_until",
+      "@type": "xsd:string"
+    },
+    "wait_for_selector": {
+      "@id": "ironfang:wait_for_selector",
+      "@type": "xsd:string"
+    },
+    "timeout_ms": {
+      "@id": "ironfang:timeout_ms",
+      "@type": "xsd:integer"
+    },
+    "device_scale_factor": {
+      "@id": "ironfang:device_scale_factor",
+      "@type": "xsd:decimal"
+    },
+    "Margin": "ironfang:Margin",
+    "top": {
+      "@id": "ironfang:top",
+      "@type": "xsd:decimal"
+    },
+    "right": {
+      "@id": "ironfang:right",
+      "@type": "xsd:decimal"
+    },
+    "bottom": {
+      "@id": "ironfang:bottom",
+      "@type": "xsd:decimal"
+    },
+    "left": {
+      "@id": "ironfang:left",
+      "@type": "xsd:decimal"
+    },
+    "Cookie": "ironfang:Cookie",
+    "name": {
+      "@id": "ironfang:name",
+      "@type": "xsd:string"
+    },
+    "value": {
+      "@id": "ironfang:value",
+      "@type": "xsd:string"
+    },
+    "domain": {
+      "@id": "ironfang:domain",
+      "@type": "xsd:string"
+    },
+    "path": {
+      "@id": "ironfang:path",
+      "@type": "xsd:string"
+    },
+    "SignedUrl": "ironfang:SignedUrl",
+    "url": {
+      "@id": "ironfang:url",
+      "@type": "@id"
+    },
+    "SignRequest": "ironfang:SignRequest",
+    "kind": {
+      "@id": "ironfang:kind",
+      "@type": "xsd:string"
+    },
+    "template": {
+      "@id": "ironfang:template",
+      "@type": "xsd:string"
+    },
+    "vars": {
+      "@id": "ironfang:vars"
+    },
+    "full_page": {
+      "@id": "ironfang:full_page",
+      "@type": "xsd:boolean"
+    },
+    "ttl_hours": {
+      "@id": "ironfang:ttl_hours",
+      "@type": "xsd:integer"
+    },
+    "Template": "ironfang:Template",
+    "id": {
+      "@id": "ironfang:id",
+      "@type": "xsd:string"
+    },
+    "html": {
+      "@id": "ironfang:html",
+      "@type": "xsd:string"
+    },
+    "created_at": {
+      "@id": "ironfang:created_at",
+      "@type": "xsd:dateTime"
+    },
+    "updated_at": {
+      "@id": "ironfang:updated_at",
+      "@type": "xsd:dateTime"
+    },
+    "TemplateInput": "ironfang:TemplateInput"
+  },
+  "@type": "schema:Dataset",
+  "schema:name": "Ironfang API JSON-LD context",
+  "schema:description": "A JSON-LD @context for the objects Ironfang's own API contract declares: one class per component schema, one property per declared field, typed from the contract. Derived by script (derive-json-ld.py, 2026-09-28) from openapi/ironfang-account-api-openapi.yml, openapi/ironfang-batches-api-openapi.yml, openapi/ironfang-destinations-api-openapi.yml.",
+  "dcterms:created": "2026-09-28",
+  "dcterms:source": [
+    "openapi/ironfang-account-api-openapi.yml",
+    "openapi/ironfang-batches-api-openapi.yml",
+    "openapi/ironfang-destinations-api-openapi.yml",
+    "openapi/ironfang-jobs-api-openapi.yml",
+    "openapi/ironfang-render-api-openapi.yml"
+  ]
+}

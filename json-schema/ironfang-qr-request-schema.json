@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/api-evangelist/ironfang/main/json-schema/ironfang-qr-request-schema.json",
+  "title": "QrRequest",
+  "x-generated": "2026-09-28",
+  "x-method": "derived",
+  "x-generator": "derive-json-schema.py",
+  "x-source": "openapi/ironfang-render-api-openapi.yml#/components/schemas/QrRequest",
+  "type": "object",
+  "required": [
+    "data"
+  ],
+  "properties": {
+    "data": {
+      "type": "string",
+      "maxLength": 1024,
+      "description": "The payload - a URL, WiFi string, or any text up to 1KB."
+    },
+    "size": {
+      "type": "integer",
+      "default": 512,
+      "minimum": 64,
+      "maximum": 2048,
+      "description": "Output side in pixels. Output is always square PNG."
+    },
+    "ecc": {
+      "type": "string",
+      "enum": [
+        "L",
+        "M",
+        "Q",
+        "H"
+      ],
+      "default": "M",
+      "description": "Error-correction level. Forced to `H` when a logo is present -\nthe logo destroys the modules it covers, and that budget has to\ncome from somewhere.\n"
+    },
+    "dark": {
+      "type": "string",
+      "default": "#000000",
+      "description": "Module color, `#rgb` or `#rrggbb`. Must actually be darker than `light`."
+    },
+    "light": {
+      "type": "string",
+      "default": "#ffffff",
+      "description": "Background color, or `transparent`. Transparent codes are\nverified against a white ground - place them on light surfaces.\n"
+    },
+    "dots": {
+      "type": "string",
+      "enum": [
+        "square",
+        "circle"
+      ],
+      "default": "square",
+      "description": "Module style. `circle` draws separated dots. Finder patterns\nalways render solid - styled finders are how QR generators\nproduce codes that do not scan.\n"
+    },
+    "eyes": {
+      "type": "string",
+      "enum": [
+        "square",
+        "rounded"
+      ],
+      "description": "Finder-pattern style. Defaults to match `dots`."
+    },
+    "margin": {
+      "type": "integer",
+      "default": 4,
+      "minimum": 0,
+      "maximum": 8,
+      "description": "Quiet zone, in modules."
+    },
+    "invert": {
+      "type": "boolean",
+      "default": false,
+      "description": "Light modules on a dark ground. Explicit because it narrows the\naudience: modern phone cameras read inverted codes, many\nembedded and in-app scanners do not - use it for screens, not\nprint or payments. With the flag set, `dark` (the module color)\nmust be lighter than `light` (the ground). Verified against the\nnegative, so the structural guarantee holds.\n"
+    },
+    "logo": {
+      "type": "string",
+      "description": "Center mark as a base64 `data:` URI, png or jpeg, up to 1MB\ndecoded. Mutually exclusive with `logo_url`.\n"
+    },
+    "logo_url": {
+      "type": "string",
+      "format": "uri",
+      "description": "Center mark by URL. SSRF-guarded and rate-capped like a render target."
+    },
+    "logo_size": {
+      "type": "number",
+      "default": 0.22,
+      "minimum": 0.12,
+      "maximum": 0.3,
+      "description": "Logo tile as a fraction of the symbol width."
+    },
+    "logo_pad": {
+      "type": "boolean",
+      "default": true,
+      "description": "Knockout tile behind the logo so it sits on clean ground."
+    }
+  }
+}

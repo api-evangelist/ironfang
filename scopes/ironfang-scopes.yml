@@ -1,9 +1,7 @@
 generated: '2026-09-02'
 method: searched
 source: https://ironfang.uk/docs/mcp
-docs:
-  - https://ironfang.uk/docs/mcp
-  - https://ironfang.uk/renderwolf/docs#scopes
+docs: https://ironfang.uk/docs/mcp
 note: >-
   derive-oauth-scopes.py found no oauth2 securityScheme in the OpenAPI - the published contract
   declares only the apiKey bearer scheme, so nothing was derivable. Every scope below was read

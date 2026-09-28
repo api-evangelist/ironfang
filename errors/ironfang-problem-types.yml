@@ -23,7 +23,7 @@ correlation:
   server_header: X-Ironfang-Request-ID
   client_header: X-Request-ID
   client_header_rules: printable ASCII, up to 128 characters, echoed back unchanged
-problem_types:
+problems:
   - code: bad_request
     status: 400
     title: Malformed JSON or invalid parameters
@@ -102,7 +102,7 @@ problem_types:
     status: 403
     title: Signed-URL minting is not enabled for this account
   - code: mcp_budget_exhausted
-    status: null
+    status: "null"
     title: The MCP connection's own credit budget is spent
     remediation: Wait for the reset time returned with the error, or raise the plan.
     surface: mcp

@@ -1,0 +1,179 @@
+generated: '2026-09-28'
+method: derived
+source: the pre-flight dossier, apis.yml pointers, spec servers, well-known, vendors -- nothing fetched here
+generator: derive-hosts.py
+summary:
+  hosts: 13
+  own: 7
+  other_domain: 4
+  platform: 2
+  roles:
+  - api
+  - identity
+  - other
+  - portal
+  - source
+  - status
+  - website
+hosts:
+- host: api.ironfang.com
+  found_by:
+  - apis[]
+  - probed
+  - site-links
+  - docs-index
+  - spec-found
+  - contract-discovery
+  - well-known
+  types: []
+  serves:
+  - api
+  - docs
+  - spec
+  registrable_domain: ironfang.com
+  role: api
+  relation: own
+- host: api.ironfang.uk
+  found_by:
+  - contract-discovery
+  types: []
+  serves: []
+  registrable_domain: ironfang.uk
+  role: api
+  relation: other-domain
+- host: api.modelcontextprotocol.io
+  found_by:
+  - contract-discovery
+  types: []
+  serves: []
+  registrable_domain: modelcontextprotocol.io
+  role: api
+  relation: other-domain
+- host: github.com
+  found_by:
+  - pointer
+  - docs-index
+  types:
+  - GitHubOrganization
+  serves:
+  - docs
+  registrable_domain: github.com
+  role: source
+  relation: platform
+- host: id.ironfang.com
+  found_by:
+  - pointer
+  - probed
+  - site-links
+  - well-known
+  types:
+  - SignUp
+  serves: []
+  registrable_domain: ironfang.com
+  role: identity
+  relation: own
+- host: ironfang.com
+  found_by:
+  - pointer
+  - apis[]
+  - probed
+  - site-links
+  - docs-index
+  - well-known
+  - vendor-detect
+  types:
+  - Webhooks
+  - Documentation
+  - ChangeLog
+  - DeveloperPortal
+  - GettingStarted
+  - Support
+  - Pricing
+  - TermsOfService
+  - PrivacyPolicy
+  serves:
+  - docs
+  - cdn
+  vendor: cloudflare
+  registrable_domain: ironfang.com
+  role: portal
+  relation: own
+- host: mcp.ironfang.com
+  found_by:
+  - pointer
+  - probed
+  - well-known
+  types:
+  - MCPServer
+  serves: []
+  registrable_domain: ironfang.com
+  role: other
+  relation: own
+- host: mcp.ironfang.uk
+  found_by:
+  - probed
+  - contract-discovery
+  - well-known
+  types: []
+  serves: []
+  registrable_domain: ironfang.uk
+  role: other
+  relation: other-domain
+- host: portal.ironfang.com
+  found_by:
+  - probed
+  - site-links
+  - docs-index
+  types: []
+  serves:
+  - docs
+  registrable_domain: ironfang.com
+  role: other
+  relation: own
+- host: registry.modelcontextprotocol.io
+  found_by:
+  - probed
+  - contract-discovery
+  - well-known
+  types: []
+  serves: []
+  registrable_domain: modelcontextprotocol.io
+  role: other
+  relation: other-domain
+- host: status.ironfang.com
+  found_by:
+  - pointer
+  - probed
+  - site-links
+  - docs-index
+  - well-known
+  - vendor-detect
+  types:
+  - StatusPage
+  serves:
+  - docs
+  - hosting
+  vendor: github-pages
+  registrable_domain: ironfang.com
+  role: status
+  relation: own
+- host: www.ironfang.com
+  found_by:
+  - pointer
+  - probed
+  - well-known
+  types:
+  - Website
+  serves: []
+  registrable_domain: ironfang.com
+  role: website
+  relation: own
+- host: www.npmjs.com
+  found_by:
+  - docs-index
+  types: []
+  serves:
+  - docs
+  registrable_domain: npmjs.com
+  role: other
+  relation: platform

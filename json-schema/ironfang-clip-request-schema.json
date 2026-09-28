@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/api-evangelist/ironfang/main/json-schema/ironfang-clip-request-schema.json",
+  "title": "ClipRequest",
+  "description": "Everything is optional. With no background a solid `colour` is used,\nwhich is what most captioned clips want.\n",
+  "x-generated": "2026-09-28",
+  "x-method": "derived",
+  "x-generator": "derive-json-schema.py",
+  "x-source": "openapi/ironfang-render-api-openapi.yml#/components/schemas/ClipRequest",
+  "type": "object",
+  "properties": {
+    "size": {
+      "type": "string",
+      "enum": [
+        "vertical",
+        "square",
+        "landscape",
+        "720p"
+      ],
+      "default": "vertical",
+      "description": "vertical 1080x1920, square 1080x1080, landscape 1920x1080,\n720p 1280x720.\n"
+    },
+    "duration": {
+      "type": "number",
+      "default": 15,
+      "minimum": 1,
+      "maximum": 60,
+      "description": "Seconds of output."
+    },
+    "colour": {
+      "type": "string",
+      "pattern": "^#[0-9a-fA-F]{6}$",
+      "default": "#101820",
+      "description": "Background colour, used when no background asset is given."
+    },
+    "background": {
+      "type": "string",
+      "format": "uri",
+      "description": "An image or video to fill the canvas, cropped to fit."
+    },
+    "watermark": {
+      "type": "string",
+      "format": "uri",
+      "description": "A PNG placed in the bottom right corner."
+    },
+    "audio": {
+      "type": "string",
+      "format": "uri",
+      "description": "An audio track, trimmed to the clip's length."
+    },
+    "font_size": {
+      "type": "integer",
+      "minimum": 12,
+      "maximum": 200,
+      "description": "Caption size in pixels; defaults to a fifteenth of the width."
+    },
+    "captions": {
+      "type": "array",
+      "maxItems": 12,
+      "items": {
+        "type": "object",
+        "required": [
+          "text",
+          "to"
+        ],
+        "properties": {
+          "text": {
+            "type": "string",
+            "maxLength": 280
+          },
+          "from": {
+            "type": "number",
+            "description": "Seconds from the start."
+          },
+          "to": {
+            "type": "number"
+          }
+        }
+      }
+    }
+  }
+}

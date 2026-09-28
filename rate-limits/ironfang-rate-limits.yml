@@ -1,6 +1,7 @@
 generated: '2026-09-02'
 method: searched
 source: https://ironfang.uk/renderwolf/docs#options
+name: Ironfang API Rate Limits
 docs: https://ironfang.uk/renderwolf/docs
 limit_count: 2
 note: >-
@@ -9,7 +10,8 @@ note: >-
   one protects the account. Cache hits count against neither because they send no target
   traffic, and a request blocked by a rate limit spends no credits.
 limits:
-  - scope: per-target-host
+  - name: per-target-host
+    scope: per-target-host
     window: 1 minute
     limit: 60
     unit: renders

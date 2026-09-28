@@ -24,6 +24,7 @@ auth:
   see: authentication/ironfang-authentication.yml
 idempotency:
   supported: true
+  coverage: full
   header: Idempotency-Key
   applies_to:
     - 'POST /v1/jobs (submitJob)'
@@ -32,7 +33,8 @@ idempotency:
     The same key with the same request returns the existing job. The same key with a different
     request is a 409 idempotency_conflict. Ironfang instructs clients to send it on every
     submission.
-  scope: per key value, per account
+  scope:
+    - per key value, per account
   retention: not published
   conflict_code: idempotency_conflict
   synchronous_endpoints: >-

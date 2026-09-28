@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/api-evangelist/ironfang/main/json-schema/ironfang-usage-schema.json",
+  "title": "Usage",
+  "x-generated": "2026-09-28",
+  "x-method": "derived",
+  "x-generator": "derive-json-schema.py",
+  "x-source": "openapi/ironfang-account-api-openapi.yml#/components/schemas/Usage",
+  "type": "object",
+  "properties": {
+    "period": {
+      "type": "string",
+      "description": "The period these numbers cover. Follows the billing anniversary for\nsubscribers, the calendar month otherwise.\n"
+    },
+    "credits": {
+      "type": "integer",
+      "description": "Credits spent so far this period. Cache hits are free and not counted."
+    },
+    "renders": {
+      "type": "integer",
+      "deprecated": true,
+      "description": "The same number under the name the API shipped with."
+    },
+    "limit": {
+      "type": "integer",
+      "description": "Credits included in the plan for this period, grants included."
+    },
+    "period_start": {
+      "type": "string",
+      "format": "date"
+    },
+    "period_end": {
+      "type": "string",
+      "format": "date",
+      "description": "The period as [period_start, period_end) in UTC dates."
+    },
+    "by_kind": {
+      "type": "object",
+      "description": "Where this period's credits went, keyed by render kind\n(`screenshot`, `pdf`, `image`, `qr`, `clip`). Kinds with no spend\nare absent.\n",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "credits": {
+            "type": "integer"
+          },
+          "count": {
+            "type": "integer"
+          }
+        }
+      }
+    },
+    "unattributed": {
+      "type": "integer",
+      "description": "Credits from before per-kind metering existed. The breakdown plus\nthis always equals `credits`.\n"
+    },
+    "daily": {
+      "type": "array",
+      "description": "The last 30 days of spend, oldest first, zero days included.",
+      "items": {
+        "type": "object",
+        "properties": {
+          "day": {
+            "type": "string",
+            "format": "date"
+          },
+          "credits": {
+            "type": "integer"
+          },
+          "by_kind": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "integer"
+            }
+          }
+        }
+      }
+    }
+  }
+}

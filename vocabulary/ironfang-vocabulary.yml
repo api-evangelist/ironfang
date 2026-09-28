@@ -1,0 +1,116 @@
+generated: '2026-09-28'
+method: derived
+generator: derive-vocabulary.py
+source:
+- openapi/ironfang-account-api-openapi.yml
+- openapi/ironfang-batches-api-openapi.yml
+- openapi/ironfang-destinations-api-openapi.yml
+- openapi/ironfang-jobs-api-openapi.yml
+- openapi/ironfang-render-api-openapi.yml
+vocabulary:
+  name: Ironfang Domain Vocabulary
+  description: 'Terms declared by Ironfang''s own API contract: its resource groups, objects and enumerations, with the contract''s definitions.
+    Derived, not authored.'
+  version: '2026-09-28'
+  terms:
+  - term: Account
+    definition: Usage against quota.
+    tags:
+    - Resource Group
+    source: openapi/ironfang-account-api-openapi.yml
+  - term: Batches
+    definition: Up to 100 renders submitted, and refused, together.
+    tags:
+    - Resource Group
+    source: openapi/ironfang-batches-api-openapi.yml
+  - term: Destinations
+    definition: Where a finished job goes - a signed webhook, or your own S3 bucket.
+    tags:
+    - Resource Group
+    source: openapi/ironfang-destinations-api-openapi.yml
+  - term: Render
+    definition: Turn a URL or HTML into an image, PDF or video.
+    tags:
+    - Resource Group
+    source: openapi/ironfang-render-api-openapi.yml
+  - term: Signed URLs
+    definition: Shareable render URLs that need no API key.
+    tags:
+    - Resource Group
+    source: openapi/ironfang-signed-urls-api-openapi.yml
+  - term: Templates
+    definition: Stored HTML with `{{variable}}` placeholders, rendered on demand.
+    tags:
+    - Resource Group
+    source: openapi/ironfang-templates-api-openapi.yml
+  - term: Usage
+    definition: 'Object declared by the contract with fields: period, credits, renders, limit, period_start, period_end, by_kind, unattributed,
+      daily.'
+    tags:
+    - Object
+    source: openapi/ironfang-account-api-openapi.yml#/components/schemas/Usage
+  - term: Error
+    definition: 'Object declared by the contract with fields: error.'
+    tags:
+    - Object
+    source: openapi/ironfang-account-api-openapi.yml#/components/schemas/Error
+  - term: JobDelivery
+    definition: Where this job goes when it finishes, by destination id. Register the destination first; credentials are never sent here. A webhook
+      fires on success, failure and cancellation. Storage only carries a result, so it fires on success alone - and a storage delivery that gives
+      up raises `render.delivery.failed` on the webhook destination, which is how you find out that a bucket stopped accepting uploads
+    tags:
+    - Object
+    source: openapi/ironfang-batches-api-openapi.yml#/components/schemas/JobDelivery
+  - term: ClipRequest
+    definition: Everything is optional. With no background a solid `colour` is used, which is what most captioned clips want.
+    tags:
+    - Object
+    source: openapi/ironfang-render-api-openapi.yml#/components/schemas/ClipRequest
+  - term: QrRequest
+    definition: 'Object declared by the contract with fields: data, size, ecc, dark, light, dots, eyes, margin, invert, logo, logo_url, logo_size.
+      (1 more)'
+    tags:
+    - Object
+    source: openapi/ironfang-render-api-openapi.yml#/components/schemas/QrRequest
+  - term: Clip
+    definition: A rectangle in CSS pixels from the top left of the page.
+    tags:
+    - Object
+    source: openapi/ironfang-render-api-openapi.yml#/components/schemas/Clip
+  - term: RenderCommon
+    definition: 'Object declared by the contract with fields: no_cache, block_ads, block_cookie_banners, hide_selectors, headers, cookies, authorization,
+      user_agent, wait_until, wait_for_selector, timeout_ms, device_scale_factor.'
+    tags:
+    - Object
+    source: openapi/ironfang-render-api-openapi.yml#/components/schemas/RenderCommon
+  - term: Margin
+    definition: Page margins in inches. Omitted sides keep Chromium's default rather than becoming zero - a PDF printed hard to the paper edge
+      is rarely what leaving a field out was meant to mean.
+    tags:
+    - Object
+    source: openapi/ironfang-render-api-openapi.yml#/components/schemas/Margin
+  - term: Cookie
+    definition: 'Object declared by the contract with fields: name, value, domain, path.'
+    tags:
+    - Object
+    source: openapi/ironfang-render-api-openapi.yml#/components/schemas/Cookie
+  - term: SignedUrl
+    definition: 'Object declared by the contract with fields: url, path.'
+    tags:
+    - Object
+    source: openapi/ironfang-signed-urls-api-openapi.yml#/components/schemas/SignedUrl
+  - term: SignRequest
+    definition: 'Object declared by the contract with fields: kind, url, template, vars, width, height, full_page, ttl_hours.'
+    tags:
+    - Object
+    source: openapi/ironfang-signed-urls-api-openapi.yml#/components/schemas/SignRequest
+  - term: Template
+    definition: 'Object declared by the contract with fields: id, name, html, width, height, created_at, updated_at.'
+    tags:
+    - Object
+    source: openapi/ironfang-templates-api-openapi.yml#/components/schemas/Template
+  - term: TemplateInput
+    definition: 'Object declared by the contract with fields: name, html, width, height.'
+    tags:
+    - Object
+    source: openapi/ironfang-templates-api-openapi.yml#/components/schemas/TemplateInput

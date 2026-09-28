@@ -1,252 +1,85 @@
 name: Ironfang
-description: >-
-  Renderwolf is the rendering API from Ironfang Ltd, a UK software company that builds and
-  operates self-service developer APIs. It turns a URL or a block of raw HTML into screenshots,
-  PDFs, templated images, QR codes, captioned video clips and scrolling site previews over plain
-  HTTPS and JSON, with no browser fleet for the customer to run. The v1 REST API is described by
-  a published OpenAPI 3.1 contract covering 33 operations across synchronous rendering, reusable
-  HTML templates, signed render URLs, durable asynchronous jobs, batches of up to 100, and
-  webhook or S3-compatible delivery destinations. A remote MCP server at mcp.ironfang.uk exposes
-  the same core to AI assistants over OAuth 2.1 with a per-connection credit budget, and an
-  llms.txt, a TypeScript and Python SDK, a CLI and an n8n node round out the surface. Plans are
-  hard-capped rather than metered into overage, cache hits are free, and failed renders are
-  refunded.
+
+description: Ironfang Render is the rendering API from Ironfang Ltd, a UK software company that builds and operates self-service developer APIs.
+  It turns a URL or a block of raw HTML into screenshots, PDFs, templated images, QR codes, captioned video clips and scrolling site previews
+  over plain HTTPS and JSON, with no browser fleet for the customer to run. The v1 REST API is described by a published OpenAPI 3.1 contract covering
+  33 operations across synchronous rendering, reusable HTML templates, signed render URLs, durable asynchronous jobs, batches of up to 100, and
+  webhook or S3-compatible delivery destinations. A remote MCP server at mcp.ironfang.com exposes the same core to AI assistants over OAuth 2.1
+  with a per-connection credit budget, and an llms.txt, a TypeScript and Python SDK, a CLI and an n8n node round out the surface. Plans are hard-capped
+  rather than metered into overage, cache hits are free, and failed renders are refunded.
+
 url: https://raw.githubusercontent.com/api-evangelist/ironfang/refs/heads/main/apis.yml
+
 created: '2026-09-02'
+
 modified: '2026-09-02'
+
 specificationVersion: '0.21'
+
 tags:
-  - Developer Tools
-  - screenshot-api
-  - website screenshot
-  - HTML to PDF
-  - PDF API
-  - Image API
-  - OG Image API
-  - QR Code API
-  - Website-to-Video
-  - Rendering Infrastructure
-  - MCP
-  - UK-hosted
+- Developer Tools
+- screenshot-api
+- website screenshot
+- HTML to PDF
+- PDF API
+- Image API
+- OG Image API
+- QR Code API
+- Website-to-Video
+- Rendering Infrastructure
+- MCP
+- UK-hosted
+
 tags_raw:
-  - Developer Tools
-  - Screenshot API
-  - Website Screenshot
-  - HTML-to-PDF
-  - PDF API
-  - Image API
-  - OG Image API
-  - QR Code API
-  - Website-to-Video
-  - Rendering Infrastructure
-  - MCP
-  - UK-hosted
-apis:
-- aid: ironfang:ironfang-account-api
-  name: Ironfang Account API
-  description: Usage against quota.
-  humanURL: https://ironfang.uk/renderwolf/docs
-  baseURL: https://api.ironfang.uk/renderwolf
-  tags:
-  - Account
-  properties:
-  - type: OpenAPI
-    url: openapi/ironfang-account-api-openapi.yml
-  - type: Documentation
-    url: https://ironfang.uk/renderwolf/docs
-  - type: APIReference
-    url: https://ironfang.uk/renderwolf/docs
-  - type: LLMsTxt
-    url: llms/ironfang-llms.txt
-  - type: LLMsTxt
-    url: https://ironfang.uk/llms.txt
-  - type: ToolCrosswalk
-    url: mcp/ironfang-tool-crosswalk.yml
-  - type: DataModel
-    url: data-model/ironfang-data-model.yml
-  - type: ErrorCatalog
-    url: errors/ironfang-problem-types.yml
-  - type: Webhooks
-    url: asyncapi/ironfang-webhooks.yml
-- aid: ironfang:ironfang-batches-api
-  name: Ironfang Batches API
-  description: Up to 100 renders submitted, and refused, together.
-  humanURL: https://ironfang.uk/renderwolf/docs
-  baseURL: https://api.ironfang.uk/renderwolf
-  tags:
-  - Batches
-  properties:
-  - type: OpenAPI
-    url: openapi/ironfang-batches-api-openapi.yml
-  - type: Documentation
-    url: https://ironfang.uk/renderwolf/docs
-  - type: APIReference
-    url: https://ironfang.uk/renderwolf/docs
-  - type: LLMsTxt
-    url: llms/ironfang-llms.txt
-  - type: LLMsTxt
-    url: https://ironfang.uk/llms.txt
-  - type: ToolCrosswalk
-    url: mcp/ironfang-tool-crosswalk.yml
-  - type: DataModel
-    url: data-model/ironfang-data-model.yml
-  - type: ErrorCatalog
-    url: errors/ironfang-problem-types.yml
-  - type: Webhooks
-    url: asyncapi/ironfang-webhooks.yml
-- aid: ironfang:ironfang-destinations-api
-  name: Ironfang Destinations API
-  description: Where a finished job goes - a signed webhook, or your own S3 bucket.
-  humanURL: https://ironfang.uk/renderwolf/docs
-  baseURL: https://api.ironfang.uk/renderwolf
-  tags:
-  - Destination
-  tags_raw:
-  - Destinations
-  properties:
-  - type: OpenAPI
-    url: openapi/ironfang-destinations-api-openapi.yml
-  - type: Documentation
-    url: https://ironfang.uk/renderwolf/docs
-  - type: APIReference
-    url: https://ironfang.uk/renderwolf/docs
-  - type: LLMsTxt
-    url: llms/ironfang-llms.txt
-  - type: LLMsTxt
-    url: https://ironfang.uk/llms.txt
-  - type: ToolCrosswalk
-    url: mcp/ironfang-tool-crosswalk.yml
-  - type: DataModel
-    url: data-model/ironfang-data-model.yml
-  - type: ErrorCatalog
-    url: errors/ironfang-problem-types.yml
-  - type: Webhooks
-    url: asyncapi/ironfang-webhooks.yml
-- aid: ironfang:ironfang-jobs-api
-  name: Ironfang Jobs API
-  description: The Jobs API from Ironfang — 4 operation(s) for jobs.
-  humanURL: https://ironfang.uk/renderwolf/docs
-  baseURL: https://api.ironfang.uk/renderwolf
-  tags:
-  - Job
-  tags_raw:
-  - Jobs
-  properties:
-  - type: OpenAPI
-    url: openapi/ironfang-jobs-api-openapi.yml
-  - type: Documentation
-    url: https://ironfang.uk/renderwolf/docs
-  - type: APIReference
-    url: https://ironfang.uk/renderwolf/docs
-  - type: LLMsTxt
-    url: llms/ironfang-llms.txt
-  - type: LLMsTxt
-    url: https://ironfang.uk/llms.txt
-  - type: ToolCrosswalk
-    url: mcp/ironfang-tool-crosswalk.yml
-  - type: DataModel
-    url: data-model/ironfang-data-model.yml
-  - type: ErrorCatalog
-    url: errors/ironfang-problem-types.yml
-  - type: Webhooks
-    url: asyncapi/ironfang-webhooks.yml
-- aid: ironfang:ironfang-render-api
-  name: Ironfang Render API
-  description: Turn a URL or HTML into an image, PDF or video.
-  humanURL: https://ironfang.uk/renderwolf/docs
-  baseURL: https://api.ironfang.uk/renderwolf
-  tags:
-  - Render
-  properties:
-  - type: OpenAPI
-    url: openapi/ironfang-render-api-openapi.yml
-  - type: Documentation
-    url: https://ironfang.uk/renderwolf/docs
-  - type: APIReference
-    url: https://ironfang.uk/renderwolf/docs
-  - type: LLMsTxt
-    url: llms/ironfang-llms.txt
-  - type: LLMsTxt
-    url: https://ironfang.uk/llms.txt
-  - type: ToolCrosswalk
-    url: mcp/ironfang-tool-crosswalk.yml
-  - type: DataModel
-    url: data-model/ironfang-data-model.yml
-  - type: ErrorCatalog
-    url: errors/ironfang-problem-types.yml
-  - type: Webhooks
-    url: asyncapi/ironfang-webhooks.yml
-- aid: ironfang:ironfang-signed-urls-api
-  name: Ironfang Signed URLs API
-  description: Shareable render URLs that need no API key.
-  humanURL: https://ironfang.uk/renderwolf/docs
-  baseURL: https://api.ironfang.uk/renderwolf
-  tags:
-  - Signed URLs
-  properties:
-  - type: OpenAPI
-    url: openapi/ironfang-signed-urls-api-openapi.yml
-  - type: Documentation
-    url: https://ironfang.uk/renderwolf/docs
-  - type: APIReference
-    url: https://ironfang.uk/renderwolf/docs
-  - type: LLMsTxt
-    url: llms/ironfang-llms.txt
-  - type: LLMsTxt
-    url: https://ironfang.uk/llms.txt
-  - type: ToolCrosswalk
-    url: mcp/ironfang-tool-crosswalk.yml
-  - type: DataModel
-    url: data-model/ironfang-data-model.yml
-  - type: ErrorCatalog
-    url: errors/ironfang-problem-types.yml
-  - type: Webhooks
-    url: asyncapi/ironfang-webhooks.yml
-- aid: ironfang:ironfang-templates-api
-  name: Ironfang Templates API
-  description: Stored HTML with `{{variable}}` placeholders, rendered on demand.
-  humanURL: https://ironfang.uk/renderwolf/docs
-  baseURL: https://api.ironfang.uk/renderwolf
-  tags:
-  - Templates
-  properties:
-  - type: OpenAPI
-    url: openapi/ironfang-templates-api-openapi.yml
-  - type: Documentation
-    url: https://ironfang.uk/renderwolf/docs
-  - type: APIReference
-    url: https://ironfang.uk/renderwolf/docs
-  - type: LLMsTxt
-    url: llms/ironfang-llms.txt
-  - type: LLMsTxt
-    url: https://ironfang.uk/llms.txt
-  - type: ToolCrosswalk
-    url: mcp/ironfang-tool-crosswalk.yml
-  - type: DataModel
-    url: data-model/ironfang-data-model.yml
-  - type: ErrorCatalog
-    url: errors/ironfang-problem-types.yml
-  - type: Webhooks
-    url: asyncapi/ironfang-webhooks.yml
-image: https://ironfang.uk/logo-wolf-white.svg
+- Developer Tools
+- Screenshot API
+- Website Screenshot
+- HTML-to-PDF
+- PDF API
+- Image API
+- OG Image API
+- QR Code API
+- Website-to-Video
+- Rendering Infrastructure
+- MCP
+- UK-hosted
+
+image: https://ironfang.com/logo-wolf-white.svg
+
 maintainers:
-  - FN: Ironfang Ltd
-    email: hello@ironfang.uk
-    url: https://ironfang.uk
-generated:
-  by: apis.io/add
-  model: claude-opus-4-8
-  confidence: 98
-  at: '2026-09-02T12:33:19.116Z'
+- FN: Ironfang Ltd
+  email: hello@ironfang.com
+  url: https://ironfang.com
+
 common:
+- type: AgenticAccess
+  url: agentic-access/ironfang-agentic-access.yml
+- type: Spectral
+  url: rules/ironfang-rules.yml
+- type: JSONLD
+  url: json-ld/ironfang-context.jsonld
+- type: Vocabulary
+  url: vocabulary/ironfang-vocabulary.yml
+- type: Deprecation
+  url: lifecycle/ironfang-lifecycle.yml
+- type: Hosts
+  url: hosts/ironfang-hosts.yml
+- type: Vendors
+  url: vendors/ironfang-vendors.yml
+- type: Webhooks
+  url: https://ironfang.com/audit/webhooks
+- type: Documentation
+  url: https://ironfang.com/render/guides
+- type: ChangeLog
+  url: https://ironfang.com/changelog
 - type: Overlay
   url: overlays/ironfang-openapi-overlay.yaml
 - type: MCPServer
   url: mcp/ironfang-mcp.yml
 - type: MCPServer
-  url: https://mcp.ironfang.uk/mcp
+  url: https://mcp.ironfang.com/mcp
 - type: Website
-  url: https://www.ironfang.uk/
+  url: https://www.ironfang.com/
 - type: DomainSecurity
   url: security/ironfang-domain-security.yml
 - type: Authentication
@@ -270,7 +103,7 @@ common:
 - type: Lifecycle
   url: lifecycle/ironfang-lifecycle.yml
 - type: StatusPage
-  url: https://status.ironfang.uk
+  url: https://status.ironfang.com
 - type: Sandbox
   url: sandbox/ironfang-sandbox.yml
 - type: AgentSkill
@@ -280,36 +113,255 @@ common:
 - type: RateLimits
   url: rate-limits/ironfang-rate-limits.yml
 - type: DeveloperPortal
-  url: https://ironfang.uk/renderwolf
+  url: https://ironfang.com/renderwolf
 - type: GettingStarted
-  url: https://ironfang.uk/renderwolf/guides
+  url: https://ironfang.com/renderwolf/guides
 - type: Support
-  url: https://ironfang.uk/contact
+  url: https://ironfang.com/contact
 - type: GitHubOrganization
   url: https://github.com/ironfang-ltd
 - type: Pricing
-  url: https://ironfang.uk/renderwolf
+  url: https://ironfang.com/renderwolf
 - type: SignUp
-  url: https://id.ironfang.uk/signup
+  url: https://id.ironfang.com/signup
 - type: TermsOfService
-  url: https://ironfang.uk/legal/terms
+  url: https://ironfang.com/legal/terms
 - type: PrivacyPolicy
-  url: https://ironfang.uk/legal/privacy
+  url: https://ironfang.com/legal/privacy
 
-x-enrichment:
-  date: '2026-09-02'
-  status: enriched
-  artifacts_added: 29
-  pass: local-v1
+apis:
+- aid: ironfang:ironfang-account-api
+  name: Ironfang Account API
+  description: Usage against quota.
+  humanURL: https://ironfang.com/renderwolf/docs
+  baseURL: https://api.ironfang.com/renderwolf
+  tags:
+  - Account
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-account-api-openapi.yml
+  - type: Documentation
+    url: https://ironfang.com/renderwolf/docs
+  - type: APIReference
+    url: https://ironfang.com/renderwolf/docs
+  - type: LLMsTxt
+    url: llms/ironfang-llms.txt
+  - type: LLMsTxt
+    url: https://ironfang.com/llms.txt
+  - type: ToolCrosswalk
+    url: mcp/ironfang-tool-crosswalk.yml
+  - type: DataModel
+    url: data-model/ironfang-data-model.yml
+  - type: ErrorCatalog
+    url: errors/ironfang-problem-types.yml
+  - type: Webhooks
+    url: asyncapi/ironfang-webhooks.yml
+  - type: JSONSchema
+    url: json-schema/ironfang-usage-schema.json
+- aid: ironfang:ironfang-batches-api
+  name: Ironfang Batches API
+  description: Up to 100 renders submitted, and refused, together.
+  humanURL: https://ironfang.com/renderwolf/docs
+  baseURL: https://api.ironfang.com/renderwolf
+  tags:
+  - Batches
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-batches-api-openapi.yml
+  - type: Documentation
+    url: https://ironfang.com/renderwolf/docs
+  - type: APIReference
+    url: https://ironfang.com/renderwolf/docs
+  - type: LLMsTxt
+    url: llms/ironfang-llms.txt
+  - type: LLMsTxt
+    url: https://ironfang.com/llms.txt
+  - type: ToolCrosswalk
+    url: mcp/ironfang-tool-crosswalk.yml
+  - type: DataModel
+    url: data-model/ironfang-data-model.yml
+  - type: ErrorCatalog
+    url: errors/ironfang-problem-types.yml
+  - type: Webhooks
+    url: asyncapi/ironfang-webhooks.yml
+  - type: JSONSchema
+    url: json-schema/ironfang-job-delivery-schema.json
+- aid: ironfang:ironfang-destinations-api
+  name: Ironfang Destinations API
+  description: Where a finished job goes - a signed webhook, or your own S3 bucket.
+  humanURL: https://ironfang.com/renderwolf/docs
+  baseURL: https://api.ironfang.com/renderwolf
+  tags:
+  - Destination
+  tags_raw:
+  - Destinations
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-destinations-api-openapi.yml
+  - type: Documentation
+    url: https://ironfang.com/renderwolf/docs
+  - type: APIReference
+    url: https://ironfang.com/renderwolf/docs
+  - type: LLMsTxt
+    url: llms/ironfang-llms.txt
+  - type: LLMsTxt
+    url: https://ironfang.com/llms.txt
+  - type: ToolCrosswalk
+    url: mcp/ironfang-tool-crosswalk.yml
+  - type: DataModel
+    url: data-model/ironfang-data-model.yml
+  - type: ErrorCatalog
+    url: errors/ironfang-problem-types.yml
+  - type: Webhooks
+    url: asyncapi/ironfang-webhooks.yml
+- aid: ironfang:ironfang-jobs-api
+  name: Ironfang Jobs API
+  description: The Jobs API from Ironfang — 4 operation(s) for jobs.
+  humanURL: https://ironfang.com/renderwolf/docs
+  baseURL: https://api.ironfang.com/renderwolf
+  tags:
+  - Job
+  tags_raw:
+  - Jobs
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-jobs-api-openapi.yml
+  - type: Documentation
+    url: https://ironfang.com/renderwolf/docs
+  - type: APIReference
+    url: https://ironfang.com/renderwolf/docs
+  - type: LLMsTxt
+    url: llms/ironfang-llms.txt
+  - type: LLMsTxt
+    url: https://ironfang.com/llms.txt
+  - type: ToolCrosswalk
+    url: mcp/ironfang-tool-crosswalk.yml
+  - type: DataModel
+    url: data-model/ironfang-data-model.yml
+  - type: ErrorCatalog
+    url: errors/ironfang-problem-types.yml
+  - type: Webhooks
+    url: asyncapi/ironfang-webhooks.yml
+  - type: JSONSchema
+    url: json-schema/ironfang-job-delivery-schema.json
+- aid: ironfang:ironfang-render-api
+  name: Ironfang Render API
+  description: Turn a URL or HTML into an image, PDF or video.
+  humanURL: https://ironfang.com/renderwolf/docs
+  baseURL: https://api.ironfang.com/renderwolf
+  tags:
+  - Render
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-render-api-openapi.yml
+  - type: Documentation
+    url: https://ironfang.com/renderwolf/docs
+  - type: APIReference
+    url: https://ironfang.com/renderwolf/docs
+  - type: LLMsTxt
+    url: llms/ironfang-llms.txt
+  - type: LLMsTxt
+    url: https://ironfang.com/llms.txt
+  - type: ToolCrosswalk
+    url: mcp/ironfang-tool-crosswalk.yml
+  - type: DataModel
+    url: data-model/ironfang-data-model.yml
+  - type: ErrorCatalog
+    url: errors/ironfang-problem-types.yml
+  - type: Webhooks
+    url: asyncapi/ironfang-webhooks.yml
+  - type: JSONSchema
+    url: json-schema/ironfang-screenshot-request-schema.json
+  - type: JSONSchema
+    url: json-schema/ironfang-qr-request-schema.json
+  - type: JSONSchema
+    url: json-schema/ironfang-site-preview-request-schema.json
+  - type: JSONSchema
+    url: json-schema/ironfang-clip-request-schema.json
+  - type: JSONSchema
+    url: json-schema/ironfang-pdf-request-schema.json
+- aid: ironfang:ironfang-signed-urls-api
+  name: Ironfang Signed URLs API
+  description: Shareable render URLs that need no API key.
+  humanURL: https://ironfang.com/renderwolf/docs
+  baseURL: https://api.ironfang.com/renderwolf
+  tags:
+  - Signed URLs
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-signed-urls-api-openapi.yml
+  - type: Documentation
+    url: https://ironfang.com/renderwolf/docs
+  - type: APIReference
+    url: https://ironfang.com/renderwolf/docs
+  - type: LLMsTxt
+    url: llms/ironfang-llms.txt
+  - type: LLMsTxt
+    url: https://ironfang.com/llms.txt
+  - type: ToolCrosswalk
+    url: mcp/ironfang-tool-crosswalk.yml
+  - type: DataModel
+    url: data-model/ironfang-data-model.yml
+  - type: ErrorCatalog
+    url: errors/ironfang-problem-types.yml
+  - type: Webhooks
+    url: asyncapi/ironfang-webhooks.yml
+  - type: JSONSchema
+    url: json-schema/ironfang-sign-request-schema.json
+  - type: JSONSchema
+    url: json-schema/ironfang-signed-url-schema.json
+- aid: ironfang:ironfang-templates-api
+  name: Ironfang Templates API
+  description: Stored HTML with `{{variable}}` placeholders, rendered on demand.
+  humanURL: https://ironfang.com/renderwolf/docs
+  baseURL: https://api.ironfang.com/renderwolf
+  tags:
+  - Templates
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-templates-api-openapi.yml
+  - type: Documentation
+    url: https://ironfang.com/renderwolf/docs
+  - type: APIReference
+    url: https://ironfang.com/renderwolf/docs
+  - type: LLMsTxt
+    url: llms/ironfang-llms.txt
+  - type: LLMsTxt
+    url: https://ironfang.com/llms.txt
+  - type: ToolCrosswalk
+    url: mcp/ironfang-tool-crosswalk.yml
+  - type: DataModel
+    url: data-model/ironfang-data-model.yml
+  - type: ErrorCatalog
+    url: errors/ironfang-problem-types.yml
+  - type: Webhooks
+    url: asyncapi/ironfang-webhooks.yml
+  - type: JSONSchema
+    url: json-schema/ironfang-template-schema.json
+  - type: JSONSchema
+    url: json-schema/ironfang-render-template-request-schema.json
+  - type: JSONSchema
+    url: json-schema/ironfang-template-input-schema.json
+
+generated:
+  by: apis.io/add
+  model: claude-opus-4-8
+  confidence: 98
+  at: '2026-09-02T12:33:19.116Z'
+
 x-correction-request:
   requested: '2026-09-28'
   source:
   - https://github.com/api-evangelist/ironfang/pull/1
-  request: 'Provider PR #1 (radnams, Ironfang Ltd, 2026-09-23): Renderwolf was renamed Ironfang Render, and the
-    company has since moved from ironfang.uk to ironfang.com (ironfang.uk 301s; api.ironfang.uk 308s to api.ironfang.com).
-    Re-profile from the provider''s https://ironfang.com/apis.json (modified 2026-09-27), which lists FIVE APIs:
-    Render, Audit, Finance, Rig, Analytics. Render contract https://api.ironfang.com/render/openapi.yaml (OpenAPI
-    3.1.0, ''Ironfang Render API'', 25 paths; /renderwolf is a deprecated server alias, Deprecation 2026-09-20 with
-    successor /render). Rename Renderwolf -> Ironfang Render everywhere except wire identifiers the provider kept
-    (X-Renderwolf-* headers, package names). /changelog and /render/changelog are 404 on ironfang.com -- do not
-    point at them.'
+  request: 'Provider PR #1 (radnams, Ironfang Ltd, 2026-09-23): Renderwolf was renamed Ironfang Render, and the company has since moved from ironfang.com
+    to ironfang.com (ironfang.com 301s; api.ironfang.com 308s to api.ironfang.com). Re-profile from the provider''s https://ironfang.com/apis.json
+    (modified 2026-09-27), which lists FIVE APIs: Render, Audit, Finance, Rig, Analytics. Render contract https://api.ironfang.com/render/openapi.yaml
+    (OpenAPI 3.1.0, ''Ironfang Render API'', 25 paths; /renderwolf is a deprecated server alias, Deprecation 2026-09-20 with successor /render).
+    Rename Renderwolf -> Ironfang Render everywhere except wire identifiers the provider kept (X-Renderwolf-* headers, package names). /changelog
+    and /render/changelog are 404 on ironfang.com -- do not point at them.'
+x-enrichment:
+  date: '2026-09-28'
+  status: enriched
+  artifacts_added: 20
+  pass: modular-v1
+  engine: identity=local,contract=local,surfaces=local,docs=local,regulatory=local

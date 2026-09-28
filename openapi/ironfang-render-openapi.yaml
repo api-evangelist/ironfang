@@ -1,0 +1,32 @@
+openapi: 3.1.0
+
+info:
+  title: Ironfang Render API
+  version: '1.0.0'
+  summary: Screenshots, PDFs, dynamic images and video through one API.
+  description: |
+    Ironfang Render renders web pages to images, PDFs and video. Give it a URL or a
+    block of HTML and get the finished asset without running a browser.
+
+    ## Authentication
+    Every request carries an API key as a bearer token:
+    Authorization: Bearer rw_live_...
+
+    ## Responses are bytes, not JSON
+    ...
+
+contact:
+  name: Ironfang
+  email: hello@ironfang.uk
+  url: https://ironfang.com
+termsOfService: https://ironfang.com/legal/terms
+license:
+  name: Proprietary - use governed by the Ironfang terms of service
+  url: https://ironfang.com/legal/terms
+servers:
+  - url: https://api.ironfang.com/render
+    description: Production
+  - url: https://api.ironfang.com/renderwolf
+    description: Deprecated compatibility alias of /render, the prefix Ironfang Render launched under. Kept for existing clients; new integrations should use /render.
+  - url: https://api.ironfang.com
+    description: Producti
