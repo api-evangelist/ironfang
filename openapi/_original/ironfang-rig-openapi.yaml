@@ -1,0 +1,1857 @@
+# x-archived-from: ironfang-rig-openapi.yaml (https://api.ironfang.com/rig/openapi.yaml, fetched 2026-10-03)
+# x-archived-on: 2026-10-03
+openapi: 3.1.0
+info:
+  title: Ironfang Rig API
+  version: 0.1.0
+  summary: Disposable inboxes, callback URLs, mock endpoints and connector routes for integration tests.
+  description: |
+    Ironfang Rig gives an application under test a disposable external
+    world: temporary inbox addresses, public callback URLs, mock HTTP
+    endpoints and connector routes, allocated fresh for every run, with an
+    append-only, sequenced timeline of everything Ironfang observed.
+
+    The model is: suites persist, runs are disposable, resources have
+    explicit lifetimes. A suite is a versioned definition of resources and
+    expectations; a run is one execution of the suite's current version,
+    lives for its TTL (default 30 minutes, at most 24 hours) and ends by
+    being finished, cancelled or expired. Nothing here runs your code.
+
+    What is billed is interactions: each accepted inbound email, inbound
+    callback and mock exchange is one `rig.interaction`, counted once when
+    it is recorded. Creating projects, suites, runs and resources, and
+    every call to this API, is never metered. `getUsage` reports the meter
+    and `getEnvironment` says what counts and how a refusal is answered.
+
+    Everything is organisation-bound: an object in another organisation is
+    reported as not found. Authenticate with an Ironfang platform API key
+    carrying Rig scopes, or a Warden user token. Base URL
+    https://api.ironfang.com/rig.
+
+    For agents and tools: the canonical base URL is
+    https://api.ironfang.com/rig and every operation has a stable
+    `operationId`. Every error an operation returns is JSON of the shape
+    `{"error": {"code", "message", "docs"}, "request_id"}`: branch on `code`
+    and the HTTP status, never on `message`. The machine-readable index of the
+    Ironfang APIs is https://ironfang.com/.well-known/api-catalog, and
+    https://ironfang.com/llms.txt is a plain-text map of them for a language
+    model. Ironfang Rig is also available as MCP tools at
+    https://mcp.ironfang.com/mcp (see https://ironfang.com/docs/mcp).
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+  - url: https://api.ironfang.com/rig
+externalDocs:
+  description: Ironfang Rig documentation
+  url: https://ironfang.com/rig/docs
+security:
+  - apiKey: []
+  - bearerAuth: []
+tags:
+  - name: Projects
+    description: Persistent containers for one application or product.
+  - name: Suites
+    description: Persistent, versioned test definitions.
+  - name: Runs
+    description: Disposable executions of a suite version.
+  - name: Resources
+    description: The external identities a run receives.
+  - name: Faults
+    description: Deterministic interference armed on a run's resources.
+  - name: Connectors
+    description: Outbound connectors that forward a run's callbacks to fixed local routes.
+  - name: Events
+    description: The run timeline.
+  - name: Usage
+    description: What the organisation has used, and the deployment's fixed facts.
+  - name: Evidence
+    description: Bundles, receipts and the keys they are signed with.
+paths:
+  /v1/projects:
+    get:
+      tags: [Projects]
+      operationId: listProjects
+      summary: List projects
+      description: >-
+        Returns the organisation's projects, newest first, as a bounded
+        keyset page. Read-only; no side effects.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of projects
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [projects]
+                properties:
+                  projects:
+                    type: array
+                    items: { $ref: '#/components/schemas/Project' }
+                  next_cursor: { type: string, description: Opaque cursor for the next page; empty on the last page. }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Projects]
+      operationId: createProject
+      summary: Create a project
+      description: >-
+        Creates a project. The slug is unique within the organisation and
+        appears in nothing public. Needs rig.write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [slug, name]
+              additionalProperties: false
+              properties:
+                slug: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$', example: ironfang-platform }
+                name: { type: string, maxLength: 120, example: Ironfang Platform }
+      responses:
+        '201':
+          description: Project created
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [project]
+                properties:
+                  project: { $ref: '#/components/schemas/Project' }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+  /v1/projects/{projectId}:
+    parameters:
+      - $ref: '#/components/parameters/ProjectId'
+    get:
+      tags: [Projects]
+      operationId: getProject
+      summary: Get a project
+      description: Returns one project. Another organisation's project is not found.
+      responses:
+        '200':
+          description: The project
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [project]
+                properties:
+                  project: { $ref: '#/components/schemas/Project' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/suites:
+    get:
+      tags: [Suites]
+      operationId: listSuites
+      summary: List suites
+      description: >-
+        Returns the organisation's suites, newest first, optionally within
+        one project. Read-only.
+      parameters:
+        - name: project
+          in: query
+          required: false
+          description: Limit to one project by id.
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of suites
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [suites]
+                properties:
+                  suites:
+                    type: array
+                    items: { $ref: '#/components/schemas/Suite' }
+                  next_cursor: { type: string }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Suites]
+      operationId: createSuite
+      summary: Create a suite
+      description: >-
+        Creates a suite and its first version from a definition. The
+        definition is validated in full and stored canonically; its SHA-256
+        identifies the version. The slug is unique within the project.
+        Needs rig.write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, slug, name, definition]
+              additionalProperties: false
+              properties:
+                project_id: { type: string, format: uuid }
+                slug: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$', example: signup }
+                name: { type: string, maxLength: 120, example: Signup flow }
+                definition: { $ref: '#/components/schemas/Definition' }
+      responses:
+        '201':
+          description: Suite created with version 1
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuiteWithVersion' }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+  /v1/suites/{suiteId}:
+    parameters:
+      - $ref: '#/components/parameters/SuiteId'
+    get:
+      tags: [Suites]
+      operationId: getSuite
+      summary: Get a suite
+      description: Returns the suite and its current version.
+      responses:
+        '200':
+          description: The suite and its current version
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SuiteWithVersion' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    put:
+      tags: [Suites]
+      operationId: reviseSuite
+      summary: Revise a suite
+      description: >-
+        Records a new version when the definition changed and answers the
+        current version unchanged when it did not, so sending the same
+        document twice creates one version. Existing runs keep the version
+        they were created from. Needs rig.write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [definition]
+              additionalProperties: false
+              properties:
+                name: { type: string, maxLength: 120, description: A new display name; omit to keep the current one. }
+                definition: { $ref: '#/components/schemas/Definition' }
+      responses:
+        '200':
+          description: The suite and the version now current
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/SuiteWithVersion'
+                  - type: object
+                    properties:
+                      revised: { type: boolean, description: Whether anything changed. }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+  /v1/suites/{suiteId}/versions:
+    parameters:
+      - $ref: '#/components/parameters/SuiteId'
+    get:
+      tags: [Suites]
+      operationId: listSuiteVersions
+      summary: List a suite's versions
+      description: Returns up to 100 versions, newest first, each with its full definition.
+      responses:
+        '200':
+          description: The versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [versions]
+                properties:
+                  versions:
+                    type: array
+                    items: { $ref: '#/components/schemas/SuiteVersion' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/suites/{suiteId}/runs:
+    parameters:
+      - $ref: '#/components/parameters/SuiteId'
+    post:
+      tags: [Runs]
+      operationId: createRun
+      summary: Start a run
+      description: >-
+        Starts a run of the suite's current version and allocates every
+        resource the definition declares: a fresh inbox address, callback
+        URL, mock URL or route label each, unguessable and unique to this
+        run. The run is active until it is finished, cancelled or its TTL
+        passes, after which its resources stop accepting activity and its
+        timeline is read-only. Send an Idempotency-Key to make a retry
+        return the run it already started (200 rather than 201). An
+        organisation may have at most 50 active runs at once (a run is
+        active until it is finished, cancelled or its TTL passes); the
+        next start is refused with 429 `active_run_limit` until one ends.
+        The limit is capacity, the same on every account. Needs rig.run.
+        Public effect: the allocated addresses and URLs are reachable from
+        the Internet for the life of the run.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ttl: { type: string, description: 'Run lifetime as a duration ("30m", "2h"), 1m to 24h; defaults to the suite''s defaults.run_ttl.', example: 30m }
+                external_id: { type: string, maxLength: 120, description: "Your own reference, such as a CI run id." }
+                reason: { type: string, maxLength: 200 }
+      responses:
+        '201':
+          description: Run started and resources allocated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunWithResources' }
+        '200':
+          description: The run this Idempotency-Key already started
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RunWithResources' }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '429':
+          description: The organisation already has its limit of 50 active runs (`active_run_limit`); finish or cancel one to start another
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/runs:
+    get:
+      tags: [Runs]
+      operationId: listRuns
+      summary: List runs
+      description: Returns the organisation's runs, newest first, with optional filters. Read-only.
+      parameters:
+        - name: project
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: suite
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          schema: { type: string, enum: [active, finished, cancelled, expired] }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of runs
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runs]
+                properties:
+                  runs:
+                    type: array
+                    items: { $ref: '#/components/schemas/Run' }
+                  next_cursor: { type: string }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/runs/{runId}:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Runs]
+      operationId: getRun
+      summary: Get a run
+      description: Returns one run's state, lifetime and outcome.
+      responses:
+        '200':
+          description: The run
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run]
+                properties:
+                  run: { $ref: '#/components/schemas/Run' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/runs/{runId}/finish:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    post:
+      tags: [Runs]
+      operationId: finishRun
+      summary: Finish a run
+      description: >-
+        Ends an active run with the outcome you report (pass, fail, or none
+        when you make no claim) and writes run.completed to its timeline.
+        Exactly once: a run that has already ended answers 409. Needs
+        rig.run.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                outcome: { type: string, enum: [pass, fail, none], default: none }
+                reason: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: The finished run
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run, expectations]
+                properties:
+                  run: { $ref: '#/components/schemas/Run' }
+                  expectations:
+                    type: array
+                    description: The verdict on each of the suite's expectations, in the order declared.
+                    items: { $ref: '#/components/schemas/ExpectationResult' }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/RunNotActive' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+  /v1/runs/{runId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    post:
+      tags: [Runs]
+      operationId: cancelRun
+      summary: Cancel a run
+      description: >-
+        Ends an active run without an outcome and writes run.cancelled.
+        A run that has already ended answers 409. Needs rig.run.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason: { type: string, maxLength: 200 }
+      responses:
+        '200':
+          description: The cancelled run
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run]
+                properties:
+                  run: { $ref: '#/components/schemas/Run' }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/RunNotActive' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+  /v1/runs/{runId}/resources:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Resources]
+      operationId: listResources
+      summary: List a run's resources
+      description: >-
+        Returns every resource allocated to the run, in allocation order,
+        with the address or URL each one answers at. Read-only.
+      responses:
+        '200':
+          description: The resources
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [resources]
+                properties:
+                  resources:
+                    type: array
+                    items: { $ref: '#/components/schemas/Resource' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Resources]
+      operationId: createResource
+      summary: Allocate a resource
+      description: >-
+        Allocates one more resource on an active run, beyond what the suite
+        declared, with the run's expiry. Names are unique within the run.
+        Needs rig.run. Public effect: the address or URL is reachable from
+        the Internet for the rest of the run.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, type]
+              additionalProperties: false
+              properties:
+                name: { type: string, pattern: '^[a-z][a-z0-9_]{0,63}$', example: shipping_api }
+                type: { type: string, enum: [email, callback, mock_http, connector_route] }
+                route: { type: string, description: The route label of a connector_route. }
+                connector: { $ref: '#/components/schemas/ConnectorSpec' }
+                rules:
+                  type: array
+                  maxItems: 32
+                  description: For a mock_http, the rules it answers with.
+                  items: { $ref: '#/components/schemas/MockRule' }
+      responses:
+        '201':
+          description: Resource allocated
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [resource]
+                properties:
+                  resource: { $ref: '#/components/schemas/Resource' }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/RunNotActive' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+  /v1/runs/{runId}/resources/{resourceId}/mock:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/ResourceId'
+    put:
+      tags: [Resources]
+      operationId: setMockRules
+      summary: Replace a mock's rules
+      description: >-
+        Replaces the rules a mock_http resource answers with, in order, while
+        the run is active. The first rule whose match holds decides the
+        response; no match answers 404 with code `no_mock_rule`. The change
+        is recorded on the timeline as `mock.rules.updated`. Needs rig.run.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [rules]
+              additionalProperties: false
+              properties:
+                rules:
+                  type: array
+                  maxItems: 32
+                  items: { $ref: '#/components/schemas/MockRule' }
+      responses:
+        '200':
+          description: The resource with its new rules
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [resource]
+                properties:
+                  resource: { $ref: '#/components/schemas/Resource' }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/RunNotActive' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+  /v1/runs/{runId}/events/{eventId}/replay:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/EventId'
+    post:
+      tags: [Events]
+      operationId: replayCallback
+      summary: Replay a recorded callback
+      description: >-
+        Forwards a callback the run received to its connector route again,
+        exactly as recorded, to prove the application handles a repeat. The
+        event must be a `callback.received` on a resource with a connector
+        route and the run must be active. The replay is recorded as
+        `callback.replayed`, then travels like any delivery: the timeline
+        shows its own `callback.forwarded` and `connector.request.completed`
+        against the original event id. Armed faults do not act on a replay;
+        it is the test's explicit act. At most 200 replays per run. Needs
+        rig.run.
+      responses:
+        '202':
+          description: The replay is queued for the route
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [event, delivery_id]
+                properties:
+                  event: { $ref: '#/components/schemas/Event' }
+                  delivery_id: { type: string, format: uuid, description: The delivery the connector will receive; its completion event names it. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/RunNotActive' }
+        '422':
+          description: The event is not a callback on a resource with a connector route
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429':
+          description: The run has replayed its limit of callbacks
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/runs/{runId}/receipt:
+    post:
+      tags: [Evidence]
+      operationId: createRunReceipt
+      summary: A signed receipt for the run
+      description: >-
+        A signed statement of what the run was and how it ended: project,
+        suite and version, status and outcome, every verdict, the event count
+        and the head of the event hash chain. Signed with the platform's
+        Ed25519 key when it has one; the signature carries the key, and
+        /v1/evidence/keys publishes it, so the receipt verifies anywhere. A
+        run whose chain does not recompute gets no receipt (409). Needs
+        rig.read.
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200':
+          description: The receipt and its signature.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SignedReceipt' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+  /v1/runs/{runId}/hold:
+    put:
+      tags: [Runs]
+      operationId: holdRun
+      summary: Keep the run from retention until a date
+      description: >-
+        Retention leaves the run, its events and its payloads alone until
+        the date, at most a year ahead. Holding again replaces the date.
+        Recorded as retention.held on the run's timeline. Needs rig.run.
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [until]
+              additionalProperties: false
+              properties:
+                until: { type: string, format: date-time }
+      responses:
+        '200':
+          description: The run with its hold.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run]
+                properties:
+                  run: { $ref: '#/components/schemas/Run' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+    delete:
+      tags: [Runs]
+      operationId: releaseRun
+      summary: Lift a retention hold
+      description: Recorded as retention.released. A run that was not held is returned as it is. Needs rig.run.
+      parameters: [{ $ref: '#/components/parameters/RunId' }]
+      responses:
+        '200':
+          description: The run without its hold.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [run]
+                properties:
+                  run: { $ref: '#/components/schemas/Run' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/evidence/keys:
+    get:
+      tags: [Evidence]
+      operationId: listEvidenceKeys
+      summary: The keys evidence is signed with
+      description: >-
+        The public keys bundles and receipts are signed with, by key id, so
+        a verifier can trust a signature by key rather than by the key it
+        carries. Empty on a platform that signs nothing. Needs rig.read.
+      responses:
+        '200':
+          description: The keys.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [keys]
+                properties:
+                  keys:
+                    type: array
+                    items: { $ref: '#/components/schemas/PublicKey' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/runs/{runId}/evidence:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    post:
+      tags: [Events]
+      operationId: exportEvidence
+      summary: Export the run's evidence bundle
+      description: >-
+        Builds the run's evidence bundle from what it recorded and returns it:
+        a ZIP holding `manifest.json` (the run, counts, and every file's size
+        and SHA-256), `events.json` (the whole timeline in sequence order),
+        `expectations.json` (each expectation with its verdict once the run
+        is finished), `faults.json`, `resources.json`, `definition.json`,
+        every message under `messages/` and every request body under
+        `requests/`, named by sequence and event id. Bounded at 10,000 events
+        and 256 MiB of payloads; the manifest says when a bound bit or when
+        retention had already taken some bytes. With `Accept:
+        application/json` the manifest alone is returned. Read-only: the
+        bundle is what the caller can already read event by event.
+      responses:
+        '200':
+          description: The bundle, or its manifest
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+            application/json:
+              schema:
+                type: object
+                required: [manifest, download]
+                properties:
+                  manifest: { type: object, additionalProperties: true }
+                  download: { type: string, description: The path that returns the bundle itself. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/usage:
+    get:
+      tags: [Usage]
+      operationId: getUsage
+      summary: Runs, events and metered interactions
+      description: >-
+        Counts the organisation's runs started in the window and the events
+        those runs recorded, by type, plus how many runs are active now. The
+        window defaults to the current UTC calendar month to date and may
+        span at most 92 days. Where unified billing runs, `billing` adds the
+        organisation's `rig.interaction` meter for the current billing
+        period (the UTC calendar month, whatever the window) from the
+        billing ledger: the free allowance, how many interactions were used
+        and are reserved, and the charge so far before tax. One interaction
+        is one accepted inbound email, inbound callback or mock exchange
+        with its response; a transport retry carrying the same identity (an
+        email's Message-ID with the same bytes, a callback's
+        `Idempotency-Key` or `Webhook-Id` with the same request) counts
+        once, so `used` can be below the event counts. Creating projects,
+        suites, runs and resources, faults, replays, waits, reads and
+        assertions are never metered. `billing` is null where interactions
+        are not metered. Reading usage is never metered. Needs rig.read.
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: Start of the window, RFC 3339; default the first of the current UTC month.
+          schema: { type: string, format: date-time }
+        - name: until
+          in: query
+          required: false
+          description: End of the window, RFC 3339, exclusive; default now.
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: The counts
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usage' }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/home:
+    get:
+      tags: [Usage]
+      operationId: getProductHome
+      summary: Tenant-scoped setup facts and recent activity for the portal
+      description: >-
+        Counts of projects, suites and runs, the moments that mark setup
+        (a key first reached the product, the first run started, the first
+        run finished), and the seven most recent runs as activity. Labels
+        carry no addresses, names or payloads. Needs rig.read.
+      responses:
+        '200':
+          description: Counts, timestamps and at most seven activity labels
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [product, counts, activity]
+                properties:
+                  product: { type: string, const: rig }
+                  first_value_at: { type: string, format: date-time }
+                  integrated_at: { type: string, format: date-time }
+                  key_at: { type: string, format: date-time }
+                  last_activity_at: { type: string, format: date-time }
+                  counts: { type: object, additionalProperties: { type: integer } }
+                  activity:
+                    type: array
+                    maxItems: 7
+                    items:
+                      type: object
+                      required: [id, label, href, at]
+                      properties:
+                        id: { type: string, format: uuid }
+                        label: { type: string }
+                        href: { type: string }
+                        at: { type: string, format: date-time }
+                        issue:
+                          type: string
+                          enum: [error, warning]
+                          description: Present when the run failed (error) or expired (warning).
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/environment:
+    get:
+      tags: [Usage]
+      operationId: getEnvironment
+      summary: The hosts, bounds and retention a client builds against
+      description: >-
+        The fixed facts of this deployment: the domain inbox addresses are
+        minted under, the base URLs of callback and mock addresses, the
+        gateway connectors dial, the ironfang-connect release to run when
+        the API knows it, every per-organisation, per-suite and per-run
+        bound, what is metered, and how long payload bytes and runs are
+        kept. The bounds are capacity limits, the same whatever the account
+        pays. Read-only. Needs rig.read.
+      responses:
+        '200':
+          description: The environment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Environment' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/runs/{runId}/faults:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Faults]
+      operationId: listFaults
+      summary: List a run's faults
+      description: >-
+        Returns every fault armed on the run - active, spent and removed - in
+        the order they were armed, with how often each has fired. The fault
+        history is evidence and is kept with the run. Read-only.
+      responses:
+        '200':
+          description: The faults
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [faults]
+                properties:
+                  faults:
+                    type: array
+                    items: { $ref: '#/components/schemas/Fault' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Faults]
+      operationId: addFault
+      summary: Arm a fault
+      description: >-
+        Arms deterministic interference on one resource of an active run.
+        `delay`, `duplicate` and `drop` act on the forwarding of a callback
+        resource that has a connector route: the delivery is held for the
+        duration, made `copies` extra times, or recorded and never
+        forwarded. `status_override` makes a `mock_http` resource answer the
+        given status whatever its rules said, body and headers unchanged.
+        A fault fires on the next observation it applies to, `count` times
+        (default once) or, if `persistent`, until removed or the run ends;
+        every firing is a `fault.injected` event beside the observation it
+        acted on. One active fault of each type per resource. Needs
+        rig.run. No randomness: the same faults against the same traffic
+        give the same timeline.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FaultSpec' }
+      responses:
+        '201':
+          description: Fault armed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [fault]
+                properties:
+                  fault: { $ref: '#/components/schemas/Fault' }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The run has ended, or an active fault of that type is already armed on the resource
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '429':
+          description: The run has its limit of faults
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/runs/{runId}/faults/{faultId}:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/FaultId'
+    delete:
+      tags: [Faults]
+      operationId: removeFault
+      summary: Disarm a fault
+      description: >-
+        Disarms an active fault and records `fault.removed`. A fault that is
+        already spent or removed is returned as it is. The row is kept: the
+        fault history is evidence. Needs rig.run.
+      responses:
+        '200':
+          description: The fault, now removed
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [fault]
+                properties:
+                  fault: { $ref: '#/components/schemas/Fault' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/RunNotActive' }
+  /v1/runs/{runId}/connectors:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Connectors]
+      operationId: listConnectors
+      summary: List a run's connectors
+      description: >-
+        Returns every connector minted for the run with its state (pending,
+        online, offline), the routes it is bound to and when it was last
+        seen, plus how many deliveries are still waiting for a connector.
+        Neither credential is ever returned here. Read-only.
+      responses:
+        '200':
+          description: The connectors
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [connectors, online, pending_deliveries]
+                properties:
+                  connectors:
+                    type: array
+                    items: { $ref: '#/components/schemas/Connector' }
+                  online: { type: integer, description: How many connectors hold a session now. }
+                  pending_deliveries: { type: integer, description: Callbacks queued for a route that no session has answered yet. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    post:
+      tags: [Connectors]
+      operationId: createConnector
+      summary: Mint a connector and its bootstrap token
+      description: >-
+        Mints a connector on an active run and returns its bootstrap token
+        once. The token is single-use, expires after ten minutes, and is
+        bound to this organisation, this run and the route labels named
+        (every label the run declares when none are given). Start
+        `ironfang-connect` with it and a local target for each label; the
+        connector exchanges it at the gateway for a session credential that
+        lives no longer than the run. The platform only ever names a route
+        label; what a label points at is decided on the connector's command
+        line and never leaves the machine. Needs rig.connector. A run may
+        have at most 16 connectors.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name: { type: string, maxLength: 64, description: "A label for this connector in the timeline, such as the machine it runs on." }
+                routes:
+                  type: array
+                  maxItems: 32
+                  description: Route labels to bind the credential to; a subset of what the run declares. Default all of them.
+                  items: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+      responses:
+        '201':
+          description: Connector minted; the bootstrap token appears here and nowhere else
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [connector, bootstrap_token, bootstrap_expires_at, gateway_url, routes, command]
+                properties:
+                  connector: { $ref: '#/components/schemas/Connector' }
+                  bootstrap_token: { type: string, description: 'The single-use credential, prefixed `ift_boot_`. Pass it to ironfang-connect in `IRONFANG_CONNECT_TOKEN`.' }
+                  bootstrap_expires_at: { type: string, format: date-time }
+                  gateway_url: { type: string, format: uri, description: The WebSocket endpoint the connector dials. }
+                  routes: { type: array, items: { type: string } }
+                  command: { type: string, description: The command line to complete with local targets. }
+                  release:
+                    type: object
+                    description: The ironfang-connect build to run, when the API knows it.
+                    required: [version, checksums_url]
+                    properties:
+                      version: { type: string }
+                      checksums_url: { type: string, format: uri, description: SHA-256 sums of every binary of that version. }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/RunNotActive' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '429':
+          description: The run has its limit of connectors
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/runs/{runId}/events:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    get:
+      tags: [Events]
+      operationId: listEvents
+      summary: Read the timeline
+      description: >-
+        Returns the run's events in sequence order after `since`, which is a
+        sequence number (0 for the start). Sequences are contiguous from 1
+        and never change: the same request always returns the same events,
+        so a client can page deterministically with `next_since`. Payloads
+        larger than an event carries are referenced by blob_ref, never
+        embedded. Read-only.
+      parameters:
+        - name: since
+          in: query
+          required: false
+          description: Return events with a sequence greater than this.
+          schema: { type: integer, minimum: 0, default: 0 }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        '200':
+          description: Events in sequence order
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events, next_since]
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: '#/components/schemas/Event' }
+                  next_since: { type: integer, description: The last sequence returned; pass it as since for the next page. }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/runs/{runId}/wait:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+    post:
+      tags: [Events]
+      operationId: waitForEvent
+      summary: Wait for an event
+      description: >-
+        Blocks until an event after `since` matches, or the timeout passes.
+        The wait reads the timeline first, so an event that already
+        happened is answered at once, then wakes as new events land. A
+        timeout is a 200 with `matched: false`, never an error: nothing went
+        wrong, the thing has not happened yet, and `next_since` says where
+        to continue. Timeouts are 1s to 90s (default 30s); loop with
+        `next_since` for longer. `match` keys are top-level fields of the
+        event's data: `field` compares as JSON, `field_contains` requires a
+        string containing the value. Deterministic: the same timeline and
+        request always answer the same event. At most 16 waits per
+        organisation may be open at once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [type]
+              additionalProperties: false
+              properties:
+                type: { type: string, example: callback.received }
+                resource: { type: string, description: "Limit to one of the run's resources, by name." }
+                match:
+                  type: object
+                  maxProperties: 16
+                  additionalProperties: true
+                  example: { method: POST }
+                since: { type: integer, minimum: 0, default: 0, description: Consider only events with a greater sequence. }
+                timeout: { type: string, default: 30s, example: 30s }
+      responses:
+        '200':
+          description: Matched, or timed out without a match
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [matched, next_since, waited_ms]
+                properties:
+                  matched: { type: boolean }
+                  event: { $ref: '#/components/schemas/Event' }
+                  next_since: { type: integer, description: The last sequence examined; pass it as since to continue. }
+                  waited_ms: { type: integer }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '429':
+          description: Too many waits are open for this organisation (`too_many_waiters`); retry after a moment.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/runs/{runId}/events/{eventId}:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/EventId'
+    get:
+      tags: [Events]
+      operationId: getEvent
+      summary: Get an event
+      description: Returns one event of the run with its full data.
+      responses:
+        '200':
+          description: The event
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [event]
+                properties:
+                  event: { $ref: '#/components/schemas/Event' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/runs/{runId}/events/{eventId}/payload:
+    parameters:
+      - $ref: '#/components/parameters/RunId'
+      - $ref: '#/components/parameters/EventId'
+    get:
+      tags: [Events]
+      operationId: getEventPayload
+      summary: Download an event's payload
+      description: >-
+        The exact bytes a callback carried, as an opaque attachment whatever
+        the sender declared, so third-party content is never rendered on
+        the API origin. The recorded media type is in
+        `X-Ironfang-Payload-Media-Type` and the SHA-256 in
+        `X-Ironfang-Payload-SHA256`; the same digest is in the event's
+        data. Events without a payload (anything but a received callback)
+        are not found.
+      responses:
+        '200':
+          description: The payload bytes
+          headers:
+            X-Ironfang-Payload-Media-Type:
+              schema: { type: string }
+              description: The Content-Type the sender declared.
+            X-Ironfang-Payload-SHA256:
+              schema: { type: string }
+              description: Hex SHA-256 of the bytes.
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410':
+          description: The payload's bytes were retired by retention; the event and its digest remain
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: |
+        A platform API key minted in the portal (Warden). Its scopes are its
+        permissions - `rig:read`, `rig:write`, `rig:run`,
+        `rig:connector`, or `rig:*` - and it acts only in the organisation
+        it was minted for. Keys without Rig scopes are refused with 403.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: |
+        A Warden user token. Each route also requires a tenant permission in
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+        reads need `rig.read`; creating and revising projects and suites
+        `rig.write`; starting, finishing and cancelling runs and allocating
+        resources `rig.run`. A missing permission is 403; a permission
+        lookup failure is 503.
+  parameters:
+    ProjectId:
+      name: projectId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SuiteId:
+      name: suiteId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ResourceId:
+      name: resourceId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    FaultId:
+      name: faultId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: The next_cursor of the previous page.
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >-
+        Makes starting a run safe to retry. Any string up to 200 characters;
+        surrounding whitespace is ignored and a longer key is a 422
+        `invalid_request`. The same key in this organisation returns the run
+        it first started, with its resources and 200 rather than 201, for as
+        long as that run is kept. The request is not compared with the first,
+        so there is no conflict response.
+      schema: { type: string, maxLength: 200 }
+  responses:
+    InvalidJSON:
+      description: The body is not one strict JSON value of the documented shape (`invalid_json`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidQuery:
+      description: An unknown, repeated or malformed query parameter (`invalid_query`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidRequest:
+      description: A field is invalid; the message names it (`invalid_request`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: No credential, an invalid one, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: The credential lacks the permission or scope, or names another organisation (`forbidden`, `insufficient_scope`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No such object in this organisation (`not_found`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: A name is already taken, or the target is archived (`conflict`, `archived`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RunNotActive:
+      description: The run has already ended (`run_not_active`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Usage:
+      type: object
+      required: [period, runs, events, billing]
+      properties:
+        period:
+          type: object
+          required: [start, end]
+          properties:
+            start: { type: string, format: date-time }
+            end: { type: string, format: date-time }
+        runs:
+          type: object
+          description: Runs started in the window by how they ended, plus the number active right now.
+          required: [started, active_now, finished, cancelled, expired, passed, failed, no_outcome]
+          properties:
+            started: { type: integer }
+            active_now: { type: integer }
+            finished: { type: integer }
+            cancelled: { type: integer }
+            expired: { type: integer }
+            passed: { type: integer }
+            failed: { type: integer }
+            no_outcome: { type: integer }
+        events:
+          type: object
+          description: Events recorded by the runs started in the window; by_type carries every type seen.
+          required: [total, email_received, callback_received, mock_request_received, connector_request_completed, callback_replayed, fault_injected, usage_refused, by_type]
+          properties:
+            total: { type: integer }
+            email_received: { type: integer }
+            callback_received: { type: integer }
+            mock_request_received: { type: integer }
+            connector_request_completed: { type: integer }
+            callback_replayed: { type: integer }
+            fault_injected: { type: integer }
+            usage_refused: { type: integer, description: Inbound interactions the billing ledger refused; they were not recorded. }
+            by_type:
+              type: object
+              additionalProperties: { type: integer }
+        billing:
+          type: object
+          nullable: true
+          description: The rig.interaction meter in the current billing period, from the billing ledger; null where interactions are not metered.
+          required: [meter, unit, unit_plural, period, catalogue_version, mode, allowance, used, free_used, billable, reserved, remaining_free, charge, currency, exempt]
+          properties:
+            meter: { type: string, const: rig.interaction }
+            unit: { type: string, example: interaction }
+            unit_plural: { type: string, example: interactions }
+            period:
+              type: object
+              required: [start, end]
+              properties:
+                start: { type: string, format: date-time }
+                end: { type: string, format: date-time }
+            catalogue_version: { type: string, description: The rate catalogue version that prices the period. }
+            mode: { type: string, enum: [free, setup_pending, enabled, paused, closed], description: "The billing account's mode: free accounts stop at the free allowance." }
+            allowance: { type: integer, description: Free interactions this period. }
+            used: { type: integer, description: Interactions counted this period. }
+            free_used: { type: integer }
+            billable: { type: integer, description: Interactions beyond the free allowance. }
+            reserved: { type: integer, description: Interactions admitted and not yet settled; normally 0. }
+            remaining_free: { type: integer }
+            charge: { type: string, example: '0.00', description: 'The exact charge so far in pounds before tax.' }
+            currency: { type: string, const: GBP }
+            exempt: { type: boolean, description: The account is exempt from settlement for Ironfang Rig. }
+    Environment:
+      type: object
+      required: [inbox_domain, hooks_base_url, mock_base_url, connect_url, limits, metering, retention]
+      properties:
+        inbox_domain: { type: string, example: inbox.rig.ironfang.com }
+        hooks_base_url: { type: string, format: uri, example: https://hooks.rig.ironfang.com }
+        mock_base_url: { type: string, format: uri, example: https://mock.rig.ironfang.com }
+        connect_url: { type: string, format: uri, example: wss://connect.rig.ironfang.com/v1/connect }
+        release:
+          type: object
+          nullable: true
+          description: The ironfang-connect build to run, when the API knows it.
+          required: [version, checksums_url]
+          properties:
+            version: { type: string }
+            checksums_url: { type: string, format: uri }
+        limits:
+          type: object
+          description: Every capacity bound, in the unit its name says. These are the same whatever the account pays; billing refusals are separate (see metering).
+          additionalProperties: { type: integer }
+        metering:
+          type: object
+          description: >-
+            What is metered where unified billing runs. Each counted event
+            is one rig.interaction, once per transport identity. An
+            interaction the billing ledger refuses is not recorded: the
+            sender gets the billing code (HTTP callbacks and mocks the
+            problem's status, such as 429 free_allowance_exhausted, in the
+            usual error body with product, meter and reset_at beside the
+            code; mail a 452 4.2.2 reply naming the code, or 550 for a
+            closed account) and the run's timeline gets refusal_event.
+          required: [enabled, meter, counted_events, refusal_event]
+          properties:
+            enabled: { type: boolean, description: Whether this deployment meters interactions. }
+            meter: { type: string, const: rig.interaction }
+            counted_events:
+              type: array
+              items: { type: string }
+              example: [email.received, callback.received, mock.request.received]
+            refusal_event: { type: string, const: usage.refused }
+        retention:
+          type: object
+          required: [payload_days, run_days]
+          properties:
+            payload_days: { type: integer, description: Days after a run ends that raw message and request bytes are kept. }
+            run_days: { type: integer, description: Days after a run ends that the run and its timeline are kept. }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+            docs: { type: string, format: uri, description: Where the API and its error codes are documented. }
+        request_id: { type: string, description: The X-Ironfang-Request-ID of the failed request. }
+    Project:
+      type: object
+      required: [id, organisation_id, slug, name, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        organisation_id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        created_at: { type: string, format: date-time }
+        archived_at: { type: string, format: date-time }
+    Suite:
+      type: object
+      required: [id, organisation_id, project_id, slug, name, current_version, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        organisation_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        slug: { type: string }
+        name: { type: string }
+        current_version: { type: integer }
+        created_at: { type: string, format: date-time }
+        archived_at: { type: string, format: date-time }
+    SuiteVersion:
+      type: object
+      required: [id, organisation_id, suite_id, version, definition, definition_sha256, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        organisation_id: { type: string, format: uuid }
+        suite_id: { type: string, format: uuid }
+        version: { type: integer }
+        definition: { $ref: '#/components/schemas/Definition' }
+        definition_sha256: { type: string, description: SHA-256 of the canonical definition. }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+    SuiteWithVersion:
+      type: object
+      required: [suite, version]
+      properties:
+        suite: { $ref: '#/components/schemas/Suite' }
+        version: { $ref: '#/components/schemas/SuiteVersion' }
+    Definition:
+      type: object
+      description: >-
+        A suite's content. Resources are named identities a run receives;
+        expectations are deterministic conditions on the run's events,
+        stored and validated now and evaluated once the platform observes
+        the events they name.
+      required: [version, resources]
+      additionalProperties: false
+      properties:
+        version: { type: integer, const: 1 }
+        defaults:
+          type: object
+          additionalProperties: false
+          properties:
+            run_ttl: { type: string, description: 'Default run lifetime, 1m to 24h ("30m").', example: 30m }
+        resources:
+          type: object
+          minProperties: 1
+          maxProperties: 32
+          additionalProperties: { $ref: '#/components/schemas/ResourceSpec' }
+          example:
+            customer_email: { type: email }
+            stripe_callback: { type: callback, connector: { route: stripe } }
+            shipping_api: { type: mock_http }
+        expectations:
+          type: array
+          maxItems: 64
+          items: { $ref: '#/components/schemas/ExpectationSpec' }
+    ResourceSpec:
+      type: object
+      required: [type]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [email, callback, mock_http, connector_route] }
+        scope: { type: string, enum: [run], default: run }
+        route: { type: string, description: The route label of a connector_route. }
+        connector: { $ref: '#/components/schemas/ConnectorSpec' }
+        rules:
+          type: array
+          maxItems: 32
+          description: For a mock_http, the rules it answers with, in order.
+          items: { $ref: '#/components/schemas/MockRule' }
+        openapi: { $ref: '#/components/schemas/OpenAPISpec' }
+    OpenAPISpec:
+      type: object
+      description: >-
+        For a mock_http, an OpenAPI 3 document the mock stands in for,
+        instead of rules: one rule per operation, in document order, its
+        path template as the match, its lowest 2xx (or default) response as
+        the answer, and the documented example, or a value built from the
+        schema, as the body. References resolve within the document;
+        nothing is fetched. At most 32 operations; name the ones a suite
+        needs in include. The CLI inlines openapi.file from beside the suite
+        file; the platform takes document only.
+      required: [document]
+      additionalProperties: false
+      properties:
+        document: { type: string, maxLength: 262144, description: "The OpenAPI 3 document, JSON or YAML." }
+        include: { type: array, maxItems: 32, items: { type: string }, description: 'Operations to keep, as "GET /pets/{id}".' }
+        prefer: { type: string, enum: [example, schema], description: Whether a documented example (the default) or a value built from the schema answers. }
+    MockRule:
+      type: object
+      description: >-
+        One rule of a mock: what to match and what to answer. Rules are
+        evaluated in order and the first match answers. A rule answers with
+        respond, one answer, or with sequence, its calls taking the responses
+        in turn and repeat saying what later calls get. Deterministic: the
+        same request against the same rules, at the same step, gets the same
+        answer, delay included.
+      required: [match]
+      additionalProperties: false
+      properties:
+        match:
+          type: object
+          additionalProperties: false
+          properties:
+            method: { type: string, description: 'An HTTP method, or "*" or omitted for any.', example: POST }
+            path: { type: string, description: 'Exact path under the mock URL, a prefix ending in "/*", or a template whose {name} segments match any one segment; omitted for any.', example: '/v1/ship/{id}' }
+            headers: { type: object, additionalProperties: { type: string }, description: Headers that must be present with exactly these values. }
+            json: { type: object, additionalProperties: true, description: Top-level fields a JSON request body must equal. }
+        respond: { $ref: '#/components/schemas/MockResponse' }
+        sequence:
+          type: array
+          minItems: 2
+          maxItems: 16
+          description: The responses this rule gives its calls in turn; exclusive with respond. Replacing the rules starts every sequence afresh.
+          items: { $ref: '#/components/schemas/MockResponse' }
+        repeat: { type: string, enum: [last, cycle], description: 'After a sequence''s last response: keep giving the last (the default) or start again.' }
+    MockResponse:
+      type: object
+      required: [status]
+      additionalProperties: false
+      description: >-
+        One answer. With template, the body and the header values are
+        rendered from the request: {{request.method}}, {{request.path}},
+        {{request.query}}, {{request.query.name}}, {{request.header.Name}},
+        {{request.body}}, {{request.json.a.b.0}}, {{run.id}},
+        {{resource.name}}, {{step}}, {{call}} and {{received_at}}. In a json
+        body a placeholder sits inside a string and is escaped for it. An
+        unknown placeholder is refused when the rules are written.
+      properties:
+        status: { type: integer, minimum: 100, maximum: 599, example: 201 }
+        headers: { type: object, additionalProperties: { type: string } }
+        body: { type: string, maxLength: 65536, description: A text body; exclusive with json. }
+        json: { description: A JSON body; sets Content-Type unless a header does. }
+        delay: { type: string, description: 'Held before answering, a duration such as "250ms", at most 10s.' }
+        template: { type: boolean, description: Render the body and header values from the request. }
+    ConnectorSpec:
+      type: object
+      description: >-
+        Binds a callback to a local route by label. The label is all the
+        platform ever sends; the destination behind it belongs to the
+        connector on the developer's machine.
+      required: [route]
+      additionalProperties: false
+      properties:
+        route: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$', example: stripe }
+    ExpectationSpec:
+      type: object
+      required: [id, resource, event]
+      additionalProperties: false
+      properties:
+        id: { type: string, pattern: '^[a-z][a-z0-9_]{0,63}$', example: verification_email }
+        resource: { type: string, description: A declared resource name. }
+        event: { type: string, description: "An event type from the catalogue, such as email.received or callback.forwarded." }
+        match:
+          type: object
+          maxProperties: 16
+          additionalProperties: true
+          example: { subject_contains: Verify }
+    Run:
+      type: object
+      required: [id, organisation_id, project_id, suite_id, suite_version_id, status, ttl_seconds, started_at, expires_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        organisation_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        suite_id: { type: string, format: uuid }
+        suite_version_id: { type: string, format: uuid }
+        status: { type: string, enum: [active, finished, cancelled, expired] }
+        outcome: { type: string, enum: [pass, fail, none], description: Present once finished. }
+        reason: { type: string }
+        ttl_seconds: { type: integer }
+        started_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        external_id: { type: string }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+    RunWithResources:
+      type: object
+      required: [run, resources]
+      properties:
+        run: { $ref: '#/components/schemas/Run' }
+        resources:
+          type: array
+          items: { $ref: '#/components/schemas/Resource' }
+    Resource:
+      type: object
+      required: [id, organisation_id, run_id, name, type, scope, expires_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        organisation_id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        name: { type: string }
+        type: { type: string, enum: [email, callback, mock_http, connector_route] }
+        scope: { type: string, enum: [run] }
+        email_address: { type: string, description: For email resources - the inbox that receives for this run. }
+        public_url: { type: string, format: uri, description: For callback and mock resources - the unguessable URL to configure elsewhere. }
+        route_label: { type: string, description: "For connector routes, and callbacks forwarded through one." }
+        config: { type: object, additionalProperties: true }
+        expires_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+    ExpectationResult:
+      type: object
+      required: [id, resource, event, passed]
+      properties:
+        id: { type: string }
+        resource: { type: string }
+        event: { type: string }
+        passed: { type: boolean }
+        event_id: { type: string, format: uuid, description: The first event that satisfied the expectation. }
+        sequence: { type: integer }
+        reason: { type: string, description: Why it failed. }
+    ChainReport:
+      type: object
+      description: The event hash chain as recomputed over a timeline.
+      required: [events, hashed, valid]
+      properties:
+        events: { type: integer }
+        hashed: { type: integer }
+        hashed_from: { type: integer, format: int64, description: The sequence the chain starts at. }
+        head: { type: string }
+        valid: { type: boolean }
+        broken_at: { type: integer, format: int64, description: The first sequence whose hash did not recompute. }
+    PublicKey:
+      type: object
+      required: [key_id, algorithm, public_key]
+      properties:
+        key_id: { type: string, description: The first 16 hex characters of the key's SHA-256. }
+        algorithm: { type: string, enum: [ed25519] }
+        public_key: { type: string, description: Base64. }
+    Signature:
+      type: object
+      description: A detached Ed25519 signature over named bytes, carrying the key it was made with.
+      required: [algorithm, key_id, public_key, signed, sha256, signed_at, signature]
+      properties:
+        algorithm: { type: string, enum: [ed25519] }
+        key_id: { type: string }
+        public_key: { type: string, description: Base64. }
+        signed: { type: string, description: 'What was signed: manifest.json, or receipt.' }
+        sha256: { type: string, description: SHA-256 of the signed bytes. }
+        signed_at: { type: string, format: date-time }
+        signature: { type: string, description: Base64. }
+    Receipt:
+      type: object
+      required: [receipt_version, generated_at, run, events]
+      properties:
+        receipt_version: { type: integer }
+        generated_at: { type: string, format: date-time }
+        run:
+          type: object
+          required: [id, organisation_id, project, suite, suite_version, status, outcome, started_at]
+          properties:
+            id: { type: string, format: uuid }
+            organisation_id: { type: string, format: uuid }
+            project: { type: string }
+            suite: { type: string }
+            suite_version: { type: integer }
+            status: { type: string }
+            outcome: { type: string }
+            started_at: { type: string, format: date-time }
+            finished_at: { type: string, format: date-time }
+            external_id: { type: string }
+        events: { type: integer }
+        chain_head: { type: string }
+        hashed_from: { type: integer, format: int64 }
+        verdicts: { type: object, additionalProperties: { type: string, enum: [passed, failed, unjudged] } }
+    SignedReceipt:
+      type: object
+      required: [receipt]
+      description: >-
+        The receipt and, on a platform with a signing key, its signature over
+        the receipt's canonical JSON (objects with keys in byte order, no
+        whitespace, numbers as written).
+      properties:
+        receipt: { $ref: '#/components/schemas/Receipt' }
+        signature: { $ref: '#/components/schemas/Signature' }
+    FaultSpec:
+      type: object
+      description: >-
+        Deterministic interference on one resource. delay, duplicate, drop,
+        reorder and payload_mutation act on the forwarding of a callback with
+        a connector route; status_override, connection_reset, bandwidth_limit
+        and partial_response act on a mock's answer. Each type takes its own
+        parameter and no other.
+      required: [type, resource]
+      additionalProperties: false
+      properties:
+        type: { type: string, enum: [delay, duplicate, drop, status_override, reorder, payload_mutation, connection_reset, bandwidth_limit, partial_response] }
+        resource: { type: string, description: "The resource, by the name the suite gave it." }
+        delay: { type: string, description: 'For delay: a duration such as "500ms" or "5s", at most 30s.' }
+        copies: { type: integer, minimum: 1, maximum: 5, description: 'For duplicate: extra deliveries; default 1.' }
+        status: { type: integer, minimum: 100, maximum: 599, description: 'For status_override: the status to answer.' }
+        batch: { type: integer, minimum: 2, maximum: 10, description: 'For reorder: how many deliveries to hold before releasing them last-first. A batch left incomplete when the run ends expires with outcome held.' }
+        mutations:
+          type: array
+          minItems: 1
+          maxItems: 8
+          description: 'For payload_mutation: the changes made to the forwarded body, in order. The received body stays on the timeline untouched; the body sent is the payload of the fault.injected event.'
+          items: { $ref: '#/components/schemas/Mutation' }
+        bytes_per_second: { type: integer, minimum: 64, maximum: 1048576, description: 'For bandwidth_limit: the rate the mock sends its body at. Raised, and recorded as capped, if the body would otherwise take longer than 30s.' }
+        bytes: { type: integer, minimum: 0, maximum: 65536, description: 'For partial_response: how much of the body the mock sends before closing the connection; 0 sends the headers alone.' }
+        count: { type: integer, minimum: 1, maximum: 100, description: How many times the fault fires before it is spent; default 1. A reorder fires once per released batch. }
+        persistent: { type: boolean, description: Fire on every observation until removed; count is then not given. }
+    Mutation:
+      type: object
+      description: >-
+        One deterministic change to a forwarded body. set and remove address a
+        JSON body by JSON Pointer (RFC 6901) and re-encode it with sorted keys;
+        replace substitutes every occurrence of a string in any body; truncate
+        keeps the first bytes. A change that does not apply (a body that is not
+        JSON, a path that does not exist, text not found, a body already
+        shorter) is recorded as not applied and the rest still run.
+      required: [op]
+      additionalProperties: false
+      properties:
+        op: { type: string, enum: [set, remove, replace, truncate] }
+        path: { type: string, maxLength: 256, description: 'For set and remove: a JSON Pointer such as "/customer/email" or "/items/0"; "" names the whole body, "-" appends to an array.' }
+        value: { description: 'For set: any JSON value, at most 4096 bytes encoded.' }
+        find: { type: string, maxLength: 1024, description: 'For replace: the text to find.' }
+        replace: { type: string, maxLength: 1024, description: 'For replace: the text put in its place; may be empty.' }
+        bytes: { type: integer, minimum: 0, maximum: 65536, description: 'For truncate: how many bytes to keep.' }
+    Fault:
+      type: object
+      required: [id, organisation_id, run_id, resource_id, resource, type, spec, status, fired, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        organisation_id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        resource_id: { type: string, format: uuid }
+        resource: { type: string }
+        type: { type: string, enum: [delay, duplicate, drop, status_override, reorder, payload_mutation, connection_reset, bandwidth_limit, partial_response] }
+        spec: { $ref: '#/components/schemas/FaultSpec' }
+        status: { type: string, enum: [active, spent, removed] }
+        remaining: { type: integer, description: Firings left; absent when persistent. }
+        fired: { type: integer }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+        removed_at: { type: string, format: date-time }
+    Connector:
+      type: object
+      description: >-
+        One connector to a run. Its credentials never appear here: the
+        bootstrap token is returned once at creation, the session credential
+        once at the gateway.
+      required: [id, organisation_id, run_id, routes, status, bootstrap_expires_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        organisation_id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        name: { type: string }
+        routes: { type: array, items: { type: string }, description: The route labels the credential is bound to. }
+        status: { type: string, enum: [pending, online, offline] }
+        client: { type: object, additionalProperties: true, description: "What the connector said about itself at hello (version, os, arch)." }
+        bootstrap_expires_at: { type: string, format: date-time }
+        bootstrap_used_at: { type: string, format: date-time }
+        session_expires_at: { type: string, format: date-time, description: Never later than the run's expiry. }
+        connected_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        disconnected_at: { type: string, format: date-time }
+        created_by: { type: string }
+        created_at: { type: string, format: date-time }
+    Event:
+      type: object
+      required: [id, organisation_id, project_id, suite_id, run_id, type, sequence, occurred_at, data]
+      properties:
+        id: { type: string, format: uuid }
+        organisation_id: { type: string, format: uuid }
+        project_id: { type: string, format: uuid }
+        suite_id: { type: string, format: uuid }
+        run_id: { type: string, format: uuid }
+        resource_id: { type: string, format: uuid }
+        type: { type: string, example: resource.allocated }
+        sequence: { type: integer, description: "The run's own counter, contiguous from 1." }
+        occurred_at: { type: string, format: date-time, description: Ironfang's clock. }
+        data: { type: object, additionalProperties: true }
+        blob_ref: { type: string, description: Reference to a stored payload too large to embed. }

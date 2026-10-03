@@ -1,0 +1,1521 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Finance E-Invoicing V2 Results API
+  version: 2.0.0
+  summary: Validate XRechnung, ZUGFeRD / Factur-X and Peppol invoices, as XML or as a PDF with embedded XML.
+  description: 'V2 validates an e-invoice against the exact, immutable ruleset of its
+
+    family and reports precisely what was checked.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/finance
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Ironfang-Proprietary
+servers:
+- url: https://api.ironfang.com/finance
+  description: Production. Paths below are relative to this product prefix.
+tags:
+- name: Results
+  description: Retained results, V1 and V2 together.
+paths:
+  /v2/einvoices/results:
+    get:
+      tags:
+      - Results
+      operationId: listEInvoiceResultsV2
+      summary: List retained results, V1 and V2 together
+      description: 'A page of the organisation''s retained results, newest first:
+
+        validations and generations made through V1 and validations made
+
+        through V2, each saying which API made it (`api_version`), the
+
+        schema of its retained document (`result_schema`) and its family.
+
+        `total` counts every matching record, expired and deleted ones
+
+        included; names are hidden after expiry or deletion and cannot
+
+        match `q`. Pass `next_cursor` as `cursor` for the next page.
+
+
+        V1''s own result list shows only V1 results: a V2 result is not a
+
+        document its schema describes.'
+      security:
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:read
+      parameters:
+      - name: cursor
+        in: query
+        required: false
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 256
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 20
+      - name: kind
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - validate
+          - generate
+      - name: outcome
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - valid
+          - invalid
+      - name: family
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/Family'
+      - name: api_version
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/APIVersion'
+      - name: ruleset
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/RulesetID'
+      - name: q
+        in: query
+        required: false
+        description: Case-insensitive literal substring of the operation id or an available document name.
+        schema:
+          type: string
+          minLength: 1
+          maxLength: 255
+      - name: operation_id
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/OpaqueID'
+      responses:
+        '200':
+          description: The page. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetainedResultList'
+              examples:
+                union:
+                  summary: A V2 XRechnung validation beside a V1 Peppol one
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-result-list.json
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+  /v2/einvoices/results/{id}:
+    get:
+      tags:
+      - Results
+      operationId: getEInvoiceResultV2
+      summary: One retained result, in the schema it was made under
+      description: 'The exact retained document, byte for byte as it was first
+
+        returned: a V2 validation''s `ironfang/finance/einvoice/validation-result/v2`,
+
+        or, for an operation made through V1, V1''s
+
+        `financewolf/einvoice/validation-result/v1` or
+
+        `financewolf/einvoice/generation-result/v1`, which the V1 contract
+
+        documents. Branch on `schema`. Reading a result never validates or
+
+        charges again.'
+      security:
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:read
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueID'
+      responses:
+        '200':
+          description: The retained document. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetainedDocument'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/ResultGone'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags:
+      - Results
+      operationId: deleteEInvoiceResultV2
+      summary: Erase one retained result now
+      description: 'Erases the retained document and its name, V1 or V2, before its
+
+        30 days are up. Deleting an already erased or expired result
+
+        answers `204` again. The operation record stays, so a replay under
+
+        its Idempotency-Key answers `410 result_gone` and never runs or
+
+        charges again.'
+      security:
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:write
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueID'
+      responses:
+        '204':
+          description: Erased.
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+components:
+  schemas:
+    FindingsSummary:
+      type: object
+      additionalProperties: false
+      required:
+      - returned
+      - total
+      - cap
+      - truncated
+      properties:
+        returned:
+          type: integer
+          minimum: 0
+          maximum: 1000
+        total:
+          type: integer
+          minimum: 0
+        cap:
+          type: integer
+          const: 1000
+        truncated:
+          type: boolean
+    BillingRefusal:
+      type: object
+      description: 'On a billing refusal only: the product and meter the unified billing account refused, and when the free allowance renews (the start of the next UTC month) where that is the reason.'
+      additionalProperties: false
+      properties:
+        product:
+          type: string
+          enum:
+          - finance
+        meter:
+          type: string
+          enum:
+          - finance.validation
+          - finance.generation
+        reset_at:
+          type: string
+          format: date-time
+    SeverityCounts:
+      type: object
+      additionalProperties: false
+      required:
+      - fatal
+      - warning
+      - information
+      properties:
+        fatal:
+          type: integer
+          minimum: 0
+        warning:
+          type: integer
+          minimum: 0
+        information:
+          type: integer
+          minimum: 0
+    ResultSchema:
+      type: string
+      description: The schema of a retained document.
+      enum:
+      - ironfang/finance/einvoice/validation-result/v2
+      - financewolf/einvoice/validation-result/v1
+      - financewolf/einvoice/generation-result/v1
+    Family:
+      type: string
+      description: 'An invoice family. `zugferd-facturx` is one family: ZUGFeRD and Factur-X are corresponding release names of the same standard.'
+      enum:
+      - peppol-bis-billing-3
+      - xrechnung
+      - zugferd-facturx
+    Syntax:
+      type: string
+      description: The syntax and schema edition a pipeline validates against, taken from the pinned release, never inferred from a namespace.
+      enum:
+      - ubl-2.1
+      - cii-d16b
+      - cii-d22b
+    RequestID:
+      type: string
+      pattern: ^[A-Za-z0-9_-]{8,64}$
+    Location:
+      type: object
+      description: 'Where a finding applies, in the source it came from: an XPath or a line and column in the invoice XML, or a PDF object or structure path. A PDF finding never carries an XML location.'
+      additionalProperties: false
+      required:
+      - kind
+      properties:
+        kind:
+          type: string
+          enum:
+          - none
+          - xpath
+          - line-column
+          - pdf
+        value:
+          type: string
+          minLength: 1
+          maxLength: 256
+    LayerResult:
+      type: object
+      additionalProperties: false
+      required:
+      - layer
+      - status
+      - fatal
+      - warning
+      - information
+      properties:
+        layer:
+          $ref: '#/components/schemas/Layer'
+        status:
+          type: string
+          enum:
+          - passed
+          - failed
+          - skipped
+          - error
+        reason:
+          type: string
+          enum:
+          - skipped_after_failure
+          - engine_error
+          - deadline_exceeded
+        fatal:
+          type: integer
+          minimum: 0
+        warning:
+          type: integer
+          minimum: 0
+        information:
+          type: integer
+          minimum: 0
+    Declared:
+      type: object
+      description: 'What the document itself declares, copied from its source identifiers. A declaration, not a verdict: validation decides whether it is true.'
+      additionalProperties: false
+      required:
+      - syntax
+      properties:
+        syntax:
+          type: string
+          description: The syntax the root element names.
+          enum:
+          - ubl
+          - cii
+          - other
+        root:
+          type: string
+          description: The root element's local name.
+          maxLength: 64
+        specification_id:
+          type: string
+          description: UBL CustomizationID, or CII GuidelineSpecifiedDocumentContextParameter/ID.
+          maxLength: 256
+        business_process_id:
+          type: string
+          description: UBL ProfileID, or CII BusinessProcessSpecifiedDocumentContextParameter/ID.
+          maxLength: 256
+        type_code:
+          type: string
+          description: The invoice type code, which decides invoice or credit note in CII.
+          maxLength: 8
+        family:
+          $ref: '#/components/schemas/Family'
+        variant:
+          $ref: '#/components/schemas/Variant'
+        pdf:
+          type: object
+          description: For a PDF, the invoice declarations in its XMP metadata.
+          additionalProperties: false
+          properties:
+            conformance_level:
+              type: string
+              maxLength: 32
+            document_file_name:
+              type: string
+              maxLength: 128
+            document_type:
+              type: string
+              maxLength: 32
+            version:
+              type: string
+              maxLength: 16
+            pdfa_part:
+              type: string
+              maxLength: 4
+            pdfa_conformance:
+              type: string
+              maxLength: 4
+    RetainedResultList:
+      type: object
+      additionalProperties: false
+      required:
+      - schema
+      - results
+      - total
+      - retention_days
+      properties:
+        schema:
+          type: string
+          const: ironfang/finance/einvoice/result-list/v2
+        results:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/RetainedResult'
+        next_cursor:
+          type: string
+          minLength: 1
+          maxLength: 256
+        total:
+          type: integer
+          minimum: 0
+        retention_days:
+          type: integer
+          const: 30
+    Engine:
+      type: object
+      additionalProperties: false
+      required:
+      - role
+      - name
+      - image_digest
+      properties:
+        role:
+          type: string
+          enum:
+          - xml
+          - pdf
+        name:
+          type: string
+          minLength: 1
+          maxLength: 128
+        image_digest:
+          $ref: '#/components/schemas/ImageDigest'
+    Variant:
+      type: string
+      description: 'A variant or profile within a family. XRechnung: `core`, `extension`, `cvd`. ZUGFeRD / Factur-X: `minimum`, `basic-wl`, `basic`, `en16931`, `extended`, `xrechnung` (the ZUGFeRD XRECHNUNG reference profile). Peppol BIS Billing 3 has none. Recognition is not support: the ruleset list is the only statement of what is validated.'
+      enum:
+      - core
+      - extension
+      - cvd
+      - minimum
+      - basic-wl
+      - basic
+      - en16931
+      - extended
+      - xrechnung
+    RulesetSelection:
+      type: object
+      additionalProperties: false
+      required:
+      - requested
+      - id
+      - selection_method
+      - state
+      - family
+      - syntax
+      - scope
+      - official_release
+      properties:
+        requested:
+          $ref: '#/components/schemas/RulesetSelector'
+        id:
+          $ref: '#/components/schemas/RulesetID'
+        selection_method:
+          type: string
+          enum:
+          - exact
+          - latest
+          - detected
+        state:
+          $ref: '#/components/schemas/RulesetState'
+        family:
+          $ref: '#/components/schemas/Family'
+        variant:
+          $ref: '#/components/schemas/Variant'
+        syntax:
+          $ref: '#/components/schemas/Syntax'
+        scope:
+          $ref: '#/components/schemas/Scope'
+        official_release:
+          type: string
+          minLength: 1
+          maxLength: 128
+          description: The specification release
+          e.g. 3.0.2.: null
+        technical_release:
+          type: string
+          maxLength: 64
+          description: The technical bundle
+          e.g. 2026-08-31: null
+          where the family publishes one separately.: null
+    CheckGroup:
+      type: object
+      description: One of the groups a person reads a result in. `invoice_xml` is always present; `pdfa` and `attachment_metadata` only at `hybrid_pdf` scope. The status is the worst of its layers.
+      additionalProperties: false
+      required:
+      - group
+      - status
+      - layers
+      properties:
+        group:
+          type: string
+          enum:
+          - pdfa
+          - attachment_metadata
+          - invoice_xml
+        status:
+          type: string
+          enum:
+          - passed
+          - failed
+          - skipped
+        layers:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/Layer'
+    OpaqueID:
+      type: string
+      pattern: ^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$
+    RetainedResult:
+      type: object
+      additionalProperties: false
+      required:
+      - operation_id
+      - kind
+      - api_version
+      - result_schema
+      - family
+      - outcome
+      - ruleset_id
+      - created_at
+      - expires_at
+      - available
+      properties:
+        operation_id:
+          $ref: '#/components/schemas/OpaqueID'
+        kind:
+          type: string
+          enum:
+          - validate
+          - generate
+        api_version:
+          $ref: '#/components/schemas/APIVersion'
+        result_schema:
+          $ref: '#/components/schemas/ResultSchema'
+        family:
+          $ref: '#/components/schemas/Family'
+        outcome:
+          type: string
+          enum:
+          - valid
+          - invalid
+        ruleset_id:
+          $ref: '#/components/schemas/RulesetID'
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        deleted_at:
+          type: string
+          format: date-time
+        available:
+          type: boolean
+          description: The document can still be read; false once expired or erased.
+        display_name:
+          type: string
+          maxLength: 255
+          description: The name given when the document was validated in the portal, while the result is available.
+    RulesetID:
+      type: string
+      pattern: ^fwrs_[a-z0-9_]{1,80}$
+    Severity:
+      type: string
+      description: '`fatal` fails the document; `warning` and `information` never do.'
+      enum:
+      - fatal
+      - warning
+      - information
+    Coverage:
+      type: object
+      description: What the result covers. `checked` is the layers that ran to completion; `not_checked` names every aspect the result does not establish, and why.
+      additionalProperties: false
+      required:
+      - scope
+      - checked
+      - not_checked
+      properties:
+        scope:
+          $ref: '#/components/schemas/Scope'
+        checked:
+          type: array
+          items:
+            $ref: '#/components/schemas/Layer'
+          uniqueItems: true
+        not_checked:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - aspect
+            - reason
+            properties:
+              aspect:
+                type: string
+                enum:
+                - pdf_container
+                - visual_consistency
+                - digital_signature
+                - en16931_semantics
+              reason:
+                type: string
+                enum:
+                - no_pdf_supplied
+                - not_implemented
+                - outside_scope
+                - reduced_profile
+    RulesetState:
+      type: string
+      enum:
+      - scheduled
+      - sendable
+      - historical
+    ImageDigest:
+      type: string
+      pattern: ^sha256:[0-9a-f]{64}$
+    Finding:
+      type: object
+      additionalProperties: false
+      required:
+      - severity
+      - rule_flag
+      - layer
+      - rule_id
+      - rule_source
+      - message
+      - location
+      properties:
+        severity:
+          $ref: '#/components/schemas/Severity'
+          description: The level the ruleset applies, which decides the outcome.
+        rule_flag:
+          $ref: '#/components/schemas/Severity'
+          description: The rule's own flag. It differs from `severity` where the family's official configuration sets another level for the rule (XRechnung's per-scenario levels).
+        layer:
+          $ref: '#/components/schemas/Layer'
+        rule_id:
+          type: string
+          pattern: ^[A-Za-z0-9._:-]{1,64}$
+          description: 'The official rule identifier, unchanged. Ironfang''s own checks use the `FW-` namespace (`rule_source: ironfang`).'
+        rule_source:
+          type: string
+          enum:
+          - official
+          - ironfang
+        message:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: A fixed, safe message for the rule or layer. Official rule texts are not repeated, because they can carry invoice values.
+        location:
+          $ref: '#/components/schemas/Location'
+        hint_code:
+          type: string
+          maxLength: 64
+        source_url:
+          type: string
+          format: uri
+          maxLength: 256
+    Problem:
+      type: object
+      description: 'An RFC 9457 problem. `code` is the stable identifier and fixes `status` and `type`. `detail` is safe to show: it never carries parser output, invoice content or stack traces.'
+      additionalProperties: false
+      required:
+      - type
+      - title
+      - status
+      - detail
+      - code
+      - request_id
+      properties:
+        type:
+          type: string
+          format: uri
+          pattern: ^https://ironfang\.com/problems/[a-z_]+$
+        title:
+          type: string
+          minLength: 1
+          maxLength: 128
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+          minLength: 1
+          maxLength: 512
+        instance:
+          type: string
+          format: uri-reference
+          maxLength: 256
+        code:
+          type: string
+          enum:
+          - malformed_request
+          - unauthenticated
+          - insufficient_scope
+          - not_found
+          - idempotency_conflict
+          - ruleset_disabled
+          - result_gone
+          - payload_too_large
+          - unsupported_content_type
+          - unknown_ruleset
+          - selection_conflict
+          - family_undetected
+          - family_mismatch
+          - unsupported_variant
+          - unsupported_document_type
+          - scope_unavailable
+          - no_embedded_invoice
+          - ambiguous_embedded_invoice
+          - encrypted_pdf
+          - processing_limit
+          - rate_limited
+          - quota_exhausted
+          - internal_error
+          - validator_unavailable
+          - validation_timeout
+          - delivery_unavailable
+          - jobs_unavailable
+          - report_incomplete
+          - report_unavailable
+          - free_allowance_exhausted
+          - account_budget_exhausted
+          - product_budget_exhausted
+          - exemption_limit_reached
+          - paid_usage_paused
+          - payment_required
+          - payment_action_required
+          - account_restricted
+          - account_closed
+          - product_not_eligible
+          - billing_temporarily_unavailable
+        request_id:
+          $ref: '#/components/schemas/RequestID'
+        errors:
+          type: array
+          description: Field-level errors, on `malformed_request` only.
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/FieldError'
+        detected:
+          $ref: '#/components/schemas/Declared'
+          description: 'On `family_mismatch`, `family_undetected` and `unsupported_variant` only: what the document declares, so a client can point to the right tool. Identifiers only, never invoice content.'
+        operation_id:
+          $ref: '#/components/schemas/OpaqueID'
+          description: On an indeterminate validation only, the operation that was opened.
+        outcome:
+          type: string
+          const: indeterminate
+        usage_charged:
+          type: boolean
+          const: false
+        retry_after_seconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+        billing:
+          $ref: '#/components/schemas/BillingRefusal'
+      allOf:
+      - if:
+          properties:
+            code:
+              const: malformed_request
+        then:
+          properties:
+            status:
+              const: 400
+            type:
+              const: https://ironfang.com/problems/malformed_request
+      - if:
+          properties:
+            code:
+              const: unauthenticated
+        then:
+          properties:
+            status:
+              const: 401
+            type:
+              const: https://ironfang.com/problems/unauthenticated
+      - if:
+          properties:
+            code:
+              const: insufficient_scope
+        then:
+          properties:
+            status:
+              const: 403
+            type:
+              const: https://ironfang.com/problems/insufficient_scope
+      - if:
+          properties:
+            code:
+              const: not_found
+        then:
+          properties:
+            status:
+              const: 404
+            type:
+              const: https://ironfang.com/problems/not_found
+      - if:
+          properties:
+            code:
+              const: idempotency_conflict
+        then:
+          properties:
+            status:
+              const: 409
+            type:
+              const: https://ironfang.com/problems/idempotency_conflict
+      - if:
+          properties:
+            code:
+              const: ruleset_disabled
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/ruleset_disabled
+      - if:
+          properties:
+            code:
+              const: result_gone
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/result_gone
+      - if:
+          properties:
+            code:
+              const: payload_too_large
+        then:
+          properties:
+            status:
+              const: 413
+            type:
+              const: https://ironfang.com/problems/payload_too_large
+      - if:
+          properties:
+            code:
+              const: unsupported_content_type
+        then:
+          properties:
+            status:
+              const: 415
+            type:
+              const: https://ironfang.com/problems/unsupported_content_type
+      - if:
+          properties:
+            code:
+              const: unknown_ruleset
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/unknown_ruleset
+      - if:
+          properties:
+            code:
+              const: selection_conflict
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/selection_conflict
+      - if:
+          properties:
+            code:
+              const: family_undetected
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/family_undetected
+      - if:
+          properties:
+            code:
+              const: family_mismatch
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/family_mismatch
+      - if:
+          properties:
+            code:
+              const: unsupported_variant
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/unsupported_variant
+      - if:
+          properties:
+            code:
+              const: unsupported_document_type
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/unsupported_document_type
+      - if:
+          properties:
+            code:
+              const: scope_unavailable
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/scope_unavailable
+      - if:
+          properties:
+            code:
+              const: no_embedded_invoice
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/no_embedded_invoice
+      - if:
+          properties:
+            code:
+              const: ambiguous_embedded_invoice
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/ambiguous_embedded_invoice
+      - if:
+          properties:
+            code:
+              const: encrypted_pdf
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/encrypted_pdf
+      - if:
+          properties:
+            code:
+              const: processing_limit
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/processing_limit
+      - if:
+          properties:
+            code:
+              const: rate_limited
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/rate_limited
+      - if:
+          properties:
+            code:
+              const: quota_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/quota_exhausted
+      - if:
+          properties:
+            code:
+              const: internal_error
+        then:
+          properties:
+            status:
+              const: 500
+            type:
+              const: https://ironfang.com/problems/internal_error
+      - if:
+          properties:
+            code:
+              const: validator_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/validator_unavailable
+      - if:
+          properties:
+            code:
+              const: delivery_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/delivery_unavailable
+      - if:
+          properties:
+            code:
+              const: jobs_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/jobs_unavailable
+      - if:
+          properties:
+            code:
+              const: report_incomplete
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/report_incomplete
+      - if:
+          properties:
+            code:
+              const: report_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/report_unavailable
+      - if:
+          properties:
+            code:
+              const: validation_timeout
+        then:
+          properties:
+            status:
+              const: 504
+            type:
+              const: https://ironfang.com/problems/validation_timeout
+      - if:
+          properties:
+            code:
+              const: free_allowance_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/free_allowance_exhausted
+      - if:
+          properties:
+            code:
+              const: account_budget_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/account_budget_exhausted
+      - if:
+          properties:
+            code:
+              const: product_budget_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/product_budget_exhausted
+      - if:
+          properties:
+            code:
+              const: exemption_limit_reached
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/exemption_limit_reached
+      - if:
+          properties:
+            code:
+              const: paid_usage_paused
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/paid_usage_paused
+      - if:
+          properties:
+            code:
+              const: payment_required
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/payment_required
+      - if:
+          properties:
+            code:
+              const: payment_action_required
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/payment_action_required
+      - if:
+          properties:
+            code:
+              const: account_restricted
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/account_restricted
+      - if:
+          properties:
+            code:
+              const: account_closed
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/account_closed
+      - if:
+          properties:
+            code:
+              const: product_not_eligible
+        then:
+          properties:
+            status:
+              const: 403
+            type:
+              const: https://ironfang.com/problems/product_not_eligible
+      - if:
+          properties:
+            code:
+              const: billing_temporarily_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/billing_temporarily_unavailable
+    APIVersion:
+      type: string
+      description: The API a result was made through.
+      enum:
+      - v1
+      - v2
+    FieldError:
+      type: object
+      additionalProperties: false
+      required:
+      - field
+      - code
+      - message
+      properties:
+        field:
+          type: string
+          minLength: 1
+          maxLength: 64
+        code:
+          type: string
+          enum:
+          - unknown_field
+          - repeated
+          - invalid_value
+          - missing
+        message:
+          type: string
+          minLength: 1
+          maxLength: 256
+    Usage:
+      type: object
+      additionalProperties: false
+      required:
+      - charged
+      - credits
+      properties:
+        charged:
+          type: boolean
+        credits:
+          type: integer
+          minimum: 0
+          maximum: 1
+        remaining:
+          type: integer
+          minimum: 0
+          description: Only on results recorded before usage billing, returned as they were recorded.
+        period_ends_at:
+          type: string
+          format: date-time
+          description: Only on results recorded before usage billing, returned as they were recorded.
+    Scope:
+      type: string
+      enum:
+      - xml
+      - hybrid_pdf
+    RulesetSelector:
+      type: string
+      pattern: ^(latest|fwrs_[a-z0-9_]{1,80})$
+    ValidationVerdict:
+      type: object
+      description: The result of one completed validation. `outcome` is decided by the fatal findings of the checks that ran, within `coverage`.
+      additionalProperties: false
+      required:
+      - schema
+      - status
+      - outcome
+      - input
+      - declared
+      - ruleset
+      - coverage
+      - groups
+      - layers
+      - counts
+      - findings
+      - findings_summary
+      - timing
+      - engines
+      - next_actions
+      properties:
+        schema:
+          type: string
+          const: ironfang/finance/einvoice/validation-result/v2
+        operation_id:
+          $ref: '#/components/schemas/OpaqueID'
+        status:
+          type: string
+          const: completed
+        outcome:
+          type: string
+          enum:
+          - valid
+          - invalid
+        input:
+          $ref: '#/components/schemas/ValidationInput'
+        declared:
+          $ref: '#/components/schemas/Declared'
+        ruleset:
+          $ref: '#/components/schemas/RulesetSelection'
+        coverage:
+          $ref: '#/components/schemas/Coverage'
+        groups:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/CheckGroup'
+        layers:
+          type: array
+          minItems: 3
+          maxItems: 9
+          items:
+            $ref: '#/components/schemas/LayerResult'
+        counts:
+          type: object
+          additionalProperties: false
+          required:
+          - by_severity
+          properties:
+            by_severity:
+              $ref: '#/components/schemas/SeverityCounts'
+        findings:
+          type: array
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/Finding'
+        findings_summary:
+          $ref: '#/components/schemas/FindingsSummary'
+        timing:
+          $ref: '#/components/schemas/Timing'
+        engines:
+          type: array
+          minItems: 1
+          maxItems: 2
+          items:
+            $ref: '#/components/schemas/Engine'
+        next_actions:
+          type: array
+          description: 'What this input supports next, from the capability registry: open the readable view, or extract the embedded XML. Never guessed by a client.'
+          uniqueItems: true
+          items:
+            type: string
+            enum:
+            - view
+            - extract_xml
+        usage:
+          $ref: '#/components/schemas/Usage'
+    Timing:
+      type: object
+      additionalProperties: false
+      required:
+      - started_at
+      - completed_at
+      - duration_ms
+      properties:
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+          minimum: 0
+          maximum: 30000
+    SHA256:
+      type: string
+      pattern: ^[0-9a-f]{64}$
+    ValidationInput:
+      type: object
+      additionalProperties: false
+      required:
+      - media_type
+      - bytes
+      - sha256
+      - document_type
+      properties:
+        media_type:
+          type: string
+          enum:
+          - application/xml
+          - application/pdf
+        bytes:
+          type: integer
+          minimum: 0
+          maximum: 20971520
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+        document_type:
+          type: string
+          enum:
+          - invoice
+          - credit_note
+          - unknown
+        embedded_xml:
+          type: object
+          description: For a PDF, the invoice XML exactly as extracted - original bytes, never re-serialised.
+          additionalProperties: false
+          required:
+          - bytes
+          - sha256
+          properties:
+            bytes:
+              type: integer
+              minimum: 0
+              maximum: 5242880
+            sha256:
+              $ref: '#/components/schemas/SHA256'
+            file_name:
+              type: string
+              maxLength: 128
+              description: The attachment's name as declared in the PDF
+              for display only.: null
+    Layer:
+      type: string
+      description: A validation stage. A result reports the stages its pipeline runs, in the pipeline's order; no pipeline runs them all.
+      enum:
+      - input
+      - pdfa
+      - hybrid_binding
+      - xml
+      - xsd
+      - en16931
+      - peppol
+      - xrechnung
+      - zugferd_profile
+    RetainedDocument:
+      description: A retained document in the schema it was made under. A V1 document is described by the V1 contract (/finance/v1/openapi.yaml); here it is only named by its `schema`.
+      oneOf:
+      - $ref: '#/components/schemas/ValidationVerdict'
+      - type: object
+        required:
+        - schema
+        properties:
+          schema:
+            type: string
+            enum:
+            - financewolf/einvoice/validation-result/v1
+            - financewolf/einvoice/generation-result/v1
+  responses:
+    InternalError:
+      description: Ironfang Finance failed. Not a verdict on anything.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  const: internal_error
+    NotFound:
+      description: No such release or result is visible.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  const: not_found
+    ResultGone:
+      description: The result expired or was erased. Its operation record remains.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  const: result_gone
+    RateLimited:
+      description: Too many requests.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  const: rate_limited
+    MalformedRequest:
+      description: The request is malformed.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  const: malformed_request
+    InsufficientScope:
+      description: The key lacks the scope this operation needs.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  const: insufficient_scope
+    Unauthenticated:
+      description: The credential is missing or not accepted.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  const: unauthenticated
+  headers:
+    RetryAfter:
+      description: Seconds to wait before retrying. Mirrors `retry_after_seconds`.
+      schema:
+        type: integer
+        minimum: 1
+  securitySchemes:
+    platformKey:
+      type: http
+      scheme: bearer
+      description: An Ironfang platform API key minted in the portal, carrying the scopes an operation lists.
+externalDocs:
+  description: Ironfang Finance documentation
+  url: https://ironfang.com/docs/finance

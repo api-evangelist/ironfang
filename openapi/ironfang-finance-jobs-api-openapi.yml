@@ -1,0 +1,2435 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Finance E-Invoicing Jobs API
+  version: 1.4.0
+  summary: Generate UBL invoices and validate Invoice or CreditNote XML with PHIVE.
+  description: 'Ironfang Finance validates UBL e-invoices against the exact EN 16931 and Peppol
+
+    BIS Billing rule releases published by the standards bodies, and returns a
+
+    result that names the immutable ruleset it used so the outcome can be
+
+    reproduced later.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/finance
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Ironfang-Proprietary
+servers:
+- url: https://api.ironfang.com/finance
+  description: Production. Paths below are relative to this product prefix.
+security:
+- {}
+- platformKey: []
+tags:
+- name: Jobs
+  description: Authenticated durable validation and generation jobs and ordered batches.
+paths:
+  /v1/einvoices/jobs:
+    get:
+      operationId: listEinvoiceJobs
+      summary: List jobs
+      description: Tenant-scoped metadata, newest first by creation time and ID. Equal timestamps retain stable pagination. Newer insertions do not appear on subsequent pages; refresh the first page to see them. No input payloads or child job bodies in batch summaries. A final page has an empty next_cursor. Responses are no-store. The JWT portal twin has the same response and pagination contract. Only V1 jobs and batches are listed, read or cancelled here; one made through /finance/v2 is not found, and V2 lists both at /finance/v2/einvoices/jobs and /finance/v2/einvoices/batches.
+      tags:
+      - Jobs
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          maxLength: 256
+        description: Pass next_cursor from the preceding page; empty means the first page.
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+          - cancelled
+      responses:
+        '200':
+          description: One bounded page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobList'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '429':
+          $ref: '#/components/responses/ReadRateLimited'
+        '500':
+          $ref: '#/components/responses/ReadInternalError'
+      security:
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:read
+    post:
+      operationId: createEinvoiceJob
+      summary: Create an async job
+      description: 'Accept work durably using finance:einvoices:write. Jobs pin the selected
+
+        ruleset and engine at acceptance and use the same PHIVE/generator path as synchronous
+
+        requests. A batch has 1-100 ordered jobs; admission is atomic. Each input is at most
+
+        5 MiB; JSON envelopes are limited to 8 MiB for a job and 32 MiB for a batch. The tenant
+
+        backlog is limited to 100 unfinished jobs and 25 MiB of original inputs across keys.
+
+        At most two jobs run per tenant across replicas. At most two admission envelopes are buffered per API process; excess returns 429. Encrypted inputs expire after 24 hours
+
+        and are erased on completion or cancellation. Lease recovery and transient dependency
+
+        failures allow up to three attempts, with 5/10-second retry delays; attempts never add
+
+        extra usage charges. Caller disconnection does not cancel accepted work. Use an
+
+        Idempotency-Key (8-128 letters, digits, underscore or hyphen) when retrying an uncertain
+
+        admission. An identical request returns 200 current metadata; a different request under
+
+        the same key returns 409. Do not put invoice values in keys. Admission requires a
+
+        configured queue encryption key; polling, cancellation and replays remain available
+
+        when new admission is disabled. No query parameters or remote input URLs are accepted.
+
+        All responses are no-store.'
+      tags:
+      - Jobs
+      security:
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:write
+      responses:
+        '202':
+          description: Accepted durably; no validation outcome yet.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+            Location:
+              description: Relative polling URL.
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+        '200':
+          description: Current metadata for an idempotent replay.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
+        '403':
+          $ref: '#/components/responses/ScopeOrEligibility'
+        '429':
+          description: Rate limit, tenant backlog limit (`quota_exhausted`; retry after work finishes or is cancelled), or the billing account can admit no more of this work this month.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Problem'
+                - properties:
+                    code:
+                      enum:
+                      - rate_limited
+                      - quota_exhausted
+                      - free_allowance_exhausted
+                      - account_budget_exhausted
+                      - product_budget_exhausted
+                      - exemption_limit_reached
+                    status:
+                      const: 429
+                  not:
+                    anyOf:
+                    - required:
+                      - outcome
+                    - required:
+                      - usage_charged
+                    - required:
+                      - operation_id
+        '500':
+          $ref: '#/components/responses/ReadInternalError'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '410':
+          $ref: '#/components/responses/AdmissionGone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedContentType'
+        '422':
+          $ref: '#/components/responses/UnsupportedSelection'
+        '503':
+          description: New async admission unavailable, or billing briefly unavailable; retry with the same Idempotency-Key. Existing metadata remains readable.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Problem'
+                - properties:
+                    code:
+                      enum:
+                      - jobs_unavailable
+                      - billing_temporarily_unavailable
+                    status:
+                      const: 503
+                  not:
+                    anyOf:
+                    - required:
+                      - outcome
+                    - required:
+                      - usage_charged
+                    - required:
+                      - operation_id
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobRequest'
+  /v1/einvoices/jobs/{id}:
+    get:
+      operationId: getEinvoiceJob
+      summary: Get an async job
+      description: 'Read tenant-owned job metadata with finance:einvoices:read. Unknown or foreign IDs
+
+        return 404. Queued/running usage_charged=false is the current ledger state, not a promise
+
+        that completed work is free. A completed validation may be valid or invalid; service
+
+        failures are failed/indeterminate and uncharged. Use operation_id at /results/{id} for
+
+        the exact saved result (30-day retention). Batch children remain ordered by position;
+
+        completed children are readable before the whole batch finishes. Mixed terminal
+
+        statuses produce partial. Metadata contains no input, credentials or lease token.
+
+        No query parameters are accepted; responses are no-store.'
+      tags:
+      - Jobs
+      security:
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:read
+      responses:
+        '200':
+          description: Current metadata.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '429':
+          $ref: '#/components/responses/ReadRateLimited'
+        '500':
+          $ref: '#/components/responses/ReadInternalError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueID'
+  /v1/einvoices/jobs/{id}/cancel:
+    post:
+      operationId: cancelEinvoiceJob
+      summary: Cancel an async job
+      description: 'Cancel unfinished tenant-owned work with finance:einvoices:write. Send an empty body
+
+        and no query parameters. Cancellation and completion are serialized: a completed job
+
+        keeps its result and usage; cancellation that wins prevents any later result or charge
+
+        and erases the queued input. Repeated cancellation is idempotent. Batch cancellation
+
+        preserves terminal children and cancels only queued/running children, atomically.
+
+        Unknown or foreign IDs return 404. Responses are no-store.'
+      tags:
+      - Jobs
+      security:
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:write
+      responses:
+        '200':
+          description: Current metadata.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobResponse'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '429':
+          $ref: '#/components/responses/ReadRateLimited'
+        '500':
+          $ref: '#/components/responses/ReadInternalError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueID'
+  /v1/einvoices/batches:
+    get:
+      operationId: listEinvoiceBatches
+      summary: List batches
+      description: Tenant-scoped metadata, newest first by creation time and ID. Equal timestamps retain stable pagination. Newer insertions do not appear on subsequent pages; refresh the first page to see them. No input payloads or child job bodies in batch summaries. A final page has an empty next_cursor. Responses are no-store. The JWT portal twin has the same response and pagination contract. Only V1 jobs and batches are listed, read or cancelled here; one made through /finance/v2 is not found, and V2 lists both at /finance/v2/einvoices/jobs and /finance/v2/einvoices/batches.
+      tags:
+      - Jobs
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          maxLength: 256
+        description: Pass next_cursor from the preceding page; empty means the first page.
+      responses:
+        '200':
+          description: One bounded page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchList'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '429':
+          $ref: '#/components/responses/ReadRateLimited'
+        '500':
+          $ref: '#/components/responses/ReadInternalError'
+      security:
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:read
+    post:
+      operationId: createEinvoiceBatch
+      summary: Create an ordered batch
+      description: 'Accept work durably using finance:einvoices:write. Jobs pin the selected
+
+        ruleset and engine at acceptance and use the same PHIVE/generator path as synchronous
+
+        requests. A batch has 1-100 ordered jobs; admission is atomic. Each input is at most
+
+        5 MiB; JSON envelopes are limited to 8 MiB for a job and 32 MiB for a batch. The tenant
+
+        backlog is limited to 100 unfinished jobs and 25 MiB of original inputs across keys.
+
+        At most two jobs run per tenant across replicas. At most two admission envelopes are buffered per API process; excess returns 429. Encrypted inputs expire after 24 hours
+
+        and are erased on completion or cancellation. Lease recovery and transient dependency
+
+        failures allow up to three attempts, with 5/10-second retry delays; attempts never add
+
+        extra usage charges. Caller disconnection does not cancel accepted work. Use an
+
+        Idempotency-Key (8-128 letters, digits, underscore or hyphen) when retrying an uncertain
+
+        admission. An identical request returns 200 current metadata; a different request under
+
+        the same key returns 409. Do not put invoice values in keys. Admission requires a
+
+        configured queue encryption key; polling, cancellation and replays remain available
+
+        when new admission is disabled. No query parameters or remote input URLs are accepted.
+
+        All responses are no-store.'
+      tags:
+      - Jobs
+      security:
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:write
+      responses:
+        '202':
+          description: Accepted durably; no validation outcome yet.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+            Location:
+              description: Relative polling URL.
+              schema:
+                type: string
+                format: uri-reference
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResponse'
+        '200':
+          description: Current metadata for an idempotent replay.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResponse'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '402':
+          $ref: '#/components/responses/PaymentRequired'
+        '403':
+          $ref: '#/components/responses/ScopeOrEligibility'
+        '429':
+          description: Rate limit, tenant backlog limit (`quota_exhausted`; retry after work finishes or is cancelled), or the billing account can admit no more of this work this month.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Problem'
+                - properties:
+                    code:
+                      enum:
+                      - rate_limited
+                      - quota_exhausted
+                      - free_allowance_exhausted
+                      - account_budget_exhausted
+                      - product_budget_exhausted
+                      - exemption_limit_reached
+                    status:
+                      const: 429
+                  not:
+                    anyOf:
+                    - required:
+                      - outcome
+                    - required:
+                      - usage_charged
+                    - required:
+                      - operation_id
+        '500':
+          $ref: '#/components/responses/ReadInternalError'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '410':
+          $ref: '#/components/responses/AdmissionGone'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
+        '415':
+          $ref: '#/components/responses/UnsupportedContentType'
+        '422':
+          $ref: '#/components/responses/UnsupportedSelection'
+        '503':
+          description: New async admission unavailable, or billing briefly unavailable; retry with the same Idempotency-Key. Existing metadata remains readable.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Problem'
+                - properties:
+                    code:
+                      enum:
+                      - jobs_unavailable
+                      - billing_temporarily_unavailable
+                    status:
+                      const: 503
+                  not:
+                    anyOf:
+                    - required:
+                      - outcome
+                    - required:
+                      - usage_charged
+                    - required:
+                      - operation_id
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchRequest'
+  /v1/einvoices/batches/{id}:
+    get:
+      operationId: getEinvoiceBatch
+      summary: Get an ordered batch
+      description: 'Read tenant-owned job metadata with finance:einvoices:read. Unknown or foreign IDs
+
+        return 404. Queued/running usage_charged=false is the current ledger state, not a promise
+
+        that completed work is free. A completed validation may be valid or invalid; service
+
+        failures are failed/indeterminate and uncharged. Use operation_id at /results/{id} for
+
+        the exact saved result (30-day retention). Batch children remain ordered by position;
+
+        completed children are readable before the whole batch finishes. Mixed terminal
+
+        statuses produce partial. Metadata contains no input, credentials or lease token.
+
+        No query parameters are accepted; responses are no-store.'
+      tags:
+      - Jobs
+      security:
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:read
+      responses:
+        '200':
+          description: Current metadata.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResponse'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '429':
+          $ref: '#/components/responses/ReadRateLimited'
+        '500':
+          $ref: '#/components/responses/ReadInternalError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueID'
+  /v1/einvoices/batches/{id}/cancel:
+    post:
+      operationId: cancelEinvoiceBatch
+      summary: Cancel an ordered batch
+      description: 'Cancel unfinished tenant-owned work with finance:einvoices:write. Send an empty body
+
+        and no query parameters. Cancellation and completion are serialized: a completed job
+
+        keeps its result and usage; cancellation that wins prevents any later result or charge
+
+        and erases the queued input. Repeated cancellation is idempotent. Batch cancellation
+
+        preserves terminal children and cancels only queued/running children, atomically.
+
+        Unknown or foreign IDs return 404. Responses are no-store.'
+      tags:
+      - Jobs
+      security:
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:write
+      responses:
+        '200':
+          description: Current metadata.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchResponse'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '429':
+          $ref: '#/components/responses/ReadRateLimited'
+        '500':
+          $ref: '#/components/responses/ReadInternalError'
+        '404':
+          $ref: '#/components/responses/NotFound'
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/OpaqueID'
+components:
+  schemas:
+    BatchRequest:
+      type: object
+      additionalProperties: false
+      required:
+      - jobs
+      properties:
+        jobs:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/JobRequest'
+    BillingRefusal:
+      type: object
+      description: 'On a billing refusal only: the product and meter the billing account refused, and when the free allowance renews (the start of the next UTC month) where that is the reason.'
+      additionalProperties: false
+      properties:
+        product:
+          type: string
+          enum:
+          - finance
+        meter:
+          type: string
+          enum:
+          - finance.validation
+          - finance.generation
+        reset_at:
+          type: string
+          format: date-time
+    GenerationDefDecimal:
+      type: string
+      pattern: ^-?(0|[1-9][0-9]{0,14})(\.[0-9]{1,6})?$
+      maxLength: 23
+    GenerationDefUnsignedDecimal:
+      type: string
+      pattern: ^(0|[1-9][0-9]{0,14})(\.[0-9]{1,6})?$
+      maxLength: 23
+    GenerationDefId:
+      type: string
+      minLength: 1
+      maxLength: 128
+      pattern: "^[^--�-\uFFFF]*$"
+      allOf:
+      - pattern: \S
+      - pattern: ^\S(?:[\s\S]*\S)?$
+    RequestID:
+      type: string
+      pattern: ^[A-Za-z0-9_-]{8,64}$
+    GenerationDefItem:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          $ref: '#/components/schemas/GenerationDefName'
+        description:
+          $ref: '#/components/schemas/GenerationDefText'
+        seller_id:
+          $ref: '#/components/schemas/GenerationDefId'
+        buyer_id:
+          $ref: '#/components/schemas/GenerationDefId'
+        standard_id:
+          $ref: '#/components/schemas/GenerationDefStandardItemId'
+      required:
+      - name
+    BatchResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - schema
+      - id
+      - status
+      - created_at
+      - counts
+      - jobs
+      properties:
+        schema:
+          type: string
+          const: financewolf/einvoice/batch/v1
+        id:
+          $ref: '#/components/schemas/OpaqueID'
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+          - cancelled
+          - partial
+        created_at:
+          type: string
+          format: date-time
+        counts:
+          type: object
+          additionalProperties: false
+          required:
+          - queued
+          - running
+          - completed
+          - failed
+          - cancelled
+          properties:
+            queued:
+              type: integer
+              minimum: 0
+              maximum: 100
+            running:
+              type: integer
+              minimum: 0
+              maximum: 100
+            completed:
+              type: integer
+              minimum: 0
+              maximum: 100
+            failed:
+              type: integer
+              minimum: 0
+              maximum: 100
+            cancelled:
+              type: integer
+              minimum: 0
+              maximum: 100
+        jobs:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/JobMetadata'
+    JobMetadata:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - operation_id
+      - position
+      - operation
+      - status
+      - attempts
+      - ruleset_id
+      - engine_image_digest
+      - usage_charged
+      - result_available
+      - created_at
+      - expires_at
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueID'
+        operation_id:
+          $ref: '#/components/schemas/OpaqueID'
+        batch_id:
+          $ref: '#/components/schemas/OpaqueID'
+        position:
+          type: integer
+          minimum: 0
+          maximum: 99
+        operation:
+          type: string
+          enum:
+          - validate
+          - generate
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+          - cancelled
+        outcome:
+          type: string
+          enum:
+          - valid
+          - invalid
+          - indeterminate
+        failure_code:
+          type: string
+          enum:
+          - validation_timeout
+          - validator_unavailable
+          - internal_error
+          - generation_failed
+          - job_cancelled
+          - job_expired
+        attempts:
+          type: integer
+          minimum: 0
+          maximum: 3
+        ruleset_id:
+          $ref: '#/components/schemas/RulesetID'
+        engine_image_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        usage_charged:
+          type: boolean
+        result_available:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+    ProfileFamily:
+      type: string
+      description: A supported profile family. V1 supports Peppol BIS Billing 3.
+      enum:
+      - peppol-bis-billing-3
+    GenerationDefIdentifier:
+      type: object
+      additionalProperties: false
+      properties:
+        value:
+          $ref: '#/components/schemas/GenerationDefId'
+        scheme:
+          type: string
+          pattern: ^[A-Za-z0-9-]{1,16}$
+      required:
+      - value
+    DocumentTypeSelector:
+      type: string
+      enum:
+      - invoice
+      - credit_note
+      - auto
+      default: auto
+    GenerationDefStandardItemId:
+      type: object
+      additionalProperties: false
+      properties:
+        value:
+          $ref: '#/components/schemas/GenerationDefId'
+        scheme:
+          type: string
+          pattern: ^[0-9]{4}$
+      required:
+      - value
+      - scheme
+    OpaqueID:
+      type: string
+      description: An opaque Ironfang identifier.
+      minLength: 1
+      maxLength: 64
+      pattern: ^[A-Za-z0-9_-]+$
+    RulesetID:
+      type: string
+      description: An immutable ruleset identifier. Never reused, never edited.
+      pattern: ^fwrs_[a-z0-9_]{1,80}$
+    ValidationOptions:
+      type: object
+      description: Options for the multipart form. Unknown fields are rejected so a misspelt option cannot silently fall back to a default.
+      additionalProperties: false
+      properties:
+        ruleset:
+          $ref: '#/components/schemas/RulesetSelector'
+        profile:
+          $ref: '#/components/schemas/ProfileFamily'
+        document_type:
+          $ref: '#/components/schemas/DocumentTypeSelector'
+    GenerationDefContact:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          $ref: '#/components/schemas/GenerationDefName'
+        telephone:
+          $ref: '#/components/schemas/GenerationDefId'
+        email:
+          $ref: '#/components/schemas/GenerationDefName'
+      required: []
+      minProperties: 1
+    BatchList:
+      type: object
+      additionalProperties: false
+      required:
+      - batches
+      - next_cursor
+      properties:
+        batches:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BatchSummary'
+        next_cursor:
+          type: string
+    GenerationDefName:
+      type: string
+      minLength: 1
+      maxLength: 256
+      pattern: "^[^--�-\uFFFF]*$"
+      allOf:
+      - pattern: \S
+    GenerationDefText:
+      type: string
+      minLength: 1
+      maxLength: 1024
+      pattern: "^[^--�-\uFFFF]*$"
+      allOf:
+      - pattern: \S
+    GenerationRequest:
+      title: Ironfang Finance e-invoice generation input v1
+      description: Deterministic UBL 2.1 Invoice (380) or CreditNote (381) input. Schema validation does not assert Peppol validity. Decimal strings are exact; amount reconciliation is an additional generator check.
+      type: object
+      additionalProperties: false
+      properties:
+        input_schema_version:
+          const: financewolf/einvoice/generation-input/v1
+        document_type:
+          enum:
+          - invoice
+          - credit_note
+        id:
+          $ref: '#/components/schemas/GenerationDefId'
+        issue_date:
+          $ref: '#/components/schemas/GenerationDefDate'
+        due_date:
+          $ref: '#/components/schemas/GenerationDefDate'
+        tax_point_date:
+          $ref: '#/components/schemas/GenerationDefDate'
+        currency:
+          type: string
+          pattern: ^[A-Z]{3}$
+        buyer_reference:
+          $ref: '#/components/schemas/GenerationDefId'
+        purchase_order_reference:
+          $ref: '#/components/schemas/GenerationDefId'
+        contract_reference:
+          $ref: '#/components/schemas/GenerationDefId'
+        preceding_invoices:
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationDefReference'
+          minItems: 1
+          maxItems: 100
+        seller:
+          $ref: '#/components/schemas/GenerationDefParty'
+        buyer:
+          $ref: '#/components/schemas/GenerationDefParty'
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationDefLine'
+          minItems: 1
+          maxItems: 2000
+        allowances:
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationDefDocumentAdjustment'
+          minItems: 1
+          maxItems: 100
+        charges:
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationDefDocumentAdjustment'
+          minItems: 1
+          maxItems: 100
+        payment:
+          $ref: '#/components/schemas/GenerationDefPayment'
+        payment_terms:
+          $ref: '#/components/schemas/GenerationDefText'
+        delivery:
+          $ref: '#/components/schemas/GenerationDefDelivery'
+        note:
+          $ref: '#/components/schemas/GenerationDefNote'
+        accounting_cost:
+          $ref: '#/components/schemas/GenerationDefId'
+        prepaid_amount:
+          $ref: '#/components/schemas/GenerationDefUnsignedAmount'
+        rounding_amount:
+          $ref: '#/components/schemas/GenerationDefAmount'
+        totals:
+          $ref: '#/components/schemas/GenerationDefTotals'
+        tax_subtotals:
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationDefTaxSubtotal'
+          minItems: 1
+          maxItems: 100
+      required:
+      - input_schema_version
+      - document_type
+      - id
+      - issue_date
+      - currency
+      - seller
+      - buyer
+      - lines
+      anyOf:
+      - required:
+        - buyer_reference
+      - required:
+        - purchase_order_reference
+      allOf:
+      - if:
+          properties:
+            document_type:
+              const: credit_note
+        then:
+          not:
+            required:
+            - due_date
+    GenerationDefNote:
+      type: string
+      minLength: 1
+      maxLength: 2000
+      pattern: "^[^--�-\uFFFF]*$"
+      allOf:
+      - pattern: \S
+    GenerationDefPayment:
+      type: object
+      additionalProperties: false
+      properties:
+        code:
+          enum:
+          - '10'
+          - '30'
+          - '58'
+          - '97'
+        reference:
+          $ref: '#/components/schemas/GenerationDefId'
+        account:
+          $ref: '#/components/schemas/GenerationDefAccount'
+      required:
+      - code
+      allOf:
+      - if:
+          properties:
+            code:
+              enum:
+              - '30'
+              - '58'
+        then:
+          required:
+          - account
+        else:
+          not:
+            required:
+            - account
+    GenerationDefAmount:
+      type: string
+      pattern: ^-?(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$
+      maxLength: 23
+    GenerationDefDate:
+      type: string
+      format: date
+      pattern: ^[1-9][0-9]{3}-[0-9]{2}-[0-9]{2}$
+    GenerationDefReference:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/GenerationDefId'
+        issue_date:
+          $ref: '#/components/schemas/GenerationDefDate'
+      required:
+      - id
+    JobResponse:
+      type: object
+      additionalProperties: false
+      required:
+      - schema
+      - id
+      - operation_id
+      - position
+      - operation
+      - status
+      - attempts
+      - ruleset_id
+      - engine_image_digest
+      - usage_charged
+      - result_available
+      - created_at
+      - expires_at
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueID'
+        operation_id:
+          $ref: '#/components/schemas/OpaqueID'
+        batch_id:
+          $ref: '#/components/schemas/OpaqueID'
+        position:
+          type: integer
+          minimum: 0
+          maximum: 99
+        operation:
+          type: string
+          enum:
+          - validate
+          - generate
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+          - cancelled
+        outcome:
+          type: string
+          enum:
+          - valid
+          - invalid
+          - indeterminate
+        failure_code:
+          type: string
+          enum:
+          - validation_timeout
+          - validator_unavailable
+          - internal_error
+          - generation_failed
+          - job_cancelled
+          - job_expired
+        attempts:
+          type: integer
+          minimum: 0
+          maximum: 3
+        ruleset_id:
+          $ref: '#/components/schemas/RulesetID'
+        engine_image_digest:
+          type: string
+          pattern: ^sha256:[0-9a-f]{64}$
+        usage_charged:
+          type: boolean
+        result_available:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        schema:
+          type: string
+          const: financewolf/einvoice/job/v1
+        result_url:
+          type: string
+          format: uri-reference
+    Problem:
+      type: object
+      description: An RFC 9457 problem. `code` is the stable, machine-readable Ironfang identifier; `type` is its URL and `status` its one HTTP status, both fixed per code below. `detail` is safe to show and never carries parser output, invoice content or stack traces. Validation findings are never Problems.
+      additionalProperties: false
+      required:
+      - type
+      - title
+      - status
+      - detail
+      - code
+      - request_id
+      properties:
+        type:
+          type: string
+          format: uri
+          pattern: ^https://ironfang\.com/problems/[a-z_]+$
+        title:
+          type: string
+          minLength: 1
+          maxLength: 128
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+          minLength: 1
+          maxLength: 512
+        instance:
+          type: string
+          format: uri-reference
+          maxLength: 256
+        code:
+          type: string
+          description: The stable Ironfang problem code.
+          enum:
+          - malformed_request
+          - unauthenticated
+          - insufficient_scope
+          - idempotency_conflict
+          - payload_too_large
+          - unsupported_content_type
+          - unknown_ruleset
+          - ruleset_disabled
+          - result_gone
+          - unsupported_profile
+          - profile_undetected
+          - unsupported_document_type
+          - not_found
+          - rate_limited
+          - quota_exhausted
+          - billing_moved
+          - free_allowance_exhausted
+          - account_budget_exhausted
+          - product_budget_exhausted
+          - exemption_limit_reached
+          - paid_usage_paused
+          - payment_required
+          - payment_action_required
+          - account_restricted
+          - account_closed
+          - product_not_eligible
+          - billing_temporarily_unavailable
+          - validation_timeout
+          - validator_unavailable
+          - jobs_unavailable
+          - delivery_unavailable
+          - generation_failed
+          - report_unavailable
+          - report_incomplete
+          - render_unavailable
+          - render_timeout
+          - internal_error
+        request_id:
+          $ref: '#/components/schemas/RequestID'
+        errors:
+          type: array
+          description: Field-level errors, on `malformed_request` only. Bounded; empty is omitted.
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/FieldError'
+        operation_id:
+          $ref: '#/components/schemas/OpaqueID'
+          description: On an indeterminate validation problem only, the operation record that was opened, if any.
+        outcome:
+          type: string
+          const: indeterminate
+        usage_charged:
+          type: boolean
+          const: false
+        retry_after_seconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          description: Only on problems that invite a retry (`rate_limited`, `quota_exhausted`, `validator_unavailable`, `billing_temporarily_unavailable`).
+        billing:
+          $ref: '#/components/schemas/BillingRefusal'
+      allOf:
+      - if:
+          properties:
+            code:
+              const: malformed_request
+        then:
+          properties:
+            status:
+              const: 400
+            type:
+              const: https://ironfang.com/problems/malformed_request
+      - if:
+          properties:
+            code:
+              const: unauthenticated
+        then:
+          properties:
+            status:
+              const: 401
+            type:
+              const: https://ironfang.com/problems/unauthenticated
+      - if:
+          properties:
+            code:
+              const: insufficient_scope
+        then:
+          properties:
+            status:
+              const: 403
+            type:
+              const: https://ironfang.com/problems/insufficient_scope
+      - if:
+          properties:
+            code:
+              const: not_found
+        then:
+          properties:
+            status:
+              const: 404
+            type:
+              const: https://ironfang.com/problems/not_found
+      - if:
+          properties:
+            code:
+              const: idempotency_conflict
+        then:
+          properties:
+            status:
+              const: 409
+            type:
+              const: https://ironfang.com/problems/idempotency_conflict
+      - if:
+          properties:
+            code:
+              const: result_gone
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/result_gone
+      - if:
+          properties:
+            code:
+              const: ruleset_disabled
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/ruleset_disabled
+      - if:
+          properties:
+            code:
+              const: payload_too_large
+        then:
+          properties:
+            status:
+              const: 413
+            type:
+              const: https://ironfang.com/problems/payload_too_large
+      - if:
+          properties:
+            code:
+              const: unsupported_content_type
+        then:
+          properties:
+            status:
+              const: 415
+            type:
+              const: https://ironfang.com/problems/unsupported_content_type
+      - if:
+          properties:
+            code:
+              const: unknown_ruleset
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/unknown_ruleset
+      - if:
+          properties:
+            code:
+              const: unsupported_profile
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/unsupported_profile
+      - if:
+          properties:
+            code:
+              const: profile_undetected
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/profile_undetected
+      - if:
+          properties:
+            code:
+              const: unsupported_document_type
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/unsupported_document_type
+      - if:
+          properties:
+            code:
+              const: rate_limited
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/rate_limited
+      - if:
+          properties:
+            code:
+              const: billing_moved
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/billing_moved
+      - if:
+          properties:
+            code:
+              const: free_allowance_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/free_allowance_exhausted
+      - if:
+          properties:
+            code:
+              const: account_budget_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/account_budget_exhausted
+      - if:
+          properties:
+            code:
+              const: product_budget_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/product_budget_exhausted
+      - if:
+          properties:
+            code:
+              const: exemption_limit_reached
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/exemption_limit_reached
+      - if:
+          properties:
+            code:
+              const: paid_usage_paused
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/paid_usage_paused
+      - if:
+          properties:
+            code:
+              const: payment_required
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/payment_required
+      - if:
+          properties:
+            code:
+              const: payment_action_required
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/payment_action_required
+      - if:
+          properties:
+            code:
+              const: account_restricted
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/account_restricted
+      - if:
+          properties:
+            code:
+              const: account_closed
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/account_closed
+      - if:
+          properties:
+            code:
+              const: product_not_eligible
+        then:
+          properties:
+            status:
+              const: 403
+            type:
+              const: https://ironfang.com/problems/product_not_eligible
+      - if:
+          properties:
+            code:
+              const: billing_temporarily_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/billing_temporarily_unavailable
+      - if:
+          properties:
+            code:
+              const: quota_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/quota_exhausted
+      - if:
+          properties:
+            code:
+              const: report_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/report_unavailable
+      - if:
+          properties:
+            code:
+              const: report_incomplete
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/report_incomplete
+      - if:
+          properties:
+            code:
+              const: render_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/render_unavailable
+      - if:
+          properties:
+            code:
+              const: render_timeout
+        then:
+          properties:
+            status:
+              const: 504
+            type:
+              const: https://ironfang.com/problems/render_timeout
+      - if:
+          properties:
+            code:
+              const: generation_failed
+        then:
+          required:
+          - outcome
+          - usage_charged
+          properties:
+            status:
+              const: 500
+            type:
+              const: https://ironfang.com/problems/generation_failed
+      - if:
+          properties:
+            code:
+              const: internal_error
+        then:
+          properties:
+            status:
+              const: 500
+            type:
+              const: https://ironfang.com/problems/internal_error
+      - if:
+          properties:
+            code:
+              const: delivery_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/delivery_unavailable
+      - if:
+          properties:
+            code:
+              const: jobs_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/jobs_unavailable
+      - if:
+          properties:
+            code:
+              const: validator_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/validator_unavailable
+      - if:
+          properties:
+            code:
+              const: validation_timeout
+        then:
+          properties:
+            status:
+              const: 504
+            type:
+              const: https://ironfang.com/problems/validation_timeout
+      - if:
+          properties:
+            code:
+              enum:
+              - validation_timeout
+              - validator_unavailable
+        then:
+          required:
+          - outcome
+          - usage_charged
+      - if:
+          not:
+            properties:
+              code:
+                enum:
+                - validation_timeout
+                - validator_unavailable
+                - internal_error
+                - generation_failed
+        then:
+          not:
+            anyOf:
+            - required:
+              - outcome
+            - required:
+              - usage_charged
+            - required:
+              - operation_id
+      - if:
+          anyOf:
+          - required:
+            - outcome
+          - required:
+            - usage_charged
+          - required:
+            - operation_id
+        then:
+          required:
+          - outcome
+          - usage_charged
+      - if:
+          required:
+          - errors
+        then:
+          properties:
+            code:
+              const: malformed_request
+      - if:
+          required:
+          - retry_after_seconds
+        then:
+          properties:
+            code:
+              enum:
+              - rate_limited
+              - quota_exhausted
+              - validator_unavailable
+              - jobs_unavailable
+              - delivery_unavailable
+              - billing_temporarily_unavailable
+      - if:
+          required:
+          - billing
+        then:
+          properties:
+            code:
+              enum:
+              - free_allowance_exhausted
+              - account_budget_exhausted
+              - product_budget_exhausted
+              - exemption_limit_reached
+              - paid_usage_paused
+              - payment_required
+              - payment_action_required
+              - account_restricted
+              - account_closed
+              - product_not_eligible
+              - billing_temporarily_unavailable
+    GenerationDefTotals:
+      type: object
+      additionalProperties: false
+      properties:
+        line_net_amount:
+          $ref: '#/components/schemas/GenerationDefAmount'
+        allowance_total:
+          $ref: '#/components/schemas/GenerationDefAmount'
+        charge_total:
+          $ref: '#/components/schemas/GenerationDefAmount'
+        tax_exclusive_amount:
+          $ref: '#/components/schemas/GenerationDefAmount'
+        tax_amount:
+          $ref: '#/components/schemas/GenerationDefAmount'
+        tax_inclusive_amount:
+          $ref: '#/components/schemas/GenerationDefAmount'
+        prepaid_amount:
+          $ref: '#/components/schemas/GenerationDefAmount'
+        rounding_amount:
+          $ref: '#/components/schemas/GenerationDefAmount'
+        payable_amount:
+          $ref: '#/components/schemas/GenerationDefAmount'
+      required:
+      - line_net_amount
+      - allowance_total
+      - charge_total
+      - tax_exclusive_amount
+      - tax_amount
+      - tax_inclusive_amount
+      - prepaid_amount
+      - rounding_amount
+      - payable_amount
+    FieldError:
+      type: object
+      additionalProperties: false
+      required:
+      - field
+      - code
+      - message
+      properties:
+        field:
+          type: string
+          description: The option or parameter at fault, e.g. `ruleset`, `options.document_type`.
+          minLength: 1
+          maxLength: 128
+        code:
+          type: string
+          enum:
+          - required
+          - invalid_value
+          - unknown_field
+          - too_long
+        message:
+          type: string
+          minLength: 1
+          maxLength: 256
+    GenerationDefLine:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/GenerationDefId'
+        quantity:
+          $ref: '#/components/schemas/GenerationDefDecimal'
+        unit:
+          type: string
+          pattern: ^[A-Z0-9]{2,3}$
+        price_amount:
+          $ref: '#/components/schemas/GenerationDefUnsignedDecimal'
+        price_base_quantity:
+          $ref: '#/components/schemas/GenerationDefUnsignedDecimal'
+        net_amount:
+          $ref: '#/components/schemas/GenerationDefAmount'
+        item:
+          $ref: '#/components/schemas/GenerationDefItem'
+        tax:
+          $ref: '#/components/schemas/GenerationDefTax'
+        allowances:
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationDefLineAdjustment'
+          minItems: 1
+          maxItems: 100
+        charges:
+          type: array
+          items:
+            $ref: '#/components/schemas/GenerationDefLineAdjustment'
+          minItems: 1
+          maxItems: 100
+        note:
+          $ref: '#/components/schemas/GenerationDefText'
+        order_line_reference:
+          $ref: '#/components/schemas/GenerationDefId'
+        accounting_cost:
+          $ref: '#/components/schemas/GenerationDefId'
+      required:
+      - id
+      - quantity
+      - unit
+      - price_amount
+      - item
+      - tax
+    GenerationDefDocumentAdjustment:
+      type: object
+      additionalProperties: false
+      properties:
+        amount:
+          $ref: '#/components/schemas/GenerationDefUnsignedAmount'
+        reason:
+          $ref: '#/components/schemas/GenerationDefText'
+        reason_code:
+          $ref: '#/components/schemas/GenerationDefId'
+        base_amount:
+          $ref: '#/components/schemas/GenerationDefUnsignedAmount'
+        percentage:
+          $ref: '#/components/schemas/GenerationDefUnsignedDecimal'
+        tax:
+          $ref: '#/components/schemas/GenerationDefTax'
+      required:
+      - amount
+      - reason
+      - tax
+      dependentRequired:
+        base_amount:
+        - percentage
+        percentage:
+        - base_amount
+    JobList:
+      type: object
+      additionalProperties: false
+      required:
+      - jobs
+      - next_cursor
+      properties:
+        jobs:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/JobResponse'
+        next_cursor:
+          type: string
+    RulesetSelector:
+      type: string
+      description: '`latest`, or an exact ruleset id in any validatable state.'
+      default: latest
+      pattern: ^(latest|fwrs_[a-z0-9_]{1,80})$
+    GenerationDefDelivery:
+      type: object
+      additionalProperties: false
+      properties:
+        date:
+          $ref: '#/components/schemas/GenerationDefDate'
+        address:
+          $ref: '#/components/schemas/GenerationDefAddress'
+      required:
+      - date
+      - address
+    GenerationDefCountry:
+      type: string
+      pattern: ^[A-Z]{2}$
+    GenerationDefUnsignedAmount:
+      type: string
+      pattern: ^(0|[1-9][0-9]{0,14})(\.[0-9]{1,2})?$
+      maxLength: 23
+    GenerationDefAccount:
+      type: object
+      additionalProperties: false
+      properties:
+        id:
+          $ref: '#/components/schemas/GenerationDefId'
+        name:
+          $ref: '#/components/schemas/GenerationDefName'
+        branch_id:
+          $ref: '#/components/schemas/GenerationDefId'
+      required:
+      - id
+    GenerationDefTaxSubtotal:
+      type: object
+      additionalProperties: false
+      properties:
+        tax:
+          $ref: '#/components/schemas/GenerationDefTax'
+        taxable_amount:
+          $ref: '#/components/schemas/GenerationDefAmount'
+        tax_amount:
+          $ref: '#/components/schemas/GenerationDefAmount'
+      required:
+      - tax
+      - taxable_amount
+      - tax_amount
+    GenerationDefLineAdjustment:
+      type: object
+      additionalProperties: false
+      properties:
+        amount:
+          $ref: '#/components/schemas/GenerationDefUnsignedAmount'
+        reason:
+          $ref: '#/components/schemas/GenerationDefText'
+        reason_code:
+          $ref: '#/components/schemas/GenerationDefId'
+        base_amount:
+          $ref: '#/components/schemas/GenerationDefUnsignedAmount'
+        percentage:
+          $ref: '#/components/schemas/GenerationDefUnsignedDecimal'
+      required:
+      - amount
+      - reason
+      dependentRequired:
+        base_amount:
+        - percentage
+        percentage:
+        - base_amount
+    BatchSummary:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - status
+      - created_at
+      - counts
+      - job_count
+      properties:
+        id:
+          $ref: '#/components/schemas/OpaqueID'
+        status:
+          type: string
+          enum:
+          - queued
+          - running
+          - completed
+          - failed
+          - cancelled
+          - partial
+        created_at:
+          type: string
+          format: date-time
+        counts:
+          type: object
+          additionalProperties: false
+          required:
+          - queued
+          - running
+          - completed
+          - failed
+          - cancelled
+          properties:
+            queued:
+              type: integer
+              minimum: 0
+              maximum: 100
+            running:
+              type: integer
+              minimum: 0
+              maximum: 100
+            completed:
+              type: integer
+              minimum: 0
+              maximum: 100
+            failed:
+              type: integer
+              minimum: 0
+              maximum: 100
+            cancelled:
+              type: integer
+              minimum: 0
+              maximum: 100
+        job_count:
+          type: integer
+          minimum: 0
+          maximum: 100
+    GenerationDefParty:
+      type: object
+      additionalProperties: false
+      properties:
+        name:
+          $ref: '#/components/schemas/GenerationDefName'
+        trading_name:
+          $ref: '#/components/schemas/GenerationDefName'
+        endpoint:
+          $ref: '#/components/schemas/GenerationDefEndpoint'
+        identifier:
+          $ref: '#/components/schemas/GenerationDefIdentifier'
+        legal_identifier:
+          $ref: '#/components/schemas/GenerationDefIdentifier'
+        vat_identifier:
+          $ref: '#/components/schemas/GenerationDefId'
+        tax_registration_identifier:
+          $ref: '#/components/schemas/GenerationDefId'
+        address:
+          $ref: '#/components/schemas/GenerationDefAddress'
+        contact:
+          $ref: '#/components/schemas/GenerationDefContact'
+      required:
+      - name
+      - endpoint
+      - address
+    GenerationDefTax:
+      type: object
+      additionalProperties: false
+      properties:
+        category:
+          enum:
+          - S
+          - Z
+          - E
+          - AE
+          - G
+          - K
+          - O
+          - L
+          - M
+        rate:
+          $ref: '#/components/schemas/GenerationDefUnsignedDecimal'
+        exemption_reason:
+          $ref: '#/components/schemas/GenerationDefText'
+        exemption_code:
+          type: string
+          pattern: ^VATEX-[A-Z0-9-]{1,32}$
+      required:
+      - category
+      allOf:
+      - if:
+          properties:
+            category:
+              const: O
+        then:
+          not:
+            required:
+            - rate
+        else:
+          required:
+          - rate
+    GenerationDefEndpoint:
+      type: object
+      additionalProperties: false
+      properties:
+        value:
+          $ref: '#/components/schemas/GenerationDefId'
+        scheme:
+          type: string
+          pattern: ^[0-9]{4}$
+      required:
+      - value
+      - scheme
+    GenerationDefAddress:
+      type: object
+      additionalProperties: false
+      properties:
+        street:
+          $ref: '#/components/schemas/GenerationDefName'
+        additional_street:
+          $ref: '#/components/schemas/GenerationDefName'
+        address_line:
+          $ref: '#/components/schemas/GenerationDefName'
+        city:
+          $ref: '#/components/schemas/GenerationDefName'
+        postal_code:
+          $ref: '#/components/schemas/GenerationDefId'
+        region:
+          $ref: '#/components/schemas/GenerationDefName'
+        country:
+          $ref: '#/components/schemas/GenerationDefCountry'
+      required:
+      - country
+    JobRequest:
+      oneOf:
+      - type: object
+        additionalProperties: false
+        required:
+        - operation
+        - document_base64
+        properties:
+          operation:
+            const: validate
+            type: string
+          document_base64:
+            type: string
+            minLength: 4
+            maxLength: 6990508
+            contentEncoding: base64
+          options:
+            $ref: '#/components/schemas/ValidationOptions'
+      - type: object
+        additionalProperties: false
+        required:
+        - operation
+        - input
+        - options
+        properties:
+          operation:
+            const: generate
+            type: string
+          input:
+            $ref: '#/components/schemas/GenerationRequest'
+          options:
+            allOf:
+            - $ref: '#/components/schemas/ValidationOptions'
+            - required:
+              - ruleset
+              - profile
+              properties:
+                document_type:
+                  enum:
+                  - auto
+  responses:
+    AdmissionGone:
+      description: The release was withdrawn from every use, or the billing account is closed. Nothing was queued.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - ruleset_disabled
+                  - account_closed
+                status:
+                  const: 410
+    UnsupportedContentType:
+      description: The body is not XML (an archive, a compressed body, or another media type).
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - unsupported_content_type
+                status:
+                  const: 415
+    NotFound:
+      description: No such ruleset visible to this caller (unknown, an internal candidate, or the keyword `latest`).
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - not_found
+                status:
+                  const: 404
+    PayloadTooLarge:
+      description: The body exceeds 5 MiB.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - payload_too_large
+                status:
+                  const: 413
+    MalformedRequest:
+      description: The request itself is wrong - not the document being validated.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - malformed_request
+                status:
+                  const: 400
+          examples:
+            field-errors:
+              summary: Bad option values
+              externalValue: https://api.ironfang.com/finance/examples/v1-problem-field-errors.json
+    UnsupportedSelection:
+      description: 'The requested ruleset, profile or document type cannot be used: `unknown_ruleset` (unknown, or an internal candidate), `unsupported_profile`, `profile_undetected` or `unsupported_document_type`. The document was not validated.'
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - unknown_ruleset
+                  - unsupported_profile
+                  - profile_undetected
+                  - unsupported_document_type
+                status:
+                  const: 422
+    ScopeOrEligibility:
+      description: The key lacks the scope this operation needs, or paid Ironfang Finance usage needs an approved business and the free allowance is used up. No work or usage was accepted.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - insufficient_scope
+                  - product_not_eligible
+                status:
+                  const: 403
+    PaymentRequired:
+      description: 'The free allowance is used up and paid usage cannot continue until the billing account is put right: paused, no working payment method, a payment awaiting confirmation, or restricted. No work or usage was accepted.'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - paid_usage_paused
+                  - payment_required
+                  - payment_action_required
+                  - account_restricted
+                status:
+                  const: 402
+    ReadRateLimited:
+      description: Per-address or per-key rate limit. Ruleset reads are not metered, so no quota problem is possible here.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - rate_limited
+                status:
+                  const: 429
+    ReadInternalError:
+      description: 'Ironfang Finance failed while reading the registry. Not a validation verdict: the body carries no outcome or usage fields.'
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - internal_error
+                status:
+                  const: 500
+              not:
+                anyOf:
+                - required:
+                  - outcome
+                - required:
+                  - usage_charged
+                - required:
+                  - operation_id
+    InsufficientScope:
+      description: The key is valid but does not carry the scope this operation needs.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - insufficient_scope
+                status:
+                  const: 403
+    IdempotencyConflict:
+      description: The `Idempotency-Key` was already used by this organisation, on the validation endpoint, for a request with different content. The original operation is left untouched; send a new key for a new request.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - idempotency_conflict
+                status:
+                  const: 409
+    Unauthenticated:
+      description: A credential was presented and could not be verified. Anonymous access, where permitted, sends no credential at all.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - unauthenticated
+                status:
+                  const: 401
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Optional on authenticated requests. The same key with the same request replays the original operation; the same key with a different request (different document bytes, ruleset, profile or document type) is `409 idempotency_conflict`. Scoped to the organisation and the validation endpoint. Anonymous requests never use it.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+        pattern: ^[A-Za-z0-9_-]+$
+  headers:
+    XIronfangRequestID:
+      description: Ironfang's internal request id, minted at the edge for every request and carried in every Problem body as `request_id`. Quote it in support requests.
+      schema:
+        $ref: '#/components/schemas/RequestID'
+    XRequestIDEcho:
+      description: 'Your own correlation id, echoed back when the request carried a well-formed `X-Request-ID`: visible ASCII only (bytes 0x21 to 0x7E, so no spaces or control characters), 1 to 128 bytes. Anything else is ignored, not echoed. Never used as Ironfang''s identifier for the request.'
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: ^[\x21-\x7E]{1,128}$
+    RetryAfter:
+      description: Seconds to wait before retrying. Mirrors `retry_after_seconds` in the body.
+      schema:
+        type: integer
+        minimum: 1
+  securitySchemes:
+    platformKey:
+      type: http
+      scheme: bearer
+      description: An Ironfang platform API key minted in the portal. Scopes listed on an operation are the ones the key must carry. Keys are the only credential this boundary accepts in V1.
+externalDocs:
+  description: Ironfang Finance documentation
+  url: https://ironfang.com/docs/finance

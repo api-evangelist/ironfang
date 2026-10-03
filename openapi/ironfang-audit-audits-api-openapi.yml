@@ -1,0 +1,881 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Audit Audits API
+  version: 1.0.0
+  summary: Website audits with findings and signed, independently timestamped evidence.
+  description: Asynchronous website audits with signed, independently timestamped evidence.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/audit
+  description: Production
+security:
+- bearerAuth: []
+- apiKey: []
+tags:
+- name: Audits
+  description: Audit runs, their pages and evidence.
+paths:
+  /v1/audits:
+    get:
+      operationId: listAudits
+      description: Returns audit runs across the sites owned by the authenticated organisation, including each run's current lifecycle state.
+      tags:
+      - Audits
+      summary: List organisation audits
+      parameters:
+      - $ref: '#/components/parameters/HistoryLimit'
+      - $ref: '#/components/parameters/HistoryCursor'
+      - $ref: '#/components/parameters/AuditStatusFilter'
+      - name: site_id
+        in: query
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Audits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditList'
+        '400':
+          $ref: '#/components/responses/Problem'
+          description: Invalid, repeated or unknown collection parameter
+  /v1/audits/{auditId}:
+    parameters:
+    - $ref: '#/components/parameters/AuditId'
+    get:
+      operationId: getAuditsByAuditId
+      description: Returns the organisation's audit record, including its processing status and recorded compliance and evidence-integrity results. Processing completion is distinct from passing the audit rules.
+      tags:
+      - Audits
+      summary: Get audit lifecycle, compliance and integrity state
+      responses:
+        '200':
+          description: Audit
+        '404':
+          $ref: '#/components/responses/Problem'
+  /v1/audits/{auditId}/pages:
+    get:
+      operationId: listAuditsByAuditIdPages
+      tags:
+      - Audits
+      summary: Page observations of an audit
+      description: Supply limit or cursor to opt into bounded pages ordered by immutable created_at then ID descending. Filter-only and queryless requests retain the legacy complete response. Filters are case-insensitive comma lists. change accepts new, changed, moved and unchanged; compliance accepts pass, warning, fail, error and none (no recorded state); capture accepts captured and error (failed is an alias). q is a literal substring of requested URL, final URL or title. total is always the unfiltered audit count. Paged lists include rule results but omit artifacts; use the observation detail endpoint for retained artifact metadata.
+      parameters:
+      - name: auditId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: change
+        in: query
+        schema:
+          type: string
+      - name: compliance
+        in: query
+        schema:
+          type: string
+      - name: capture
+        in: query
+        schema:
+          type: string
+      - name: q
+        in: query
+        schema:
+          type: string
+          maxLength: 512
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+      - $ref: '#/components/parameters/HistoryCursor'
+      responses:
+        '200':
+          description: Retained observation metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditPageList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /v1/audits/{auditId}/evidence:
+    parameters:
+    - $ref: '#/components/parameters/AuditId'
+    get:
+      operationId: listAuditsByAuditIdEvidence
+      description: Downloads the evidence bundle after the audit reaches completed or partial status. A bundle whose hosted artifacts have expired returns evidence_expired; retained hashes and signing metadata do not restore those files.
+      tags:
+      - Audits
+      summary: Download the independently verifiable evidence ZIP
+      responses:
+        '200':
+          description: Evidence bundle
+          content:
+            application/zip: {}
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.evidence, or the request names another organisation
+        '404':
+          $ref: '#/components/responses/Problem'
+          description: No such audit in this organisation
+        '409':
+          $ref: '#/components/responses/Problem'
+          description: 'evidence_not_final: the audit''s status is not completed or partial'
+        '410':
+          $ref: '#/components/responses/Problem'
+          description: 'evidence_expired: the hosted evidence has passed its retention period; hashes and signing metadata remain on the audit'
+  /v1/audits/{auditId}/exports:
+    parameters:
+    - $ref: '#/components/parameters/AuditId'
+    post:
+      operationId: exportAuditsByAuditId
+      description: Queues delivery of a completed audit's evidence bundle to an S3 destination owned by the same organisation. The response acknowledges the export job; delivery progress is available from the exports endpoint.
+      tags:
+      - Audits
+      summary: Queue a manual S3 export
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - destination_id
+              properties:
+                destination_id:
+                  type: string
+                  format: uuid
+      responses:
+        '202':
+          description: Export queued
+        '400':
+          $ref: '#/components/responses/Problem'
+          description: 'invalid_json: the body is not one JSON value of the documented shape'
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation
+        '404':
+          $ref: '#/components/responses/Problem'
+          description: No such completed audit or export destination in this organisation
+components:
+  schemas:
+    Artifact:
+      type: object
+      required:
+      - id
+      - organisation_id
+      - audit_id
+      - type
+      - name
+      - media_type
+      - byte_length
+      - sha256
+      - object_key
+      - created_at
+      properties:
+        id:
+          type: string
+        organisation_id:
+          type: string
+        audit_id:
+          type: string
+        page_observation_id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        media_type:
+          type: string
+        byte_length:
+          type: integer
+        sha256:
+          type: string
+        object_key:
+          type: string
+        derived_from_sha256:
+          type: string
+        transformation:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        hosted_state:
+          type: string
+          enum:
+          - available
+          - expiring
+          - deleted
+        expires_at:
+          type: string
+          format: date-time
+    CaptureMetadata:
+      type: object
+      required:
+      - browser
+      - browser_version
+      - build_id
+      - user_agent
+      - viewport_width
+      - viewport_height
+      - device_scale_factor
+      - locale
+      - timezone
+      - colour_scheme
+      - settle_outcome
+      - settle_ms
+      - duration_ms
+      - worker_id
+      - region
+      - transformations
+      - response_headers
+      - dns_answers
+      - capture_truncated
+      properties:
+        browser:
+          type: string
+        browser_version:
+          type: string
+        build_id:
+          type: string
+        user_agent:
+          type: string
+        viewport_width:
+          type: integer
+        viewport_height:
+          type: integer
+        device_scale_factor:
+          type: number
+        locale:
+          type: string
+        timezone:
+          type: string
+        colour_scheme:
+          type: string
+        settle_outcome:
+          type: string
+        settle_ms:
+          type: integer
+        duration_ms:
+          type: integer
+        worker_id:
+          type: string
+        region:
+          type: string
+        transformations:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        response_headers:
+          type:
+          - object
+          - 'null'
+          additionalProperties:
+            type: string
+        dns_answers:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        remote_port:
+          type: integer
+        tls_protocol:
+          type: string
+        tls_cipher:
+          type: string
+        tls_subject:
+          type: string
+        tls_issuer:
+          type: string
+        tls_certificate_sha256:
+          type: string
+        tls_valid_from:
+          type: string
+        tls_valid_to:
+          type: string
+        capture_truncated:
+          type: boolean
+    CaptureProfile:
+      type: object
+      description: Viewport and rendering settings for the monitor's evidence captures. Clamped to Ironfang Render's ceilings.
+      properties:
+        width:
+          type: integer
+        height:
+          type: integer
+        device_scale_factor:
+          type: number
+        locale:
+          type: string
+        color_scheme:
+          type: string
+          enum:
+          - light
+          - dark
+    MerkleStep:
+      type: object
+      required:
+      - side
+      - hash
+      properties:
+        side:
+          type: string
+          enum:
+          - left
+          - right
+        hash:
+          type: string
+    AuditStatus:
+      type: string
+      description: 'quota_blocked is historical: audits the retired plans could not pay for ended there. Audits are now admitted before they are accepted, so none enters it.'
+      enum:
+      - created
+      - queued
+      - discovering
+      - capturing
+      - evaluating
+      - finalising_evidence
+      - timestamping
+      - completed
+      - failed
+      - cancelled
+      - partial
+      - quota_blocked
+    Audit:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - organisation_id
+      - site_id
+      - site_name
+      - trigger_type
+      - status
+      - created_at
+      - discovered_page_count
+      - captured_page_count
+      - passed_page_count
+      - warning_page_count
+      - failed_page_count
+      - error_page_count
+      - credits_consumed
+      - evidence_hosted
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+          format: uuid
+        site_name:
+          type: string
+          description: The audited site's name, resolved with the audit so a list need not read every site to label its rows.
+        trigger_type:
+          type: string
+          enum:
+          - manual
+          - api
+          - schedule
+        reason:
+          type: string
+        status:
+          $ref: '#/components/schemas/AuditStatus'
+        compliance_state:
+          type: string
+          enum:
+          - PASS
+          - WARNING
+          - FAIL
+          - ERROR
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        discovered_page_count:
+          type: integer
+          minimum: 0
+        captured_page_count:
+          type: integer
+          minimum: 0
+        passed_page_count:
+          type: integer
+          minimum: 0
+        warning_page_count:
+          type: integer
+          minimum: 0
+        failed_page_count:
+          type: integer
+          minimum: 0
+        error_page_count:
+          type: integer
+          minimum: 0
+        root_hash:
+          type: string
+        manifest_sha256:
+          type: string
+        signing_key_id:
+          type: string
+        credits_consumed:
+          type: integer
+          minimum: 0
+          description: 'Page captures this audit was charged against audit.capture: one per finalised page evidence record, settled when it finalised. Zero while running, when not metered, or when its admission had expired. The name is kept from the launch-era credits.'
+        page_bound:
+          type: integer
+          minimum: 1
+          description: 'The most pages this audit may capture: what was reserved against audit.capture when it was admitted. Absent on audits from before admission.'
+        error:
+          type: string
+        retention_days:
+          type: integer
+          minimum: 0
+          description: 'The hosted retention promised when the audit was created: the rate catalogue''s standard retention for audit.capture (a retired plan''s, on older audits). A retention extension moves evidence_expires_at later; it never shortens it.'
+        evidence_expires_at:
+          type: string
+          format: date-time
+        evidence_hosted:
+          type: boolean
+        monitor_id:
+          type: string
+          format: uuid
+        scheduled_for:
+          type: string
+          format: date-time
+        scope_snapshot:
+          $ref: '#/components/schemas/ScopeSnapshot'
+        capture_profile_snapshot:
+          $ref: '#/components/schemas/CaptureProfile'
+        change_policy_snapshot:
+          $ref: '#/components/schemas/ChangePolicy'
+    ScopeSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+      - mode
+      properties:
+        mode:
+          type: string
+          enum:
+          - full_site
+          - url_set
+        crawl_policy:
+          $ref: '#/components/schemas/CrawlPolicy'
+        urls:
+          type: array
+          items:
+            type: string
+    AuditList:
+      type: object
+      additionalProperties: false
+      required:
+      - audits
+      properties:
+        audits:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Audit'
+        next_cursor:
+          type: string
+          maxLength: 256
+          description: Opaque continuation boundary. Absent on the final page; no total is inferred from a page.
+    AuditPageList:
+      type: object
+      required:
+      - pages
+      - total
+      properties:
+        pages:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageObservation'
+        total:
+          type: integer
+          minimum: 0
+          description: Unfiltered observation count for this audit; not the matching count.
+        next_cursor:
+          type: string
+          description: Opaque timestamp/ID boundary; absent on the final page and for legacy unpaged requests.
+    ChangePolicy:
+      type: object
+      description: When a page observation counts as changed.
+      properties:
+        min_text_change:
+          type: number
+          description: Fraction of text that must differ, 0-1.
+        min_visual_change:
+          type: number
+          description: Fraction of pixels that must differ, 0-1.
+        ignored_selectors:
+          type: array
+          items:
+            type: string
+        notify_only_on_rule_change:
+          type: boolean
+        ignore_numbers:
+          type: boolean
+    Redirect:
+      type: object
+      required:
+      - url
+      - status_code
+      properties:
+        url:
+          type: string
+        status_code:
+          type: integer
+    PageObservation:
+      type: object
+      required:
+      - id
+      - audit_id
+      - page_id
+      - requested_url
+      - redirect_chain
+      - capture_status
+      - text_changed
+      - visual_changed
+      - textual_change_score
+      - visual_change_score
+      - metadata
+      - created_at
+      properties:
+        id:
+          type: string
+        audit_id:
+          type: string
+        page_id:
+          type: string
+        requested_url:
+          type: string
+        final_url:
+          type: string
+        redirect_chain:
+          type:
+          - array
+          - 'null'
+          items:
+            $ref: '#/components/schemas/Redirect'
+        captured_at:
+          type: string
+          format: date-time
+        capture_status:
+          type: string
+          enum:
+          - captured
+          - error
+        http_status:
+          type: integer
+        observed_remote_ip:
+          type: string
+        title:
+          type: string
+        canonical_url:
+          type: string
+        previous_observation_id:
+          type: string
+        text_changed:
+          type: boolean
+        visual_changed:
+          type: boolean
+        textual_change_score:
+          type: number
+        visual_change_score:
+          type: number
+        change_classification:
+          type: string
+          enum:
+          - NEW
+          - MOVED
+          - CHANGED
+          - UNCHANGED
+        compliance_state:
+          type: string
+          enum:
+          - PASS
+          - WARNING
+          - FAIL
+          - ERROR
+        page_hash:
+          type: string
+        merkle_proof:
+          type: array
+          items:
+            $ref: '#/components/schemas/MerkleStep'
+        metadata:
+          $ref: '#/components/schemas/CaptureMetadata'
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Artifact'
+        rule_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleResult'
+        error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    CrawlPolicy:
+      type: object
+      additionalProperties: false
+      required:
+      - allowed_hosts
+      - include_patterns
+      - exclude_patterns
+      - ignored_parameters
+      - identity_parameters
+      - respect_robots
+      - max_pages
+      - max_depth
+      - requests_per_second
+      - max_response_bytes
+      properties:
+        allowed_hosts:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        include_patterns:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        exclude_patterns:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        ignored_parameters:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        identity_parameters:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        respect_robots:
+          type: boolean
+        max_pages:
+          type: integer
+          minimum: 0
+        max_depth:
+          type: integer
+          minimum: 0
+        requests_per_second:
+          type: integer
+          minimum: 0
+        max_response_bytes:
+          type: integer
+          minimum: 0
+    RuleResult:
+      type: object
+      required:
+      - id
+      - audit_id
+      - page_observation_id
+      - rule_id
+      - rule_lineage_id
+      - rule_version
+      - rule_name
+      - severity
+      - status
+      - evaluated_at
+      properties:
+        id:
+          type: string
+        audit_id:
+          type: string
+        page_observation_id:
+          type: string
+        rule_id:
+          type: string
+          description: The exact rule revision this result was evaluated against.
+        rule_lineage_id:
+          type: string
+          description: The rule across every revision of it. Match a finding on this rather than reading a rule's whole revision history to see whether a result is its own.
+        rule_version:
+          type: integer
+        rule_name:
+          type: string
+        severity:
+          type: string
+          enum:
+          - info
+          - warning
+          - failure
+          - critical
+        status:
+          type: string
+          enum:
+          - pass
+          - fail
+          - warning
+          - not_applicable
+          - error
+        expected:
+          type: string
+        observed:
+          type: string
+        evidence_excerpt:
+          type: string
+        evaluated_at:
+          type: string
+          format: date-time
+  parameters:
+    HistoryCursor:
+      name: cursor
+      in: query
+      description: Opaque next_cursor from the preceding page. Sort order is immutable created_at descending, then ID descending. This is a continuation boundary, not a frozen snapshot; newer inserts do not shift older pages, and removed records disappear.
+      schema:
+        type: string
+        maxLength: 256
+    AuditStatusFilter:
+      name: status
+      in: query
+      description: Applied before pagination. active selects every non-terminal audit state.
+      schema:
+        type: string
+        enum:
+        - active
+        - created
+        - queued
+        - discovering
+        - capturing
+        - evaluating
+        - finalising_evidence
+        - timestamping
+        - completed
+        - failed
+        - cancelled
+        - partial
+        - quota_blocked
+    AuditId:
+      name: auditId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    HistoryLimit:
+      name: limit
+      in: query
+      description: Bounded page size. The existing default of 200 is preserved; the portal requests 50.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 200
+  responses:
+    Problem:
+      description: Problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Stable machine-readable code. Billing refusals use the codes every Ironfang product shares (BillingCode), with the same status and message whichever product answered; everything else is Ironfang Audit's own.
+                  message:
+                    type: string
+                  docs:
+                    type: string
+                    format: uri
+                    description: Where the errors are documented.
+                    example: https://ironfang.com/audit/docs#errors
+                  product:
+                    type: string
+                    description: 'Billing refusals only: the product the refused work belongs to (audit).'
+                  meter:
+                    type: string
+                    description: 'Billing refusals only: the meter that refused, audit.capture or audit.retention_extension.'
+                  reset_at:
+                    type: string
+                    format: date-time
+                    description: 'Billing refusals only: when the free allowance renews (the next month''s start, UTC).'
+              request_id:
+                type: string
+                description: The X-Ironfang-Request-ID of the failed request.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `audit:read`, `audit:run`, `audit:manage`,
+
+        `audit:evidence`, `audit:integrations`, or `audit:*` - and
+
+        it acts only in the organisation it was minted for. Legacy Ironfang Render
+
+        keys carry no Ironfang Audit scopes and are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission
+
+        in the acting tenant, resolved live from Warden: read routes need
+
+        `audit.read`; creating sites and rules `audit.manage`; queueing
+
+        an audit `audit.run`; evidence bundles and raw artifacts
+
+        `audit.evidence`; webhooks, export destinations and manual exports
+
+        `audit.integrations`; billing changes `billing.manage`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Audit documentation
+  url: https://ironfang.com/audit/docs

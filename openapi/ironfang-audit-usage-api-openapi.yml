@@ -1,0 +1,435 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Audit Usage API
+  version: 1.0.0
+  summary: Website audits with findings and signed, independently timestamped evidence.
+  description: Asynchronous website audits with signed, independently timestamped evidence.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/audit
+  description: Production
+security:
+- bearerAuth: []
+- apiKey: []
+tags:
+- name: Usage
+  description: This month's metered use, capacity and hosted evidence.
+paths:
+  /v1/home:
+    get:
+      tags:
+      - Usage
+      operationId: getProductHome
+      description: Returns setup counts and recent activity for the authenticated organisation. Activity labels omit site URLs, captured content and credentials.
+      summary: Tenant-scoped setup facts and recent activity for the portal
+      responses:
+        '200':
+          description: Counts, timestamps and at most seven safe audit activity labels; no site URLs or credentials.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - product
+                - counts
+                - activity
+                properties:
+                  product:
+                    type: string
+                    const: audit
+                  counts:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  activity:
+                    type: array
+                    maxItems: 7
+                    items:
+                      type: object
+        '403':
+          description: The caller lacks audit.read
+        '500':
+          description: Product summary unavailable
+  /v1/usage:
+    get:
+      operationId: getUsage
+      tags:
+      - Usage
+      summary: This month's metered use, capacity and hosted evidence
+      description: 'The month (UTC) as the organisation''s billing account has it for Ironfang
+
+        Audit''s meters - `captures` (`audit.capture`) and `retention_extension`
+
+        (`audit.retention_extension`): the free allowance, what has been settled,
+
+        what admitted audits still hold, and the charge so far before tax. Both are
+
+        null where unified billing is not running (`billing_enabled` false): audits
+
+        are then admitted on capacity alone and nothing is metered. Beside them, the
+
+        facts that are not billing: `sites` against `site_limit` and
+
+        `max_pages_per_audit` (capacity limits, the same for everyone), the
+
+        standard hosted retention new audits get, hosted bytes and the next expiry,
+
+        the `projection` of captures the active scheduled monitors may ask for this
+
+        month (pages x runs, an upper bound), and `daily` captures by UTC day of
+
+        admission. `quota` is deprecated: the launch-era shape, now captures
+
+        against the month''s free allowance only.'
+      responses:
+        '200':
+          description: Usage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usage'
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.read, or the request names another organisation
+components:
+  schemas:
+    RetentionQuote:
+      type: object
+      required:
+      - id
+      - status
+      - meter
+      - months
+      - bytes
+      - quantity
+      - unit
+      - amount
+      - amount_minor
+      - currency
+      - prices_exclude_tax
+      - catalogue_version
+      - created_at
+      - expires_at
+      - audit_ids
+      - artifacts
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - open
+          - expired
+          - purchased
+        meter:
+          type: string
+          const: audit.retention_extension
+        months:
+          type: integer
+          minimum: 1
+          maximum: 120
+        bytes:
+          type: integer
+          minimum: 1
+          description: Hosted bytes the quote covers.
+        quantity:
+          type: integer
+          minimum: 1
+          description: 'In the meter''s unit (unit): the bytes rounded up to the unit''s share of a decimal gigabyte, times months, at least ten GB-months.'
+        unit:
+          type: string
+          description: The meter's unit, for example 0.1 GB-month.
+        amount:
+          type: string
+          description: The fixed price, exact, before tax, in pounds.
+        amount_minor:
+          type: integer
+          description: The price rounded to pence.
+        currency:
+          type: string
+          const: GBP
+        prices_exclude_tax:
+          type: boolean
+          const: true
+        catalogue_version:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          description: The quote can be bought until then.
+        purchased_at:
+          type: string
+          format: date-time
+        audit_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        artifacts:
+          type: integer
+          minimum: 0
+        deadlines:
+          type: array
+          items:
+            type: object
+            required:
+            - artifact_id
+            - audit_id
+            - byte_length
+            - expires_before
+            - expires_after
+            properties:
+              artifact_id:
+                type: string
+                format: uuid
+              audit_id:
+                type: string
+                format: uuid
+              byte_length:
+                type: integer
+                minimum: 0
+              expires_before:
+                type: string
+                format: date-time
+              expires_after:
+                type: string
+                format: date-time
+    Usage:
+      type: object
+      additionalProperties: true
+      required:
+      - period_start
+      - period_end
+      - billing_enabled
+      - captures
+      - retention_extension
+      - retention_purchases
+      - sites
+      - site_limit
+      - max_pages_per_audit
+      - audits
+      - standard_retention_days
+      - retained_bytes
+      - projection
+      - daily
+      - quota
+      properties:
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        billing_enabled:
+          type: boolean
+          description: False where unified billing is not running; nothing is metered then.
+        catalogue_version:
+          type: string
+          description: The rate catalogue version pricing the month.
+        billing_mode:
+          type: string
+          description: 'The billing account''s mode: free, setup_pending, enabled, paused or closed.'
+        captures:
+          oneOf:
+          - $ref: '#/components/schemas/MeterUsage'
+          - type: 'null'
+        retention_extension:
+          oneOf:
+          - $ref: '#/components/schemas/MeterUsage'
+          - type: 'null'
+        retention_purchases:
+          type: array
+          description: Retention extensions bought this month, newest first, without their deadlines.
+          items:
+            $ref: '#/components/schemas/RetentionQuote'
+        sites:
+          type: integer
+          minimum: 0
+        site_limit:
+          type: integer
+          minimum: 1
+          description: The site capacity limit; the same for every organisation.
+        max_pages_per_audit:
+          type: integer
+          minimum: 1
+          description: The per-audit page cap; each site's own page limit applies within it.
+        audits:
+          type: integer
+          minimum: 0
+        credits_consumed:
+          type: integer
+          minimum: 0
+          description: Page captures every audit of the organisation has been charged (and launch-era credits).
+        standard_retention_days:
+          type: integer
+          minimum: 1
+          description: The hosted retention a new audit is promised.
+        retained_bytes:
+          type: integer
+          minimum: 0
+        earliest_expiry:
+          type: string
+          format: date-time
+        projection:
+          type: object
+          required:
+          - captures
+          - monitors
+          properties:
+            captures:
+              type: integer
+              minimum: 0
+            monitors:
+              type: array
+              items:
+                type: object
+        daily:
+          type: array
+          items:
+            type: object
+            required:
+            - day
+            - captures
+            properties:
+              day:
+                type: string
+                format: date
+              captures:
+                type: integer
+                minimum: 0
+        quota:
+          type: object
+          deprecated: true
+          description: The launch-era quota shape, kept for existing readers - captures against the month's free allowance only. Use captures.
+    MeterUsage:
+      type: object
+      required:
+      - meter
+      - unit
+      - free_allowance
+      - used
+      - reserved
+      - free_remaining
+      - charge
+      - charge_minor
+      - currency
+      - exempt
+      properties:
+        meter:
+          type: string
+        unit:
+          type: string
+        free_allowance:
+          type: integer
+          minimum: 0
+        used:
+          type: integer
+          minimum: 0
+          description: Settled this month.
+        reserved:
+          type: integer
+          minimum: 0
+          description: Held by admitted work that has not finished.
+        free_remaining:
+          type: integer
+          minimum: 0
+        charge:
+          type: string
+          description: The month's charge for the meter so far, exact, before tax, in pounds.
+        charge_minor:
+          type: integer
+          description: The charge rounded to pence.
+        currency:
+          type: string
+          const: GBP
+        exempt:
+          type: boolean
+  responses:
+    Problem:
+      description: Problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Stable machine-readable code. Billing refusals use the codes every Ironfang product shares (BillingCode), with the same status and message whichever product answered; everything else is Ironfang Audit's own.
+                  message:
+                    type: string
+                  docs:
+                    type: string
+                    format: uri
+                    description: Where the errors are documented.
+                    example: https://ironfang.com/audit/docs#errors
+                  product:
+                    type: string
+                    description: 'Billing refusals only: the product the refused work belongs to (audit).'
+                  meter:
+                    type: string
+                    description: 'Billing refusals only: the meter that refused, audit.capture or audit.retention_extension.'
+                  reset_at:
+                    type: string
+                    format: date-time
+                    description: 'Billing refusals only: when the free allowance renews (the next month''s start, UTC).'
+              request_id:
+                type: string
+                description: The X-Ironfang-Request-ID of the failed request.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `audit:read`, `audit:run`, `audit:manage`,
+
+        `audit:evidence`, `audit:integrations`, or `audit:*` - and
+
+        it acts only in the organisation it was minted for. Legacy Ironfang Render
+
+        keys carry no Ironfang Audit scopes and are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission
+
+        in the acting tenant, resolved live from Warden: read routes need
+
+        `audit.read`; creating sites and rules `audit.manage`; queueing
+
+        an audit `audit.run`; evidence bundles and raw artifacts
+
+        `audit.evidence`; webhooks, export destinations and manual exports
+
+        `audit.integrations`; billing changes `billing.manage`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Audit documentation
+  url: https://ironfang.com/audit/docs

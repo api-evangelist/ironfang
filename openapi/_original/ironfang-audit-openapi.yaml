@@ -1,0 +1,2200 @@
+# x-archived-from: ironfang-audit-openapi.yaml (https://api.ironfang.com/audit/openapi.yaml, fetched 2026-10-03)
+# x-archived-on: 2026-10-03
+openapi: 3.1.0
+info:
+  title: Ironfang Audit API
+  version: 1.0.0
+  summary: Website audits with findings and signed, independently timestamped evidence.
+  description: |
+    Asynchronous website audits with signed, independently timestamped evidence.
+    Sites, rules and rule packs, audits, findings, evidence bundles, exports,
+    webhooks and usage - authenticated with an Ironfang platform API key
+    carrying Ironfang Audit scopes. Base URL https://api.ironfang.com/audit.
+
+    For agents and tools: the canonical base URL is
+    https://api.ironfang.com/audit and every operation has a stable
+    `operationId`. Every error an operation returns is JSON of the shape
+    `{"error": {"code", "message", "docs"}, "request_id"}`: branch on `code`
+    and the HTTP status, never on `message`. The machine-readable index of the
+    Ironfang APIs is https://ironfang.com/.well-known/api-catalog, and
+    https://ironfang.com/llms.txt is a plain-text map of them for a language
+    model. Ironfang Audit is also available as MCP tools at
+    https://mcp.ironfang.com/mcp (see https://ironfang.com/docs/mcp). Auditwolf
+    is the name the product launched under, not a separate product; its
+    `/auditwolf` prefix and `Auditwolf-*` webhook headers were retired on
+    28 September 2026, and the prefix now answers `410`.
+
+    Billing: Ironfang Audit has no plans of its own. It is billed through the
+    organisation's Ironfang billing account (https://api.ironfang.com/billing/v1)
+    on two meters: `audit.capture`, one finalised page evidence record, and
+    `audit.retention_extension`, extended hosted retention bought as a quoted,
+    fixed-price operation. Every audit is admitted before it is accepted: the
+    most pages it can capture are reserved against `audit.capture`, a refusal
+    is answered at once with one of the shared billing codes (see the Problem
+    response), and a finished audit is charged only for the page evidence it
+    finalised. Capacity limits - sites per organisation, pages per audit,
+    crawl rate and depth - are the same for everyone and no payment lifts
+    them. The retired `/v1/plans` and `/v1/billing` routes answer `410
+    billing_moved`.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+  - url: https://api.ironfang.com/audit
+    description: Production
+externalDocs:
+  description: Ironfang Audit documentation
+  url: https://ironfang.com/audit/docs
+security:
+  - bearerAuth: []
+  - apiKey: []
+tags:
+  - name: Sites
+    description: Sites under audit.
+  - name: RulePacks
+    description: Installable rule packs.
+  - name: Findings
+    description: Findings raised by audits.
+  - name: Rules
+    description: Rules and their revisions.
+  - name: Audits
+    description: Audit runs, their pages and evidence.
+  - name: Artifacts
+    description: Stored screenshots and other captured artifacts.
+  - name: Webhooks
+    description: Webhook endpoints and deliveries.
+  - name: ExportDestinations
+    description: Where exports are delivered.
+  - name: Exports
+    description: Evidence bundle exports.
+  - name: Usage
+    description: This month's metered use, capacity and hosted evidence.
+  - name: Retention
+    description: Quoted, fixed-price extensions of hosted evidence retention.
+  - name: Verify
+    description: Public verification of evidence bundles.
+  - name: Monitors
+    description: Scheduled re-audits of a site.
+  - name: Events
+    description: The account event stream.
+  - name: NotificationPreferences
+    description: How the organisation is notified.
+  - name: Notifications
+    description: Notifications raised for the organisation.
+  - name: Pages
+    description: Pages within an audit.
+  - name: PageObservations
+    description: Per-page observations and comparisons.
+paths:
+  /v1/home:
+    get:
+      tags: [Usage]
+      operationId: getProductHome
+      description: >-
+        Returns setup counts and recent activity for the authenticated organisation.
+        Activity labels omit site URLs, captured content and credentials.
+      summary: Tenant-scoped setup facts and recent activity for the portal
+      responses:
+        '200':
+          description: Counts, timestamps and at most seven safe audit activity labels; no site URLs or credentials.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [product, counts, activity]
+                properties:
+                  product: {type: string, const: audit}
+                  counts: {type: object, additionalProperties: {type: integer}}
+                  activity: {type: array, maxItems: 7, items: {type: object}}
+        '403': {description: The caller lacks audit.read}
+        '500': {description: Product summary unavailable}
+  /v1/sites:
+    get:
+      operationId: listSites
+      description: >-
+        Returns the sites owned by the authenticated organisation, including their
+        stored audit configuration and complete per-site activity facts. Counts and last audit
+        come from authoritative tenant-scoped queries, independently of history page limits.
+      tags: [Sites]
+      summary: List sites
+      responses:
+        '200':
+          description: Sites
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteList' }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.read, or the request names another organisation" }
+    post:
+      operationId: createSites
+      description: >-
+        Registers a public website for the authenticated organisation. The URL must pass
+        the public-target policy and the organisation must be below the site capacity
+        limit (250 sites unless the deployment sets otherwise, for every organisation
+        whatever it pays). A crawl policy is held inside the crawl ceilings and the
+        per-audit page cap. robots.txt is respected unless the policy explicitly sets
+        `respect_robots` to false.
+      tags: [Sites]
+      summary: Create a site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, url]
+              properties:
+                name: { type: string }
+                url: { type: string, format: uri }
+                timezone: { type: string, default: UTC }
+                crawl_policy:
+                  type: object
+                  description: >-
+                    Fields of the site's crawl policy (see CrawlPolicy); omitted fields take the
+                    ceilings or defaults. `respect_robots` is true unless it is given as false.
+      responses:
+        '201': { description: Site created }
+        '400': { $ref: '#/components/responses/Problem', description: "invalid_json: the body or its crawl_policy is not of the documented shape" }
+        '422': { $ref: '#/components/responses/Problem', description: "invalid_url, unsafe_url, or site_limit: the organisation holds as many sites as the capacity limit allows" }
+  /v1/sites/{siteId}:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    get:
+      operationId: getSitesBySiteId
+      description: >-
+        Returns stored site configuration and complete activity facts. A site outside the authenticated
+        organisation is reported as not found.
+      tags: [Sites]
+      summary: Get a site
+      responses:
+        '200':
+          description: Site
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Site' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/sites/{siteId}/rules:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    get:
+      operationId: listSitesBySiteIdRules
+      description: >-
+        Returns the deterministic rules configured for a site owned by the authenticated
+        organisation, with their version and configuration metadata.
+      tags: [Sites]
+      summary: List the site's versioned deterministic rules
+      responses:
+        '200': { description: Rules }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.read, or the request names another organisation" }
+        '404': { $ref: '#/components/responses/Problem', description: "No such site in this organisation" }
+    post:
+      operationId: createSitesBySiteIdRules
+      description: >-
+        Validates the rule type and configuration, then creates a versioned rule for the
+        selected site. Invalid configurations are rejected before an audit can run them.
+      tags: [Sites]
+      summary: Create a deterministic rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, rule_type, configuration]
+              properties:
+                name: { type: string }
+                rule_type: { type: string }
+                severity: { type: string, enum: [info, warning, failure, critical] }
+                configuration: { type: object, additionalProperties: true }
+      responses:
+        '201': { description: Rule created }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/rule-packs:
+    get:
+      operationId: listRulePacks
+      tags: [RulePacks]
+      summary: The rule pack catalogue
+      description: >-
+        Ironfang-maintained rule templates. A pack is a starting point, not a
+        compliance product: each one states what it checks and, in the same
+        breath, what it cannot tell you. Installing a pack copies rules into
+        your own site, which you then own and can edit.
+      responses:
+        '200': { description: Packs }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.read, or the request names another organisation" }
+  /v1/sites/{siteId}/rule-packs:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    get:
+      operationId: listSitesBySiteIdRulePacks
+      tags: [Sites]
+      summary: Packs installed on this site
+      description: >-
+        Includes latest_version and upgrade_available. A newer pack is never
+        applied on its own; you are told one exists.
+      responses:
+        '200': { description: Installed packs }
+        '404': { $ref: '#/components/responses/Problem' }
+    post:
+      operationId: createSitesBySiteIdRulePacks
+      description: >-
+        Installs the selected catalogue pack on the organisation's site using the
+        supplied variable values. The pack's templates become site rules with their own
+        revision history.
+      tags: [Sites]
+      summary: Install a rule pack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [pack_key, variables]
+              properties:
+                pack_key: { type: string }
+                variables:
+                  type: object
+                  additionalProperties: { type: string }
+                  description: The values the pack declares. Missing ones are named in a 422.
+      responses:
+        '201': { description: Installed }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/rule-packs/installed/{installationId}/upgrade:
+    parameters:
+      - name: installationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: upgradeRulePacksInstalledByInstallationId
+      tags: [RulePacks]
+      summary: Upgrade an installed pack, or change its values
+      description: >-
+        The explicit action. Regenerates the pack's rules and writes the
+        differences as ordinary revisions, so every change keeps its history.
+        Rules the pack no longer ships are reported as orphaned and left
+        alone rather than deleted, because you may still want the
+        requirement.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                variables:
+                  type: object
+                  additionalProperties: { type: string }
+                  description: Omit to reuse the values given at install.
+      responses:
+        '200': { description: What the upgrade changed }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/rule-packs/installed/{installationId}:
+    parameters:
+      - name: installationId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: deleteRulePacksInstalledByInstallationId
+      tags: [RulePacks]
+      summary: Uninstall a pack
+      description: >-
+        Retires the rules it created. They stop being evaluated; they are not
+        deleted, so every result that referenced one still resolves.
+      responses:
+        '204': { description: Uninstalled }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/findings:
+    get:
+      operationId: listFindings
+      tags: [Findings]
+      summary: The finding inbox
+      description: >-
+        Outstanding problems rather than audit results. A finding is one
+        problem on one logical page against one requirement, for as long as
+        that pairing exists: a page that fails the same rule every night is
+        one finding, not one per night. Defaults to everything not resolved.
+        Use sort=created for bounded cursor pages, newest creation time then ID
+        descending. Creation time is immutable when a later audit sees the same
+        problem, so updates do not move findings across the cursor. Filters are
+        evaluated on each request; pages are not a frozen snapshot of membership.
+        Omit sort for the legacy last-seen descending, ID ascending offset list.
+        Summary counts are separate from the number of loaded findings.
+      parameters:
+        - { name: site_id, in: query, schema: { type: string, format: uuid } }
+        - { name: page_id, in: query, schema: { type: string, format: uuid } }
+        - name: rule_id
+          in: query
+          description: The rule lineage id, so a reworded rule keeps its findings.
+          schema: { type: string, format: uuid }
+        - name: state
+          in: query
+          description: Repeatable. Omit for everything still outstanding.
+          schema:
+            type: array
+            items: { type: string, enum: [open, acknowledged, accepted_risk, resolved, reopened] }
+        - { name: severity, in: query, schema: { type: string, enum: [info, warning, failure, critical] } }
+        - { name: assignee, in: query, schema: { type: string } }
+        - name: open_longer_than_days
+          in: query
+          description: Findings first seen more than this many days ago.
+          schema: { type: integer, minimum: 0, maximum: 365000 }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, default: 50, maximum: 200 } }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [last_seen, created], default: last_seen }
+        - name: cursor
+          in: query
+          description: Returned next_cursor; valid only with sort=created. Omit on the first page.
+          schema: { type: string }
+        - name: offset
+          in: query
+          description: Legacy last-seen list only; cannot be combined with sort=created.
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        '200':
+          description: Findings; next_cursor is present only when another creation-ordered page exists.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FindingList' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/findings/summary:
+    get:
+      operationId: getFindingsSummary
+      tags: [Findings]
+      summary: The numbers at the top of the finding inbox
+      description: >-
+        Open, acknowledged and accepted counts, how many are regressions,
+        how many are past a due date somebody set, and the median time to
+        resolution. The median is null until something has been resolved,
+        because a median of nothing is not zero.
+      responses:
+        '200': { description: Summary }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.read, or the request names another organisation" }
+  /v1/findings/bulk:
+    post:
+      operationId: bulkUpdateFindings
+      tags: [Findings]
+      summary: Apply one decision to several findings
+      description: >-
+        The same path as a single update, once per finding, so each one gets
+        its own event and nothing is attributed differently for having been
+        done in a batch. Per-finding failures are reported rather than
+        failing the request: a selection that includes one finding somebody
+        else just resolved should still assign the other nine.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [ids]
+              properties:
+                ids: { type: array, maxItems: 200, items: { type: string, format: uuid } }
+                state: { type: string, enum: [acknowledged, accepted_risk, resolved] }
+                assignee_user_id: { type: string }
+                resolution_code: { type: string, enum: [false_positive, accepted_risk, superseded, other] }
+                comment: { type: string }
+      responses:
+        '200': { description: 'What was updated, and what could not be' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/findings/{findingId}:
+    parameters:
+      - name: findingId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getFindingsByFindingId
+      description: >-
+        Returns a finding belonging to the authenticated organisation, including its
+        current triage state. Use the finding events endpoint to retrieve its change
+        history.
+      tags: [Findings]
+      summary: Get one finding
+      responses:
+        '200': { description: Finding }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      operationId: updateFindingsByFindingId
+      tags: [Findings]
+      summary: Assign, schedule, acknowledge, accept the risk, or close a finding
+      description: >-
+        A person cannot mark a finding fixed: that is a claim about the page
+        which only a passing observation can make, so closing one by hand
+        needs a resolution such as false_positive or accepted_risk. Reopening
+        is likewise something an observation does. Every change is recorded
+        against the person who made it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                state: { type: string, enum: [acknowledged, accepted_risk, resolved] }
+                assignee_user_id: { type: string, description: Empty string clears the assignment }
+                due_at: { type: string, description: "RFC 3339, or an empty string to clear" }
+                accepted_risk_until:
+                  type: string
+                  description: >-
+                    RFC 3339. When it passes, the finding stops being
+                    suppressed and notifies again.
+                resolution_code:
+                  type: string
+                  enum: [false_positive, accepted_risk, superseded, other]
+                comment: { type: string }
+      responses:
+        '200': { description: The updated finding }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/findings/{findingId}/events:
+    parameters:
+      - name: findingId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listFindingsByFindingIdEvents
+      tags: [Findings]
+      summary: The append-only history of a finding
+      description: >-
+        Every state change, assignment and comment, newest first, each attributed
+        to the person or to the system. Comments are operational records and
+        are not part of signed evidence. A finding whose rule flaps accumulates
+        history without anyone acting, so this is paged like the other histories.
+      parameters:
+        - $ref: '#/components/parameters/HistoryLimit'
+        - $ref: '#/components/parameters/HistoryCursor'
+      responses:
+        '200':
+          description: Events
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/FindingEventList' }
+        '400': { $ref: '#/components/responses/Problem', description: "Invalid, repeated or unknown collection parameter" }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/rules/{lineageId}:
+    parameters:
+      - name: lineageId
+        in: path
+        required: true
+        description: >-
+          The stable id of the rule. A rule keeps this id for its whole life;
+          each edit writes a new revision underneath it.
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getRulesByLineageId
+      description: >-
+        Resolves a rule's stable lineage identifier to its current revision within the
+        authenticated organisation.
+      tags: [Rules]
+      summary: Get the active revision of a rule
+      responses:
+        '200': { description: Rule }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      operationId: updateRulesByLineageId
+      tags: [Rules]
+      summary: Revise a rule
+      description: >-
+        Writes the next version of the rule and makes it active. Nothing about
+        the previous revision changes, so evidence captured before the edit
+        still names the wording that produced it. Omitted fields carry forward
+        from the active revision.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                description: { type: string }
+                rule_type: { type: string }
+                severity: { type: string, enum: [info, warning, failure, critical] }
+                configuration: { type: object, additionalProperties: true }
+      responses:
+        '200': { description: The new active revision }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+    delete:
+      operationId: deleteRulesByLineageId
+      tags: [Rules]
+      summary: Retire a rule
+      description: >-
+        Stops the rule being evaluated in future audits. Revisions are kept, so
+        every historical result still resolves to the exact rule that ran.
+        Retirement is permanent; stating the requirement again creates a new
+        rule with its own history.
+      responses:
+        '204': { description: Retired }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/rules/{lineageId}/revisions:
+    parameters:
+      - name: lineageId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listRulesByLineageIdRevisions
+      description: >-
+        Returns the revision history for the organisation's rule in descending version
+        order, preserving access to the configurations referenced by earlier audit
+        results.
+      tags: [Rules]
+      summary: List every revision of a rule, newest first
+      parameters:
+        - {name: limit, in: query, description: 'Bounded page size. The existing default of 200 is preserved; the portal requests 50.', schema: {type: integer, minimum: 1, maximum: 200, default: 200}}
+        - {name: cursor, in: query, description: 'The next_cursor from the preceding page. This collection is keyed on the revision version, which is unique and monotonic within a rule, so the cursor is that version and the page continues below it.', schema: {type: string, maxLength: 16}}
+      responses:
+        '200':
+          description: Revisions
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RuleRevisionList' }
+        '400': { $ref: '#/components/responses/Problem', description: "Invalid, repeated or unknown collection parameter" }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/rules/{lineageId}/enable:
+    parameters:
+      - name: lineageId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: enableRulesByLineageId
+      description: >-
+        Enables the organisation's rule for evaluation by future audits. Previously
+        recorded audit results are unchanged.
+      tags: [Rules]
+      summary: Enable a rule for future audits
+      responses:
+        '200': { description: Rule }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/rules/{lineageId}/disable:
+    parameters:
+      - name: lineageId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: disableRulesByLineageId
+      tags: [Rules]
+      summary: Disable a rule for future audits
+      description: >-
+        Affects future audits only. A historical result keeps the status it
+        had: a rule that was failing in March was still failing in March.
+      responses:
+        '200': { description: Rule }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/sites/{siteId}/audits:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    get:
+      operationId: listSitesBySiteIdAudits
+      description: >-
+        Returns audit runs for the selected site within the authenticated organisation.
+        A site outside the organisation is reported as not found.
+      tags: [Sites]
+      summary: List site audits
+      parameters:
+        - $ref: '#/components/parameters/HistoryLimit'
+        - $ref: '#/components/parameters/HistoryCursor'
+        - $ref: '#/components/parameters/AuditStatusFilter'
+      responses:
+        '200':
+          description: Audits
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditList' }
+        '400': { $ref: '#/components/responses/Problem', description: "Invalid, repeated or unknown collection parameter" }
+    post:
+      operationId: createSitesBySiteIdAudits
+      description: >-
+        Admits and queues an audit for the organisation's site and returns its initial
+        lifecycle state. Admission comes first: the most pages the audit can capture
+        (`page_bound`: the site's page limit within the per-audit cap, or one page for
+        single_page) are reserved against the `audit.capture` meter of the
+        organisation's billing account. A refusal is answered now with the shared
+        billing code and no audit exists. The audit then captures at most `page_bound`
+        pages and is charged only for the page evidence it finalises. Reusing an
+        Idempotency-Key returns the existing audit and reserves nothing more;
+        single_page limits the scope to the site's primary URL.
+      tags: [Sites]
+      summary: Trigger an asynchronous audit
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string }
+                single_page: { type: boolean, default: false, description: Capture only the primary URL without following links or creating a monitor. }
+                trigger_type: { type: string, default: api }
+      responses:
+        '202': { description: Audit admitted and queued }
+        '200': { description: Idempotent replay; the existing audit }
+        '402': { $ref: '#/components/responses/Problem', description: "Billing refusal: paid_usage_paused, payment_required, payment_action_required or account_restricted" }
+        '403': { $ref: '#/components/responses/Problem', description: "forbidden or insufficient_scope; or the billing refusal product_not_eligible" }
+        '404': { $ref: '#/components/responses/Problem' }
+        '410': { $ref: '#/components/responses/Problem', description: "Billing refusal: account_closed" }
+        '413': { $ref: '#/components/responses/Problem', description: "Billing refusal: operation_too_large" }
+        '429': { $ref: '#/components/responses/Problem', description: "Billing refusal: free_allowance_exhausted, account_budget_exhausted, product_budget_exhausted or exemption_limit_reached. reset_at says when the free allowance renews" }
+        '503': { $ref: '#/components/responses/Problem', description: "Billing refusal: billing_temporarily_unavailable, with Retry-After" }
+  /v1/audits:
+    get:
+      operationId: listAudits
+      description: >-
+        Returns audit runs across the sites owned by the authenticated organisation,
+        including each run's current lifecycle state.
+      tags: [Audits]
+      summary: List organisation audits
+      parameters:
+        - $ref: '#/components/parameters/HistoryLimit'
+        - $ref: '#/components/parameters/HistoryCursor'
+        - $ref: '#/components/parameters/AuditStatusFilter'
+        - {"name": "site_id", "in": "query", "schema": {"type": "string", "format": "uuid"}}
+      responses:
+        '200':
+          description: Audits
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditList' }
+        '400': { $ref: '#/components/responses/Problem', description: "Invalid, repeated or unknown collection parameter" }
+  /v1/audits/{auditId}:
+    parameters:
+      - $ref: '#/components/parameters/AuditId'
+    get:
+      operationId: getAuditsByAuditId
+      description: >-
+        Returns the organisation's audit record, including its processing status and
+        recorded compliance and evidence-integrity results. Processing completion is
+        distinct from passing the audit rules.
+      tags: [Audits]
+      summary: Get audit lifecycle, compliance and integrity state
+      responses:
+        '200': { description: Audit }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/audits/{auditId}/pages:
+    get:
+      operationId: listAuditsByAuditIdPages
+      tags: [Audits]
+      summary: Page observations of an audit
+      description: >-
+        Supply limit or cursor to opt into bounded pages ordered by immutable created_at
+        then ID descending. Filter-only and queryless requests retain the legacy complete
+        response. Filters are case-insensitive comma lists. change accepts new, changed,
+        moved and unchanged; compliance accepts pass, warning, fail, error and none
+        (no recorded state); capture accepts captured and error (failed is an alias).
+        q is a literal substring of requested URL, final URL or title. total is always
+        the unfiltered audit count. Paged lists include rule results but omit artifacts;
+        use the observation detail endpoint for retained artifact metadata.
+      parameters:
+        - { name: auditId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: change, in: query, schema: { type: string } }
+        - { name: compliance, in: query, schema: { type: string } }
+        - { name: capture, in: query, schema: { type: string } }
+        - { name: q, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - $ref: '#/components/parameters/HistoryCursor'
+      responses:
+        '200':
+          description: Retained observation metadata
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditPageList' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/audits/{auditId}/evidence:
+    parameters:
+      - $ref: '#/components/parameters/AuditId'
+    get:
+      operationId: listAuditsByAuditIdEvidence
+      description: >-
+        Downloads the evidence bundle after the audit reaches completed or partial
+        status. A bundle whose hosted artifacts have expired returns evidence_expired;
+        retained hashes and signing metadata do not restore those files.
+      tags: [Audits]
+      summary: Download the independently verifiable evidence ZIP
+      responses:
+        '200':
+          description: Evidence bundle
+          content:
+            application/zip: {}
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.evidence, or the request names another organisation" }
+        '404': { $ref: '#/components/responses/Problem', description: "No such audit in this organisation" }
+        '409': { $ref: '#/components/responses/Problem', description: "evidence_not_final: the audit's status is not completed or partial" }
+        '410': { $ref: '#/components/responses/Problem', description: "evidence_expired: the hosted evidence has passed its retention period; hashes and signing metadata remain on the audit" }
+  /v1/audits/{auditId}/exports:
+    parameters:
+      - $ref: '#/components/parameters/AuditId'
+    post:
+      operationId: exportAuditsByAuditId
+      description: >-
+        Queues delivery of a completed audit's evidence bundle to an S3 destination
+        owned by the same organisation. The response acknowledges the export job;
+        delivery progress is available from the exports endpoint.
+      tags: [Audits]
+      summary: Queue a manual S3 export
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [destination_id]
+              properties:
+                destination_id: { type: string, format: uuid }
+      responses:
+        '202': { description: Export queued }
+        '400': { $ref: '#/components/responses/Problem', description: "invalid_json: the body is not one JSON value of the documented shape" }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation" }
+        '404': { $ref: '#/components/responses/Problem', description: "No such completed audit or export destination in this organisation" }
+  /v1/artifacts/{artifactId}:
+    get:
+      operationId: getArtifactsByArtifactId
+      description: >-
+        Streams an artifact owned by the authenticated organisation using its stored
+        media type. Expired hosted artifacts return evidence_expired rather than empty
+        content.
+      tags: [Artifacts]
+      summary: Stream an authenticated raw artifact
+      parameters:
+        - name: artifactId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200': { description: Artifact bytes }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/webhooks:
+    get:
+      operationId: listWebhooks
+      description: >-
+        Returns the authenticated organisation's webhook endpoint configurations.
+        Signing secrets are not included in the listing.
+      tags: [Webhooks]
+      summary: List lifecycle webhook endpoints
+      responses:
+        '200': { description: Webhook endpoints; secrets are never returned }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation" }
+    post:
+      operationId: createWebhooks
+      description: >-
+        Registers an event delivery endpoint for the authenticated organisation and
+        returns its new signing secret. Store the secret when creating the endpoint;
+        subsequent listings do not disclose it.
+      tags: [Webhooks]
+      summary: Create a signed webhook endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [url]
+              properties:
+                url: { type: string, format: uri }
+                events:
+                  type: array
+                  items: { type: string, enum: [audit.completed] }
+      responses:
+        '201': { description: Endpoint and one-time signing secret }
+        '400': { $ref: '#/components/responses/Problem', description: "invalid_json: the body is not one JSON value of the documented shape" }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation" }
+        '422': { $ref: '#/components/responses/Problem', description: "invalid_webhook_url or unsupported_event" }
+  /v1/webhooks/{endpointId}/test:
+    post:
+      operationId: testWebhooksByEndpointId
+      description: >-
+        Sends a signed endpoint.test event to the organisation's webhook endpoint and
+        reports whether the destination accepted it.
+      tags: [Webhooks]
+      summary: Send a signed endpoint.test event
+      parameters:
+        - $ref: '#/components/parameters/EndpointId'
+      responses:
+        '200': { description: Test accepted }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/webhooks/{endpointId}/rotate-secret:
+    post:
+      operationId: rotateWebhooksByEndpointIdSecret
+      tags: [Webhooks]
+      summary: Replace the endpoint's signing secret
+      description: Mints a new signing secret and returns it once; deliveries signed from now on use it, so update the receiver first if it verifies strictly.
+      parameters:
+        - $ref: '#/components/parameters/EndpointId'
+      responses:
+        '200': { description: 'The new signing secret, shown only in this response.' }
+        '404': { $ref: '#/components/responses/Problem' }
+  /v1/webhook-deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      tags: [Webhooks]
+      summary: Page organisation webhook deliveries
+      description: >-
+        Requires audit.integrations. Includes history for retired endpoints.
+        Ordered by immutable delivery ID descending (generated UUIDv7 IDs reflect dispatch order);
+        retrying cannot move a cursor boundary. Creation timestamps and full attempt histories
+        were not retained and are not inferred from next_attempt_at. Lists omit payloads;
+        use the direct detail read for the retained body and latest response.
+      parameters:
+        - $ref: '#/components/parameters/DeliveryCursor'
+        - $ref: '#/components/parameters/DeliveryLimit'
+        - $ref: '#/components/parameters/DeliveryStatus'
+        - { name: destination, in: query, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Owned delivery page, Cache-Control no-store.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookDeliveryList' }
+        '400': { description: "Invalid, repeated or unknown query parameter." }
+        '401': { description: Authentication required. }
+        '403': { description: Integration permission required. }
+  /v1/webhook-deliveries/{deliveryId}:
+    get:
+      operationId: getWebhookDelivery
+      tags: [Webhooks]
+      summary: Read one organisation-owned delivery
+      description: Returns retained payload and latest response without a history scan. Requires audit.integrations.
+      parameters:
+        - { name: deliveryId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Owned delivery, Cache-Control no-store.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookDelivery' }
+        '400': { description: Detail accepts no query parameters. }
+        '401': { description: Authentication required. }
+        '403': { description: Integration permission required. }
+        '404': { description: "Unknown, malformed or foreign delivery." }
+  /v1/webhooks/{endpointId}/deliveries:
+    get:
+      operationId: listWebhooksByEndpointIdDeliveries
+      description: >-
+        Without query parameters preserves the legacy 200 records ordered by next_attempt_at,
+        including payloads. Include limit or cursor for stable descending delivery-ID pagination;
+        paginated lists omit payloads. Default endpoint page limit is 200. Filters run before paging.
+      tags: [Webhooks]
+      summary: List endpoint deliveries
+      parameters:
+        - $ref: '#/components/parameters/EndpointId'
+        - $ref: '#/components/parameters/DeliveryCursor'
+        - $ref: '#/components/parameters/DeliveryLimit'
+        - $ref: '#/components/parameters/DeliveryStatus'
+      responses:
+        '200':
+          description: Owned delivery records, Cache-Control no-store.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebhookDeliveryList' }
+        '400': { description: Invalid query parameter. }
+  /v1/export-destinations:
+    get:
+      operationId: listExportDestinations
+      description: >-
+        Returns S3 destination configurations for the authenticated organisation without
+        exposing stored access credentials.
+      tags: [ExportDestinations]
+      summary: List S3 destinations
+      responses:
+        '200': { description: Destinations; credentials are never returned }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation" }
+    post:
+      operationId: createExportDestinations
+      description: >-
+        Stores an S3 or S3-compatible destination for the authenticated organisation.
+        Access credentials are encrypted before storage and are not returned by
+        destination listings.
+      tags: [ExportDestinations]
+      summary: Create an encrypted S3/S3-compatible destination
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [region, bucket, access_key, secret_key]
+              properties:
+                endpoint: { type: string, format: uri }
+                region: { type: string }
+                bucket: { type: string }
+                prefix: { type: string, default: audit }
+                access_key: { type: string }
+                secret_key: { type: string, writeOnly: true }
+                session_token: { type: string, writeOnly: true }
+                path_style: { type: boolean, default: false }
+                export_mode: { type: string, enum: [after_every_audit, only_if_compliance_changes, only_if_audit_fails, manual_only] }
+      responses:
+        '201': { description: Destination created }
+        '400': { $ref: '#/components/responses/Problem', description: "invalid_json: the body is not one JSON value of the documented shape" }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation" }
+        '422': { $ref: '#/components/responses/Problem', description: "invalid_destination, invalid_endpoint, invalid_prefix, object_lock_not_configured or invalid_export_mode" }
+  /v1/export-destinations/{destinationId}/test:
+    post:
+      operationId: testExportDestinationsByDestinationId
+      description: >-
+        Uses the destination's stored credentials to upload and verify a connection-test
+        object. A failed upload or verification returns destination_test_failed.
+      tags: [ExportDestinations]
+      summary: Upload and verify a connection-test object
+      parameters:
+        - $ref: '#/components/parameters/DestinationId'
+      responses:
+        '200': { description: Upload verified }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/exports:
+    get:
+      operationId: listExports
+      description: >-
+        Returns evidence export jobs for the authenticated organisation, including their
+        recorded delivery state.
+      tags: [Exports]
+      summary: List export jobs
+      parameters:
+        - $ref: '#/components/parameters/HistoryLimit'
+        - $ref: '#/components/parameters/HistoryCursor'
+        - {"name": "audit_id", "in": "query", "schema": {"type": "string", "format": "uuid"}}
+      responses:
+        '200':
+          description: Export jobs
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ExportList' }
+        '400': { $ref: '#/components/responses/Problem', description: "Invalid, repeated or unknown collection parameter" }
+  /v1/usage:
+    get:
+      operationId: getUsage
+      tags: [Usage]
+      summary: This month's metered use, capacity and hosted evidence
+      description: |
+        The month (UTC) as the organisation's billing account has it for Ironfang
+        Audit's meters - `captures` (`audit.capture`) and `retention_extension`
+        (`audit.retention_extension`): the free allowance, what has been settled,
+        what admitted audits still hold, and the charge so far before tax. Both are
+        null where unified billing is not running (`billing_enabled` false): audits
+        are then admitted on capacity alone and nothing is metered. Beside them, the
+        facts that are not billing: `sites` against `site_limit` and
+        `max_pages_per_audit` (capacity limits, the same for everyone), the
+        standard hosted retention new audits get, hosted bytes and the next expiry,
+        the `projection` of captures the active scheduled monitors may ask for this
+        month (pages x runs, an upper bound), and `daily` captures by UTC day of
+        admission. `quota` is deprecated: the launch-era shape, now captures
+        against the month's free allowance only.
+      responses:
+        '200':
+          description: Usage
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usage' }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.read, or the request names another organisation" }
+  /v1/retention/quotes:
+    post:
+      operationId: createRetentionQuote
+      tags: [Retention]
+      summary: Price an extension of hosted evidence retention
+      description: |
+        Prices keeping the hosted evidence of the chosen audits (every hosted
+        artifact of each) and artifacts for `months` whole months past each one's
+        current deadline. New audits are promised the standard retention (30 days
+        in the draft catalogue); an extension is how evidence stays hosted longer.
+        The quantity is in the `audit.retention_extension` meter's unit: the
+        selection's bytes rounded up to that unit's share of a decimal gigabyte,
+        times the months, never below ten GB-months. `amount` is the fixed price of
+        that quantity at the organisation's position this month, exact and before
+        tax, charged on the month's invoice through the billing account. A quote
+        can be bought until `expires_at` (about fifteen minutes), in the month and
+        at the catalogue version it was made in; it moves nothing and charges
+        nothing by itself, and nothing ever renews. Expired (deleted) evidence
+        cannot be extended. An extension that would take the storage held under
+        extended retention past the deployment's capacity is refused, paid or not.
+        Needs audit.read: a quote is a price, not a purchase.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [months]
+              properties:
+                audit_ids: { type: array, maxItems: 200, items: { type: string, format: uuid } }
+                artifact_ids: { type: array, maxItems: 5000, items: { type: string, format: uuid } }
+                months: { type: integer, minimum: 1, maximum: 120, description: Whole months of extra retention past each current deadline. }
+      responses:
+        '201':
+          description: The quote, with each artifact's deadline before and after.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetentionQuote' }
+        '400': { $ref: '#/components/responses/Problem', description: "invalid_json or invalid_id" }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.read" }
+        '404': { $ref: '#/components/responses/Problem', description: "not_found: an audit or artifact that is not this organisation's" }
+        '409': { $ref: '#/components/responses/Problem', description: "retention_capacity_reached: the deployment cannot hold more evidence under extended retention" }
+        '413': { $ref: '#/components/responses/Problem', description: "Billing refusal: operation_too_large" }
+        '422': { $ref: '#/components/responses/Problem', description: "selection_required, selection_too_large, invalid_months, or nothing_to_extend when none of the selection is still hosted" }
+        '503': { $ref: '#/components/responses/Problem', description: "billing_disabled: unified billing is not running here" }
+  /v1/retention/purchases:
+    post:
+      operationId: purchaseRetentionQuote
+      tags: [Retention]
+      summary: Buy a retention quote
+      description: |
+        Buys a quote exactly as quoted, in one step: the quoted quantity of
+        `audit.retention_extension` is admitted by the billing account, every
+        quoted deadline moves to its quoted date, and the usage is committed -
+        all of it or none. Needs billing.manage from a signed-in person with a
+        verified email address: API keys and connected apps are refused
+        (`insufficient_scope`, `person_required`), as for every billing change.
+        A refusal from the billing account (paid usage not enabled, a budget
+        reached) is the shared billing answer. A quote past its `expires_at`,
+        made in another month or at another catalogue version, that the
+        account's position would now price differently, or whose evidence has
+        changed since (deleted, or its deadline moved) is `quote_expired`: ask
+        for a new quote. Buying a quote that is already bought returns it with
+        200 and charges nothing more.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [quote_id]
+              properties:
+                quote_id: { type: string, format: uuid }
+      responses:
+        '201':
+          description: Bought; the quote with its new deadlines.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetentionQuote' }
+        '200':
+          description: Already bought; the quote as it was bought.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RetentionQuote' }
+        '400': { $ref: '#/components/responses/Problem', description: "invalid_json" }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '402': { $ref: '#/components/responses/Problem', description: "Billing refusal: paid_usage_paused, payment_required, payment_action_required or account_restricted" }
+        '403': { $ref: '#/components/responses/Problem', description: "forbidden or insufficient_scope (billing.manage), person_required, email_unverified, or the billing refusal product_not_eligible" }
+        '404': { $ref: '#/components/responses/Problem', description: "not_found: no such quote in this organisation" }
+        '409': { $ref: '#/components/responses/Problem', description: "quote_expired, or retention_capacity_reached" }
+        '422': { $ref: '#/components/responses/Problem', description: "quote_required" }
+        '429': { $ref: '#/components/responses/Problem', description: "Billing refusal: free_allowance_exhausted (the extension has no free allowance: paid usage must be enabled), account_budget_exhausted or product_budget_exhausted" }
+        '503': { $ref: '#/components/responses/Problem', description: "billing_disabled, or the billing refusal billing_temporarily_unavailable" }
+  /verify/v1/bundles:
+    post:
+      operationId: createVerifyBundles
+      description: >-
+        Accepts an evidence ZIP without requiring an account and checks its integrity,
+        signature and timestamp trust. Invalid evidence returns a verification report
+        with status 422; successful verification does not assert that the audited
+        website complies with any law.
+      tags: [Verify]
+      security: []
+      summary: Verify an Ironfang Audit evidence ZIP
+      requestBody:
+        required: true
+        content:
+          application/zip: {}
+      responses:
+        '200': { description: Every integrity and trust check is valid }
+        '422': { description: Verification report for invalid evidence }
+  /v1/sites/{siteId}/monitors:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    get:
+      operationId: listSitesBySiteIdMonitors
+      description: >-
+        Returns the organisation's non-archived monitors for the selected site,
+        including their scheduling configuration.
+      tags: [Sites]
+      summary: List the site's monitors
+      responses:
+        '200': { description: Monitors (archived ones omitted) }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.read, or the request names another organisation" }
+        '404': { $ref: '#/components/responses/Problem', description: "No such site in this organisation" }
+    post:
+      operationId: createSitesBySiteIdMonitors
+      tags: [Sites]
+      summary: Create a monitor
+      description: |
+        `mode` is `full_site` (crawler discovery under the site's crawl policy) or `url_set` (exactly the given `urls`, validated against the site's hosts, patterns and the public-target policy; the whole set is refused if any entry fails). `cadence` is `manual`, `daily`, `six_hourly` or `hourly`, open to every organisation; each scheduled run is admitted against `audit.capture` when its slot arrives, and a refused run is skipped with a `monitor.skipped` event whose `reason` is the billing code. `anchor_minute` is minutes past midnight in `timezone` for daily, or within the interval otherwise.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonitorInput'
+      responses:
+        '201': { description: Monitor with its URL set }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/monitors:
+    get:
+      operationId: listMonitors
+      description: >-
+        Returns the organisation's non-archived monitors, newest first, with the site
+        name, the pages one run may capture and the page captures the monitor may ask
+        for over the current month. Archived monitors are omitted.
+      tags: [Monitors]
+      summary: List monitors
+      parameters:
+        - $ref: '#/components/parameters/HistoryLimit'
+        - $ref: '#/components/parameters/HistoryCursor'
+        - {"name": "site_id", "in": "query", "schema": {"type": "string", "format": "uuid"}}
+      responses:
+        '200':
+          description: Monitors
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/MonitorList' }
+        '400': { $ref: '#/components/responses/Problem', description: "Invalid, repeated or unknown collection parameter" }
+  /v1/monitors/{monitorId}:
+    parameters:
+      - $ref: '#/components/parameters/MonitorId'
+    get:
+      operationId: getMonitorsByMonitorId
+      description: >-
+        Returns the organisation's monitor configuration together with its configured
+        URL set.
+      tags: [Monitors]
+      summary: Get a monitor with its URL set
+      responses:
+        '200': { description: Monitor }
+        '404': { $ref: '#/components/responses/Problem' }
+    patch:
+      operationId: updateMonitorsByMonitorId
+      tags: [Monitors]
+      summary: Change a monitor's name, cadence, anchor, timezone, capture profile or change policy
+      description: A cadence, anchor or timezone change clears the next slot; the scheduler recomputes it on its next tick.
+      requestBody:
+        required: true
+        description: |
+          Every field is optional; only fields present are changed. `mode` and `urls` are ignored here - use `PUT /v1/monitors/{monitorId}/urls` to change the URL set. Changing `cadence`, `anchor_minute` or `timezone` clears the next scheduled run so the scheduler recomputes it. An archived monitor is refused with 409.
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonitorInput'
+      responses:
+        '200': { description: Monitor }
+        '409': { description: The monitor is archived }
+  /v1/monitors/{monitorId}/urls:
+    parameters:
+      - $ref: '#/components/parameters/MonitorId'
+    put:
+      operationId: replaceMonitorsByMonitorIdUrls
+      tags: [Monitors]
+      summary: Replace a url_set monitor's URL list
+      description: >-
+        Makes the monitor's URL set exactly the given list and returns the
+        monitor: a URL already in the set keeps its identity and label, a URL
+        absent from the list is removed, and duplicates after normalisation
+        are stored once. At most 500 URLs. Only a `url_set` monitor has a URL
+        list; any other mode is answered 409 `not_url_set`. Historical audits
+        keep the scope they ran with.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [urls]
+              properties:
+                urls:
+                  type: array
+                  items: { type: string, format: uri }
+                  description: The complete new URL set. Validated against the site's hosts, patterns and the public-target policy; the whole set is refused if any entry fails.
+      responses:
+        '200': { description: Monitor }
+        '400': { $ref: '#/components/responses/Problem', description: "invalid_json: the body is not one JSON value of the documented shape" }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.manage, or the request names another organisation" }
+        '404': { $ref: '#/components/responses/Problem', description: "No such monitor in this organisation" }
+        '409': { $ref: '#/components/responses/Problem', description: "not_url_set: only a url_set monitor has a URL list" }
+        '422': { $ref: '#/components/responses/Problem', description: "urls_required, too_many_urls, invalid_url, url_out_of_scope or unsafe_url" }
+  /v1/monitors/{monitorId}/pause:
+    parameters:
+      - $ref: '#/components/parameters/MonitorId'
+    post:
+      operationId: pauseMonitorsByMonitorId
+      description: >-
+        Pauses future scheduling for the organisation's monitor. Existing audit records
+        and captured evidence remain available under their retention policy.
+      tags: [Monitors]
+      summary: Pause scheduling
+      responses:
+        '200': { description: Monitor }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.manage, or the request names another organisation" }
+        '404': { $ref: '#/components/responses/Problem', description: "No such monitor in this organisation" }
+        '409': { $ref: '#/components/responses/Problem', description: "monitor_archived: an archived monitor cannot be changed" }
+  /v1/monitors/{monitorId}/resume:
+    parameters:
+      - $ref: '#/components/parameters/MonitorId'
+    post:
+      operationId: resumeMonitorsByMonitorId
+      description: >-
+        Resumes scheduling for the organisation's non-archived monitor using its
+        configured cadence and scope.
+      tags: [Monitors]
+      summary: Resume scheduling
+      responses:
+        '200': { description: Monitor }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.manage, or the request names another organisation" }
+        '404': { $ref: '#/components/responses/Problem', description: "No such monitor in this organisation" }
+        '409': { $ref: '#/components/responses/Problem', description: "monitor_archived: an archived monitor cannot be changed" }
+  /v1/monitors/{monitorId}/archive:
+    parameters:
+      - $ref: '#/components/parameters/MonitorId'
+    post:
+      operationId: archiveMonitorsByMonitorId
+      description: >-
+        Permanently archives the organisation's monitor so it cannot be resumed or run
+        again. Its previous audits and evidence remain subject to their existing
+        retention policy.
+      tags: [Monitors]
+      summary: Archive a monitor (one-way; its audits and evidence remain)
+      responses:
+        '200': { description: Monitor }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.manage, or the request names another organisation" }
+        '404': { $ref: '#/components/responses/Problem', description: "No such monitor in this organisation" }
+        '409': { $ref: '#/components/responses/Problem', description: "monitor_archived: the monitor is already archived" }
+  /v1/monitors/{monitorId}/run:
+    parameters:
+      - $ref: '#/components/parameters/MonitorId'
+    post:
+      operationId: runMonitorsByMonitorId
+      description: >-
+        Admits and queues an immediate audit with the monitor's current scope, capture
+        profile and change policy frozen into the run. It is admitted against
+        `audit.capture` exactly as a site audit is, and a refusal is the shared billing
+        answer. An Idempotency-Key replay returns the existing audit; archived monitors
+        cannot run.
+      tags: [Monitors]
+      summary: Queue an audit now with the monitor's scope frozen as the scheduler would freeze it
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '202': { description: Audit queued }
+        '200': { description: Idempotent replay; the existing audit }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.run, or the request names another organisation" }
+        '404': { $ref: '#/components/responses/Problem', description: "No such monitor in this organisation" }
+        '409': { $ref: '#/components/responses/Problem', description: "monitor_archived: an archived monitor cannot run" }
+        '422': { $ref: '#/components/responses/Problem', description: "urls_required: a url_set monitor with no enabled URLs" }
+        '402': { $ref: '#/components/responses/Problem', description: "Billing refusal, as for a site audit" }
+        '413': { $ref: '#/components/responses/Problem', description: "Billing refusal: operation_too_large" }
+        '429': { $ref: '#/components/responses/Problem', description: "Billing refusal: free_allowance_exhausted or a budget reached" }
+        '503': { $ref: '#/components/responses/Problem', description: "Billing refusal: billing_temporarily_unavailable" }
+  /v1/monitors/{monitorId}/runs:
+    parameters:
+      - $ref: '#/components/parameters/MonitorId'
+    get:
+      operationId: listMonitorsByMonitorIdRuns
+      description: >-
+        Returns audits associated with the organisation's monitor, ordered from newest
+        to oldest.
+      tags: [Monitors]
+      summary: The monitor's audits, newest first
+      parameters:
+        - $ref: '#/components/parameters/HistoryLimit'
+        - $ref: '#/components/parameters/HistoryCursor'
+        - $ref: '#/components/parameters/AuditStatusFilter'
+      responses:
+        '200':
+          description: Audits
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditList' }
+        '400': { $ref: '#/components/responses/Problem', description: "Invalid, repeated or unknown collection parameter" }
+  /v1/events:
+    get:
+      operationId: listEvents
+      tags: [Events]
+      summary: The organisation's recent product events, newest first
+      description: |
+        Types: audit.started, audit.completed (every terminal audit, with `status`), audit.partial, audit.failed, change.detected, compliance.failed, monitor.skipped (`reason` is overlap, no_urls, or the billing code that refused the run), evidence.expiring. quota.threshold_reached and audit.quota_blocked belonged to the retired plans and are no longer emitted; subscriptions to them are accepted and receive nothing. Payloads carry counts and ids only. Webhook deliveries are created from these; each delivery is signed and carries the event id as its idempotency key.
+      responses:
+        '200': { description: Events and the type catalogue }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.read, or the request names another organisation" }
+  /v1/webhooks/{endpointId}:
+    parameters:
+      - $ref: '#/components/parameters/EndpointId'
+    patch:
+      operationId: updateWebhooksByEndpointId
+      tags: [Webhooks]
+      summary: Enable or disable an endpoint, or change its subscribed events
+      description: Enabling clears the consecutive-failure count. An endpoint is disabled automatically after 20 consecutive failed delivery attempts; the reason is on the endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                events:
+                  type: array
+                  items: { type: string, enum: [audit.completed] }
+      responses:
+        '200': { description: Endpoint }
+        '400': { $ref: '#/components/responses/Problem', description: "invalid_json: the body is not one JSON value of the documented shape" }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation" }
+        '404': { $ref: '#/components/responses/Problem', description: "No such webhook in this organisation" }
+        '422': { $ref: '#/components/responses/Problem', description: "unknown_event" }
+    delete:
+      operationId: deleteWebhooksByEndpointId
+      description: >-
+        Retires the organisation's webhook endpoint from future event delivery while
+        preserving its existing delivery history.
+      tags: [Webhooks]
+      summary: Retire an endpoint (soft; its delivery history is kept)
+      responses:
+        '204': { description: Retired }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation" }
+        '404': { $ref: '#/components/responses/Problem', description: "No such webhook in this organisation" }
+  /v1/webhooks/{endpointId}/deliveries/{deliveryId}/retry:
+    parameters:
+      - $ref: '#/components/parameters/EndpointId'
+      - name: deliveryId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    post:
+      operationId: retryWebhooksByEndpointIdDeliveriesByDeliveryId
+      description: >-
+        Requests another attempt for a failed delivery belonging to the organisation's
+        webhook endpoint. The response acknowledges that the retry was queued, not that
+        delivery succeeded.
+      tags: [Webhooks]
+      summary: Re-queue a failed delivery
+      responses:
+        '202': { description: Queued }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation" }
+        '404': { $ref: '#/components/responses/Problem', description: "No such delivery on this webhook, or it is not retryable" }
+  /v1/notification-preferences:
+    get:
+      operationId: getNotificationPreferences
+      description: >-
+        Returns the organisation's selected notification events, recipients and digest
+        preference, together with the available event type catalogue.
+      tags: [NotificationPreferences]
+      summary: Which events the organisation is emailed about, to whom, and whether as a daily digest
+      responses:
+        '200': { description: Preferences and the event type catalogue }
+        '401': { $ref: '#/components/responses/Problem', description: "No credential, or one that is not accepted" }
+        '403': { $ref: '#/components/responses/Problem', description: "The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation" }
+    put:
+      operationId: replaceNotificationPreferences
+      tags: [NotificationPreferences]
+      summary: Replace the preferences
+      description: Recipients must be current members of the organisation, checked against Warden with the caller's own token; an API key may keep the list but not change it. Emails carry counts, names and a signed-in portal link - never captured content.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events, digest, recipients]
+              properties:
+                events:
+                  type: array
+                  items: { type: string }
+                  description: Event names the organisation is emailed about.
+                digest: { type: boolean, description: Send one daily digest instead of an email per event. }
+                recipients:
+                  type: array
+                  maxItems: 25
+                  items: { type: string, format: email }
+                  description: Recipients can only be changed by a signed-in member; an API key may replace events and digest but must send the current recipients unchanged.
+      responses:
+        '200': { description: Preferences }
+        '422': { $ref: '#/components/responses/Problem' }
+  /v1/notifications:
+    get:
+      operationId: listNotifications
+      description: >-
+        Returns recent notification-email records for the authenticated organisation and
+        their recorded delivery states.
+      tags: [Notifications]
+      summary: Recent notification emails and their delivery state
+      parameters:
+        - $ref: '#/components/parameters/HistoryLimit'
+        - $ref: '#/components/parameters/HistoryCursor'
+      responses:
+        '200':
+          description: Notifications
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationList' }
+        '400': { $ref: '#/components/responses/Problem', description: "Invalid, repeated or unknown collection parameter" }
+  /v1/pages/{pageId}/observations:
+    get:
+      operationId: listPagesByPageIdObservations
+      description: >-
+        Returns paginated observations for a page within the authenticated organisation.
+        Supply the returned next_cursor to continue through older observations, ordered by
+        immutable created_at then ID descending. Lists include rule results but omit
+        artifacts. Empty and foreign page IDs return an empty list. Repeated and unknown
+        query parameters are rejected.
+      tags: [Pages]
+      summary: A page's observation history, newest first
+      parameters:
+        - { name: pageId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string }, description: next_cursor from the previous page }
+      responses:
+        '200':
+          description: Retained observation metadata
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ObservationList' }
+        '400': { $ref: '#/components/responses/Problem' }
+  /v1/page-observations/{observationId}:
+    get:
+      operationId: getPageObservationsByObservationId
+      description: >-
+        Returns an observation belonging to the authenticated organisation, including
+        its captured artifact metadata and deterministic rule results.
+      tags: [PageObservations]
+      summary: One observation with its artifacts and rule results
+      parameters:
+        - { name: observationId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200':
+          description: Retained observation metadata
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PageObservation' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { description: Not found }
+  /v1/page-observations/{observationId}/comparison:
+    get:
+      operationId: getPageObservationsByObservationIdComparison
+      tags: [PageObservations]
+      summary: What changed against the observation before it
+      description: Computed from stored evidence under the audit's change policy - normalised text hunks (whitespace collapsed, numbers masked, ignored selectors removed), scores, URL/title/status changes, rule transitions and screenshot artifact ids for each side. The raw artifacts are untouched. A first capture has no previous side and says why.
+      parameters:
+        - { name: observationId, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '200': { description: Comparison }
+        '400': { $ref: '#/components/responses/Problem' }
+        '404': { description: Not found }
+  /verify/v1/signing-keys:
+    get:
+      operationId: listVerifySigningKeys
+      description: >-
+        Publishes the public signing-key ledger and lifecycle metadata used to inspect
+        Ironfang Audit evidence signatures. Authentication is not required and private
+        signing keys are never returned.
+      tags: [Verify]
+      security: []
+      summary: List the Ironfang Audit signing-key ledger
+      responses:
+        '200': { description: Public signing keys and lifecycle metadata }
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: |
+        A platform API key minted in the portal (Warden). Its scopes are its
+        permissions - `audit:read`, `audit:run`, `audit:manage`,
+        `audit:evidence`, `audit:integrations`, or `audit:*` - and
+        it acts only in the organisation it was minted for. Legacy Ironfang Render
+        keys carry no Ironfang Audit scopes and are refused with 403.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: |
+        A Warden user token. Each route also requires a tenant permission
+        in the acting tenant, resolved live from Warden: read routes need
+        `audit.read`; creating sites and rules `audit.manage`; queueing
+        an audit `audit.run`; evidence bundles and raw artifacts
+        `audit.evidence`; webhooks, export destinations and manual exports
+        `audit.integrations`; billing changes `billing.manage`. A missing permission is 403; a permission
+        lookup failure is 503.
+  schemas:
+    Redirect:
+      type: object
+      required: ["url", "status_code"]
+      properties:
+        url: {"type": "string"}
+        status_code: {"type": "integer"}
+    MerkleStep:
+      type: object
+      required: ["side", "hash"]
+      properties:
+        side: {"type": "string", "enum": ["left", "right"]}
+        hash: {"type": "string"}
+    CaptureMetadata:
+      type: object
+      required: ["browser", "browser_version", "build_id", "user_agent", "viewport_width", "viewport_height", "device_scale_factor", "locale", "timezone", "colour_scheme", "settle_outcome", "settle_ms", "duration_ms", "worker_id", "region", "transformations", "response_headers", "dns_answers", "capture_truncated"]
+      properties:
+        browser: {"type": "string"}
+        browser_version: {"type": "string"}
+        build_id: {"type": "string"}
+        user_agent: {"type": "string"}
+        viewport_width: {"type": "integer"}
+        viewport_height: {"type": "integer"}
+        device_scale_factor: {"type": "number"}
+        locale: {"type": "string"}
+        timezone: {"type": "string"}
+        colour_scheme: {"type": "string"}
+        settle_outcome: {"type": "string"}
+        settle_ms: {"type": "integer"}
+        duration_ms: {"type": "integer"}
+        worker_id: {"type": "string"}
+        region: {"type": "string"}
+        transformations: {"type": ["array", "null"], "items": {"type": "string"}}
+        response_headers: {"type": ["object", "null"], "additionalProperties": {"type": "string"}}
+        dns_answers: {"type": ["array", "null"], "items": {"type": "string"}}
+        remote_port: {"type": "integer"}
+        tls_protocol: {"type": "string"}
+        tls_cipher: {"type": "string"}
+        tls_subject: {"type": "string"}
+        tls_issuer: {"type": "string"}
+        tls_certificate_sha256: {"type": "string"}
+        tls_valid_from: {"type": "string"}
+        tls_valid_to: {"type": "string"}
+        capture_truncated: {"type": "boolean"}
+    Artifact:
+      type: object
+      required: ["id", "organisation_id", "audit_id", "type", "name", "media_type", "byte_length", "sha256", "object_key", "created_at"]
+      properties:
+        id: {"type": "string"}
+        organisation_id: {"type": "string"}
+        audit_id: {"type": "string"}
+        page_observation_id: {"type": "string"}
+        type: {"type": "string"}
+        name: {"type": "string"}
+        media_type: {"type": "string"}
+        byte_length: {"type": "integer"}
+        sha256: {"type": "string"}
+        object_key: {"type": "string"}
+        derived_from_sha256: {"type": "string"}
+        transformation: {"type": "string"}
+        created_at: {"type": "string", "format": "date-time"}
+        hosted_state: {"type": "string", "enum": ["available", "expiring", "deleted"]}
+        expires_at: {"type": "string", "format": "date-time"}
+    RuleResult:
+      type: object
+      required: ["id", "audit_id", "page_observation_id", "rule_id", "rule_lineage_id", "rule_version", "rule_name", "severity", "status", "evaluated_at"]
+      properties:
+        id: {"type": "string"}
+        audit_id: {"type": "string"}
+        page_observation_id: {"type": "string"}
+        rule_id: {"type": "string", "description": "The exact rule revision this result was evaluated against."}
+        rule_lineage_id: {"type": "string", "description": "The rule across every revision of it. Match a finding on this rather than reading a rule's whole revision history to see whether a result is its own."}
+        rule_version: {"type": "integer"}
+        rule_name: {"type": "string"}
+        severity: {"type": "string", "enum": ["info", "warning", "failure", "critical"]}
+        status: {"type": "string", "enum": ["pass", "fail", "warning", "not_applicable", "error"]}
+        expected: {"type": "string"}
+        observed: {"type": "string"}
+        evidence_excerpt: {"type": "string"}
+        evaluated_at: {"type": "string", "format": "date-time"}
+    PageObservation:
+      type: object
+      required: ["id", "audit_id", "page_id", "requested_url", "redirect_chain", "capture_status", "text_changed", "visual_changed", "textual_change_score", "visual_change_score", "metadata", "created_at"]
+      properties:
+        id: {"type": "string"}
+        audit_id: {"type": "string"}
+        page_id: {"type": "string"}
+        requested_url: {"type": "string"}
+        final_url: {"type": "string"}
+        redirect_chain: {"type": ["array", "null"], "items": {"$ref": "#/components/schemas/Redirect"}}
+        captured_at: {"type": "string", "format": "date-time"}
+        capture_status: {"type": "string", "enum": ["captured", "error"]}
+        http_status: {"type": "integer"}
+        observed_remote_ip: {"type": "string"}
+        title: {"type": "string"}
+        canonical_url: {"type": "string"}
+        previous_observation_id: {"type": "string"}
+        text_changed: {"type": "boolean"}
+        visual_changed: {"type": "boolean"}
+        textual_change_score: {"type": "number"}
+        visual_change_score: {"type": "number"}
+        change_classification: {"type": "string", "enum": ["NEW", "MOVED", "CHANGED", "UNCHANGED"]}
+        compliance_state: {"type": "string", "enum": ["PASS", "WARNING", "FAIL", "ERROR"]}
+        page_hash: {"type": "string"}
+        merkle_proof: {"type": "array", "items": {"$ref": "#/components/schemas/MerkleStep"}}
+        metadata: {"$ref": "#/components/schemas/CaptureMetadata"}
+        artifacts: {"type": "array", "items": {"$ref": "#/components/schemas/Artifact"}}
+        rule_results: {"type": "array", "items": {"$ref": "#/components/schemas/RuleResult"}}
+        error: {"type": "string"}
+        created_at: {"type": "string", "format": "date-time"}
+    ObservationList:
+      type: object
+      required: ["observations", "next_cursor"]
+      properties:
+        observations: {"type": "array", "items": {"$ref": "#/components/schemas/PageObservation"}}
+        next_cursor: {"type": "string", "description": "Opaque timestamp/ID boundary; empty on the final page."}
+    AuditPageList:
+      type: object
+      required: ["pages", "total"]
+      properties:
+        pages: {"type": "array", "items": {"$ref": "#/components/schemas/PageObservation"}}
+        total: {"type": "integer", "minimum": 0, "description": "Unfiltered observation count for this audit; not the matching count."}
+        next_cursor: {"type": "string", "description": "Opaque timestamp/ID boundary; absent on the final page and for legacy unpaged requests."}
+    WebhookDeliveryList:
+      type: object
+      additionalProperties: false
+      required: [deliveries]
+      properties:
+        deliveries:
+          type: array
+          maxItems: 200
+          items: { $ref: '#/components/schemas/WebhookDelivery' }
+        next_cursor: { type: string, format: uuid }
+    WebhookDelivery:
+      type: object
+      additionalProperties: false
+      required: [id, endpoint_id, event_id, event_type, status, attempt, next_attempt_at]
+      properties:
+        id: { type: string, format: uuid }
+        endpoint_id: { type: string, format: uuid }
+        event_id: { type: string, format: uuid }
+        event_type: { type: string }
+        status: { type: string, enum: [queued, retrying, delivering, delivered, failed] }
+        attempt: { type: integer, minimum: 0 }
+        next_attempt_at: { type: string, format: date-time }
+        delivered_at: { type: string, format: date-time }
+        response_status: { type: integer }
+        response_excerpt: { type: string }
+        last_error: { type: string }
+        payload: { type: object, additionalProperties: true }
+
+    BillingCode:
+      type: string
+      description: >-
+        The billing refusals, shared by every Ironfang product: nothing was reserved and
+        nothing was charged. Status: 429 free_allowance_exhausted, account_budget_exhausted,
+        product_budget_exhausted, exemption_limit_reached; 402 paid_usage_paused,
+        payment_required, payment_action_required, account_restricted; 403
+        product_not_eligible; 410 account_closed; 413 operation_too_large; 503
+        billing_temporarily_unavailable (with Retry-After); 409 idempotency_conflict.
+        quote_expired (409) is Ironfang Audit's answer for a retention quote that can no
+        longer be bought.
+      enum: [free_allowance_exhausted, account_budget_exhausted, product_budget_exhausted, paid_usage_paused, payment_required, payment_action_required, account_restricted, account_closed, product_not_eligible, exemption_limit_reached, operation_too_large, billing_temporarily_unavailable, idempotency_conflict, quote_expired]
+    Usage:
+      type: object
+      additionalProperties: true
+      required: [period_start, period_end, billing_enabled, captures, retention_extension, retention_purchases, sites, site_limit, max_pages_per_audit, audits, standard_retention_days, retained_bytes, projection, daily, quota]
+      properties:
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        billing_enabled: { type: boolean, description: False where unified billing is not running; nothing is metered then. }
+        catalogue_version: { type: string, description: The rate catalogue version pricing the month. }
+        billing_mode: { type: string, description: "The billing account's mode: free, setup_pending, enabled, paused or closed." }
+        captures: { oneOf: [{ $ref: '#/components/schemas/MeterUsage' }, { type: 'null' }] }
+        retention_extension: { oneOf: [{ $ref: '#/components/schemas/MeterUsage' }, { type: 'null' }] }
+        retention_purchases:
+          type: array
+          description: Retention extensions bought this month, newest first, without their deadlines.
+          items: { $ref: '#/components/schemas/RetentionQuote' }
+        sites: { type: integer, minimum: 0 }
+        site_limit: { type: integer, minimum: 1, description: The site capacity limit; the same for every organisation. }
+        max_pages_per_audit: { type: integer, minimum: 1, description: The per-audit page cap; each site's own page limit applies within it. }
+        audits: { type: integer, minimum: 0 }
+        credits_consumed: { type: integer, minimum: 0, description: Page captures every audit of the organisation has been charged (and launch-era credits). }
+        standard_retention_days: { type: integer, minimum: 1, description: The hosted retention a new audit is promised. }
+        retained_bytes: { type: integer, minimum: 0 }
+        earliest_expiry: { type: string, format: date-time }
+        projection:
+          type: object
+          required: [captures, monitors]
+          properties:
+            captures: { type: integer, minimum: 0 }
+            monitors: { type: array, items: { type: object } }
+        daily:
+          type: array
+          items:
+            type: object
+            required: [day, captures]
+            properties:
+              day: { type: string, format: date }
+              captures: { type: integer, minimum: 0 }
+        quota:
+          type: object
+          deprecated: true
+          description: The launch-era quota shape, kept for existing readers - captures against the month's free allowance only. Use captures.
+    RetentionQuote:
+      type: object
+      required: [id, status, meter, months, bytes, quantity, unit, amount, amount_minor, currency, prices_exclude_tax, catalogue_version, created_at, expires_at, audit_ids, artifacts]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [open, expired, purchased] }
+        meter: { type: string, const: audit.retention_extension }
+        months: { type: integer, minimum: 1, maximum: 120 }
+        bytes: { type: integer, minimum: 1, description: Hosted bytes the quote covers. }
+        quantity: { type: integer, minimum: 1, description: "In the meter's unit (unit): the bytes rounded up to the unit's share of a decimal gigabyte, times months, at least ten GB-months." }
+        unit: { type: string, description: "The meter's unit, for example 0.1 GB-month." }
+        amount: { type: string, description: "The fixed price, exact, before tax, in pounds." }
+        amount_minor: { type: integer, description: The price rounded to pence. }
+        currency: { type: string, const: GBP }
+        prices_exclude_tax: { type: boolean, const: true }
+        catalogue_version: { type: string }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time, description: The quote can be bought until then. }
+        purchased_at: { type: string, format: date-time }
+        audit_ids: { type: array, items: { type: string, format: uuid } }
+        artifacts: { type: integer, minimum: 0 }
+        deadlines:
+          type: array
+          items:
+            type: object
+            required: [artifact_id, audit_id, byte_length, expires_before, expires_after]
+            properties:
+              artifact_id: { type: string, format: uuid }
+              audit_id: { type: string, format: uuid }
+              byte_length: { type: integer, minimum: 0 }
+              expires_before: { type: string, format: date-time }
+              expires_after: { type: string, format: date-time }
+    MeterUsage:
+      type: object
+      required: [meter, unit, free_allowance, used, reserved, free_remaining, charge, charge_minor, currency, exempt]
+      properties:
+        meter: { type: string }
+        unit: { type: string }
+        free_allowance: { type: integer, minimum: 0 }
+        used: { type: integer, minimum: 0, description: Settled this month. }
+        reserved: { type: integer, minimum: 0, description: Held by admitted work that has not finished. }
+        free_remaining: { type: integer, minimum: 0 }
+        charge: { type: string, description: "The month's charge for the meter so far, exact, before tax, in pounds." }
+        charge_minor: { type: integer, description: The charge rounded to pence. }
+        currency: { type: string, const: GBP }
+        exempt: { type: boolean }
+    AuditStatus:
+      type: "string"
+      description: "quota_blocked is historical: audits the retired plans could not pay for ended there. Audits are now admitted before they are accepted, so none enters it."
+      enum: ["created", "queued", "discovering", "capturing", "evaluating", "finalising_evidence", "timestamping", "completed", "failed", "cancelled", "partial", "quota_blocked"]
+    CrawlPolicy:
+      type: "object"
+      additionalProperties: false
+      required: ["allowed_hosts", "include_patterns", "exclude_patterns", "ignored_parameters", "identity_parameters", "respect_robots", "max_pages", "max_depth", "requests_per_second", "max_response_bytes"]
+      properties:
+        allowed_hosts: {"type": ["array", "null"], "items": {"type": "string"}}
+        include_patterns: {"type": ["array", "null"], "items": {"type": "string"}}
+        exclude_patterns: {"type": ["array", "null"], "items": {"type": "string"}}
+        ignored_parameters: {"type": ["array", "null"], "items": {"type": "string"}}
+        identity_parameters: {"type": ["array", "null"], "items": {"type": "string"}}
+        respect_robots: {"type": "boolean"}
+        max_pages: {"type": "integer", "minimum": 0}
+        max_depth: {"type": "integer", "minimum": 0}
+        requests_per_second: {"type": "integer", "minimum": 0}
+        max_response_bytes: {"type": "integer", "minimum": 0}
+    FindingList:
+      type: object
+      additionalProperties: false
+      required: [findings]
+      properties:
+        findings: { type: array, items: { $ref: '#/components/schemas/Finding' } }
+        next_cursor: { type: string }
+    Finding:
+      type: object
+      additionalProperties: false
+      required: [id, organisation_id, site_id, page_id, rule_lineage_id, state, severity, first_observation_id, latest_observation_id, first_seen_at, last_seen_at, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        organisation_id: { type: string, format: uuid }
+        site_id: { type: string, format: uuid }
+        page_id: { type: string, format: uuid }
+        rule_lineage_id: { type: string, format: uuid }
+        state: { type: string, enum: [open, acknowledged, accepted_risk, resolved, reopened] }
+        severity: { type: string, enum: [info, warning, failure, critical] }
+        first_observation_id: { type: string, format: uuid }
+        latest_observation_id: { type: string, format: uuid }
+        resolved_observation_id: { type: string, format: uuid }
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        resolved_at: { type: string, format: date-time }
+        assignee_user_id: { type: string }
+        due_at: { type: string, format: date-time }
+        accepted_risk_until: { type: string, format: date-time }
+        resolution_code: { type: string }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        page_url: { type: string }
+        rule_name: { type: string }
+        site_name: { type: string }
+        first_audit_id: { type: string, format: uuid }
+        latest_audit_id: { type: string, format: uuid }
+    Audit:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "organisation_id", "site_id", "site_name", "trigger_type", "status", "created_at", "discovered_page_count", "captured_page_count", "passed_page_count", "warning_page_count", "failed_page_count", "error_page_count", "credits_consumed", "evidence_hosted"]
+      properties:
+        id: {"type": "string", "format": "uuid"}
+        organisation_id: {"type": "string", "format": "uuid"}
+        site_id: {"type": "string", "format": "uuid"}
+        site_name: {"type": "string", "description": "The audited site's name, resolved with the audit so a list need not read every site to label its rows."}
+        trigger_type: {"type": "string", "enum": ["manual", "api", "schedule"]}
+        reason: {"type": "string"}
+        status: {"$ref": "#/components/schemas/AuditStatus"}
+        compliance_state: {"type": "string", "enum": ["PASS", "WARNING", "FAIL", "ERROR"]}
+        started_at: {"type": "string", "format": "date-time"}
+        completed_at: {"type": "string", "format": "date-time"}
+        created_at: {"type": "string", "format": "date-time"}
+        discovered_page_count: {"type": "integer", "minimum": 0}
+        captured_page_count: {"type": "integer", "minimum": 0}
+        passed_page_count: {"type": "integer", "minimum": 0}
+        warning_page_count: {"type": "integer", "minimum": 0}
+        failed_page_count: {"type": "integer", "minimum": 0}
+        error_page_count: {"type": "integer", "minimum": 0}
+        root_hash: {"type": "string"}
+        manifest_sha256: {"type": "string"}
+        signing_key_id: {"type": "string"}
+        credits_consumed: {"type": "integer", "minimum": 0, "description": "Page captures this audit was charged against audit.capture: one per finalised page evidence record, settled when it finalised. Zero while running, when not metered, or when its admission had expired. The name is kept from the launch-era credits."}
+        page_bound: {"type": "integer", "minimum": 1, "description": "The most pages this audit may capture: what was reserved against audit.capture when it was admitted. Absent on audits from before admission."}
+        error: {"type": "string"}
+        retention_days: {"type": "integer", "minimum": 0, "description": "The hosted retention promised when the audit was created: the rate catalogue's standard retention for audit.capture (a retired plan's, on older audits). A retention extension moves evidence_expires_at later; it never shortens it."}
+        evidence_expires_at: {"type": "string", "format": "date-time"}
+        evidence_hosted: {"type": "boolean"}
+        monitor_id: {"type": "string", "format": "uuid"}
+        scheduled_for: {"type": "string", "format": "date-time"}
+        scope_snapshot: {"$ref": "#/components/schemas/ScopeSnapshot"}
+        capture_profile_snapshot: {"$ref": "#/components/schemas/CaptureProfile"}
+        change_policy_snapshot: {"$ref": "#/components/schemas/ChangePolicy"}
+    ExportJob:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "organisation_id", "audit_id", "destination_id", "status", "attempt", "next_attempt_at", "created_at"]
+      properties:
+        id: {"type": "string", "format": "uuid"}
+        organisation_id: {"type": "string", "format": "uuid"}
+        audit_id: {"type": "string", "format": "uuid"}
+        destination_id: {"type": "string", "format": "uuid"}
+        status: {"type": "string", "enum": ["queued", "exporting", "retrying", "completed", "failed"]}
+        attempt: {"type": "integer", "minimum": 0}
+        next_attempt_at: {"type": "string", "format": "date-time"}
+        completed_at: {"type": "string", "format": "date-time"}
+        object_prefix: {"type": "string"}
+        last_error: {"type": "string"}
+        created_at: {"type": "string", "format": "date-time"}
+    Site:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "organisation_id", "name", "primary_url", "status", "timezone", "crawl_policy", "created_at", "activity"]
+      properties:
+        id: {"type": "string", "format": "uuid"}
+        organisation_id: {"type": "string", "format": "uuid"}
+        name: {"type": "string"}
+        primary_url: {"type": "string"}
+        status: {"type": "string"}
+        timezone: {"type": "string"}
+        crawl_policy: {"$ref": "#/components/schemas/CrawlPolicy"}
+        created_at: {"type": "string", "format": "date-time"}
+        activity: {"$ref": "#/components/schemas/SiteActivity"}
+    ScopeSnapshot:
+      type: "object"
+      additionalProperties: false
+      required: ["mode"]
+      properties:
+        mode: {"type": "string", "enum": ["full_site", "url_set"]}
+        crawl_policy: {"$ref": "#/components/schemas/CrawlPolicy"}
+        urls: {"type": "array", "items": {"type": "string"}}
+    Notification:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "event_id", "event_type", "recipient", "status", "attempt", "created_at"]
+      properties:
+        id: {"type": "string", "format": "uuid"}
+        event_id: {"type": "string", "format": "uuid"}
+        event_type: {"type": "string"}
+        recipient: {"type": "string"}
+        status: {"type": "string", "enum": ["queued", "held", "sending", "sent", "failed"]}
+        attempt: {"type": "integer", "minimum": 0}
+        sent_at: {"type": "string", "format": "date-time"}
+        last_error: {"type": "string"}
+        created_at: {"type": "string", "format": "date-time"}
+    LastSiteAudit:
+      type: "object"
+      additionalProperties: false
+      required: ["id", "status", "created_at"]
+      properties:
+        id: {"type": "string", "format": "uuid"}
+        status: {"$ref": "#/components/schemas/AuditStatus"}
+        created_at: {"type": "string", "format": "date-time"}
+    SiteActivity:
+      type: "object"
+      additionalProperties: false
+      required: ["audits", "has_capture", "open_findings", "last_audit"]
+      properties:
+        audits: {"type": "integer", "minimum": 0}
+        has_capture: {"type": "boolean"}
+        open_findings: {"type": "integer", "minimum": 0}
+        last_audit: {"oneOf": [{"$ref": "#/components/schemas/LastSiteAudit"}, {"type": "null"}]}
+    AuditList:
+      type: "object"
+      additionalProperties: false
+      required: ["audits"]
+      properties:
+        audits: {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/Audit"}}
+        next_cursor: {"type": "string", "maxLength": 256, "description": "Opaque continuation boundary. Absent on the final page; no total is inferred from a page."}
+    ExportList:
+      type: "object"
+      additionalProperties: false
+      required: ["exports"]
+      properties:
+        exports: {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/ExportJob"}}
+        next_cursor: {"type": "string", "maxLength": 256, "description": "Opaque continuation boundary. Absent on the final page; no total is inferred from a page."}
+    NotificationList:
+      type: "object"
+      additionalProperties: false
+      required: ["notifications"]
+      properties:
+        notifications: {"type": "array", "maxItems": 200, "items": {"$ref": "#/components/schemas/Notification"}}
+        next_cursor: {"type": "string", "maxLength": 256, "description": "Opaque continuation boundary. Absent on the final page; no total is inferred from a page."}
+    SiteList:
+      type: "object"
+      additionalProperties: false
+      required: ["sites"]
+      properties:
+        sites: {"type": "array", "items": {"$ref": "#/components/schemas/Site"}}
+    CaptureProfile:
+      type: object
+      description: Viewport and rendering settings for the monitor's evidence captures. Clamped to Ironfang Render's ceilings.
+      properties:
+        width: { type: integer }
+        height: { type: integer }
+        device_scale_factor: { type: number }
+        locale: { type: string }
+        color_scheme: { type: string, enum: [light, dark] }
+    ChangePolicy:
+      type: object
+      description: When a page observation counts as changed.
+      properties:
+        min_text_change: { type: number, description: "Fraction of text that must differ, 0-1." }
+        min_visual_change: { type: number, description: "Fraction of pixels that must differ, 0-1." }
+        ignored_selectors:
+          type: array
+          items: { type: string }
+        notify_only_on_rule_change: { type: boolean }
+        ignore_numbers: { type: boolean }
+    Monitor:
+      type: object
+      additionalProperties: true
+      required: [id, organisation_id, site_id, name, mode, status, cadence, created_at, updated_at, site_name, url_count, pages, captures_per_month]
+      properties:
+        id: {type: string, format: uuid}
+        organisation_id: {type: string, format: uuid}
+        site_id: {type: string, format: uuid}
+        name: {type: string}
+        mode: {type: string, enum: [full_site, url_set]}
+        status: {type: string, enum: [active, paused, archived]}
+        cadence: {type: string, enum: [manual, daily, six_hourly, hourly]}
+        anchor_minute: {type: integer}
+        timezone: {type: string}
+        next_run_at: {type: string, format: date-time}
+        last_scheduled_at: {type: string, format: date-time}
+        capture_profile: {$ref: '#/components/schemas/CaptureProfile'}
+        change_policy: {$ref: '#/components/schemas/ChangePolicy'}
+        created_by: {type: string}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        site_name: {type: string, description: 'The monitored site''s name, resolved with the monitor rather than per row by the client.'}
+        url_count: {type: integer, minimum: 0, description: 'Enabled URLs in a url_set monitor; zero for a full_site monitor.'}
+        pages: {type: integer, minimum: 1, description: 'Pages one run may capture: the enabled URLs, or the site''s page limit, within the per-audit cap.'}
+        captures_per_month: {type: integer, minimum: 0, description: 'Page captures the monitor may ask audit.capture for over the current month if every run captures every page: an upper bound, not a charge. Zero unless the monitor is active and scheduled, matching the usage projection.'}
+    RuleRevision:
+      type: object
+      additionalProperties: true
+      required: [id, lineage_id, organisation_id, name, rule_type, severity, configuration, version, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        lineage_id: {type: string, format: uuid}
+        organisation_id: {type: string, format: uuid}
+        site_id: {type: string}
+        name: {type: string}
+        description: {type: string}
+        rule_type: {type: string}
+        severity: {type: string, enum: [info, warning, failure, critical]}
+        configuration: {}
+        version: {type: integer, minimum: 1}
+        supersedes_rule_id: {type: string}
+        created_by: {type: string}
+        enabled: {type: boolean}
+        retired_at: {type: string, format: date-time}
+        origin_pack_installation_id: {type: string}
+        origin_pack_rule_key: {type: string}
+        created_at: {type: string, format: date-time}
+    RuleRevisionList:
+      type: object
+      additionalProperties: false
+      required: [revisions]
+      properties:
+        revisions: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/RuleRevision'}}
+        next_cursor: {type: string, maxLength: 16, description: 'The version to continue below. Absent on the final page.'}
+    FindingEvent:
+      type: object
+      additionalProperties: false
+      required: [id, finding_id, event_type, actor_type, created_at]
+      properties:
+        id: {type: string, format: uuid}
+        finding_id: {type: string, format: uuid}
+        event_type: {type: string}
+        actor_type: {type: string}
+        actor: {type: string}
+        from_state: {type: string}
+        to_state: {type: string}
+        observation_id: {type: string}
+        comment: {type: string}
+        created_at: {type: string, format: date-time}
+    FindingEventList:
+      type: object
+      additionalProperties: false
+      required: [events]
+      properties:
+        events: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/FindingEvent'}}
+        next_cursor: {type: string, maxLength: 256, description: 'Opaque continuation boundary. Absent on the final page; no total is inferred from a page.'}
+    MonitorList:
+      type: object
+      additionalProperties: false
+      required: [monitors]
+      properties:
+        monitors: {type: array, maxItems: 200, items: {$ref: '#/components/schemas/Monitor'}}
+        next_cursor: {type: string, maxLength: 256, description: 'Opaque continuation boundary. Absent on the final page; no total is inferred from a page.'}
+    MonitorInput:
+      type: object
+      description: |
+        `mode` is `full_site` (crawler discovery under the site's crawl policy) or `url_set` (exactly the given `urls`). Every `cadence` is open to every organisation; `manual` monitors only run when asked. `anchor_minute` is minutes past midnight in `timezone` for daily cadences, or minutes into the interval otherwise.
+      required: [mode]
+      properties:
+        name: { type: string }
+        mode: { type: string, enum: [full_site, url_set] }
+        cadence: { type: string, enum: [manual, daily, six_hourly, hourly] }
+        anchor_minute: { type: integer, minimum: 0, maximum: 1439 }
+        timezone: { type: string, description: "An IANA zone name, for example Europe/London." }
+        urls:
+          type: array
+          items: { type: string, format: uri }
+          description: Required for url_set on creation; ignored on update.
+        capture_profile: { $ref: '#/components/schemas/CaptureProfile' }
+        change_policy: { $ref: '#/components/schemas/ChangePolicy' }
+  parameters:
+    DeliveryCursor:
+      name: cursor
+      in: query
+      schema: { type: string, maxLength: 36 }
+      description: Last delivery ID from the preceding page, exclusive. Omit on page one.
+    DeliveryLimit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200 }
+      description: Global default 50; endpoint default 200.
+    DeliveryStatus:
+      name: status
+      in: query
+      schema: { type: string, enum: [pending, queued, retrying, delivering, delivered, failed] }
+      description: Pending selects queued with no attempts; retrying includes queued after an attempt; queued selects all queued records.
+
+    HistoryLimit:
+      name: limit
+      in: query
+      description: Bounded page size. The existing default of 200 is preserved; the portal requests 50.
+      schema: { type: integer, minimum: 1, maximum: 200, default: 200 }
+    HistoryCursor:
+      name: cursor
+      in: query
+      description: Opaque next_cursor from the preceding page. Sort order is immutable created_at descending, then ID descending. This is a continuation boundary, not a frozen snapshot; newer inserts do not shift older pages, and removed records disappear.
+      schema: { type: string, maxLength: 256 }
+    AuditStatusFilter:
+      name: status
+      in: query
+      description: Applied before pagination. active selects every non-terminal audit state.
+      schema: { type: string, enum: ["active", "created", "queued", "discovering", "capturing", "evaluating", "finalising_evidence", "timestamping", "completed", "failed", "cancelled", "partial", "quota_blocked"] }
+    SiteId:
+      name: siteId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    MonitorId:
+      name: monitorId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    AuditId:
+      name: auditId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    EndpointId:
+      name: endpointId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    DestinationId:
+      name: destinationId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >-
+        Makes queueing an audit safe to retry. Surrounding whitespace is
+        ignored. A key is remembered per organisation, across both operations
+        that queue an audit, for as long as the audit it queued exists. A
+        request under a key already used returns that audit with 200 instead
+        of queueing another. The request is not compared with the first, so
+        there is no conflict response.
+      schema: { type: string, maxLength: 255 }
+  responses:
+    Problem:
+      description: Problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                required: [code, message]
+                properties:
+                  code:
+                    type: string
+                    description: >-
+                      Stable machine-readable code. Billing refusals use the codes every
+                      Ironfang product shares (BillingCode), with the same status and message
+                      whichever product answered; everything else is Ironfang Audit's own.
+                  message: { type: string }
+                  docs: { type: string, format: uri, description: Where the errors are documented., example: "https://ironfang.com/audit/docs#errors" }
+                  product: { type: string, description: "Billing refusals only: the product the refused work belongs to (audit)." }
+                  meter: { type: string, description: "Billing refusals only: the meter that refused, audit.capture or audit.retention_extension." }
+                  reset_at: { type: string, format: date-time, description: "Billing refusals only: when the free allowance renews (the next month's start, UTC)." }
+              request_id: { type: string, description: The X-Ironfang-Request-ID of the failed request. }

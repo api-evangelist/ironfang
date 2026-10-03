@@ -1,0 +1,605 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Security Service API
+  version: 0.1.0
+  summary: External Security Check - verify a domain, run a low-impact external assessment, fix and recheck findings.
+  description: 'Ironfang Security helps an organisation understand what it exposes to
+
+    the internet, fix what matters and keep evidence that it did.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/security
+security:
+- bearerAuth: []
+tags:
+- name: Service
+  description: Whether Security is available, and the limits that apply.
+paths:
+  /v1/status:
+    get:
+      tags:
+      - Service
+      operationId: getStatus
+      summary: Service status and limits
+      description: Whether Security is enabled, paused or switched off, the free-tier limits that apply, and the scanner's identity (User-Agent and source addresses) for allowlisting.
+      responses:
+        '200':
+          description: Status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ServiceStatus'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/overview:
+    get:
+      tags:
+      - Service
+      operationId: getOverview
+      summary: Security overview
+      description: The organisation's domains, open findings by severity, the latest scan, the top recommended actions and recent activity.
+      responses:
+        '200':
+          description: Overview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Overview'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/scan-policy:
+    get:
+      tags:
+      - Service
+      operationId: getScanPolicy
+      summary: Current scan policy
+      description: What the External Security Check includes and never does, and the statement the organisation confirms to authorise it.
+      responses:
+        '200':
+          description: The current policy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScanPolicy'
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  schemas:
+    ScanSummary:
+      type: object
+      required:
+      - id
+      - domain_id
+      - domain
+      - kind
+      - status
+      - requested_at
+      - progress
+      - counts
+      properties:
+        id:
+          type: string
+          format: uuid
+        domain_id:
+          type: string
+          format: uuid
+        domain:
+          type: string
+        kind:
+          $ref: '#/components/schemas/ScanKind'
+        status:
+          $ref: '#/components/schemas/ScanStatus'
+        requested_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+        progress:
+          type: object
+          required:
+          - total
+          - completed
+          properties:
+            total:
+              type: integer
+            completed:
+              type: integer
+        counts:
+          $ref: '#/components/schemas/ScanCounts'
+        changes:
+          $ref: '#/components/schemas/ScanChanges'
+        recheck_finding_id:
+          type: string
+          format: uuid
+        status_reason:
+          type: string
+          description: Why a scan was cancelled, stopped or failed.
+    SeverityCounts:
+      type: object
+      required:
+      - critical
+      - high
+      - medium
+      - low
+      - info
+      properties:
+        critical:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+        info:
+          type: integer
+    ServiceStatus:
+      type: object
+      required:
+      - state
+      - preview
+      - limits
+      - scanner
+      properties:
+        state:
+          type: string
+          enum:
+          - enabled
+          - scans_paused
+          - disabled
+        message:
+          type: string
+          description: Shown to customers while paused or disabled.
+        preview:
+          type: boolean
+          description: True while Security is a free preview.
+        limits:
+          $ref: '#/components/schemas/Limits'
+        scanner:
+          $ref: '#/components/schemas/ScannerIdentity'
+    ScanChanges:
+      type: object
+      required:
+      - new
+      - fixed
+      - reopened
+      properties:
+        new:
+          type: integer
+        fixed:
+          type: integer
+        reopened:
+          type: integer
+    Limits:
+      type: object
+      required:
+      - max_domains
+      - max_pending_verifications
+      - full_scan_cooldown_seconds
+      - max_scans_per_day
+      - max_concurrent_scans
+      - recheck_cooldown_seconds
+      - manual_verification_interval_seconds
+      - verification_ttl_seconds
+      properties:
+        max_domains:
+          type: integer
+        max_pending_verifications:
+          type: integer
+        full_scan_cooldown_seconds:
+          type: integer
+        max_scans_per_day:
+          type: integer
+        max_concurrent_scans:
+          type: integer
+        recheck_cooldown_seconds:
+          type: integer
+        manual_verification_interval_seconds:
+          type: integer
+        verification_ttl_seconds:
+          type: integer
+    ScanBlockedReason:
+      type: string
+      description: Why a scan cannot start now.
+      enum:
+      - verification_required
+      - authorisation_required
+      - policy_outdated
+      - scan_in_progress
+      - scan_cooldown
+      - daily_limit_reached
+      - organisation_suspended
+      - scans_paused
+      - security_disabled
+    ActivityItem:
+      type: object
+      required:
+      - id
+      - at
+      - action
+      - actor
+      - summary
+      properties:
+        id:
+          type: string
+          format: uuid
+        at:
+          type: string
+          format: date-time
+        action:
+          type: string
+          description: e.g. domain.added, domain.verified, authorisation.recorded, scan.started, scan.completed, finding.status_changed.
+        actor:
+          type: object
+          required:
+          - kind
+          - label
+          properties:
+            kind:
+              type: string
+              enum:
+              - user
+              - staff
+              - system
+            label:
+              type: string
+        subject:
+          type: object
+          required:
+          - kind
+          - id
+          - label
+          properties:
+            kind:
+              type: string
+              enum:
+              - domain
+              - scan
+              - finding
+            id:
+              type: string
+              format: uuid
+            label:
+              type: string
+        summary:
+          type: string
+    Severity:
+      type: string
+      enum:
+      - critical
+      - high
+      - medium
+      - low
+      - info
+    Overview:
+      type: object
+      required:
+      - state
+      - domains
+      - open_findings
+      - recommended_actions
+      - recent_activity
+      - limits
+      properties:
+        state:
+          type: string
+          enum:
+          - enabled
+          - scans_paused
+          - disabled
+        message:
+          type: string
+        domains:
+          type: array
+          items:
+            $ref: '#/components/schemas/DomainSummary'
+        open_findings:
+          $ref: '#/components/schemas/SeverityCounts'
+        latest_scan:
+          $ref: '#/components/schemas/ScanSummary'
+        recommended_actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecommendedAction'
+        recent_activity:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActivityItem'
+        limits:
+          $ref: '#/components/schemas/Limits'
+    VerificationStatus:
+      type: string
+      enum:
+      - waiting
+      - checking
+      - verified
+      - failed
+      - expired
+      - lapsed
+    ScanStatus:
+      type: string
+      enum:
+      - queued
+      - running
+      - completed
+      - partial
+      - failed
+      - cancelled
+      - killed
+    Confidence:
+      type: string
+      description: How sure Ironfang is. `low` is presented as "potential".
+      enum:
+      - confirmed
+      - high
+      - medium
+      - low
+    ScanPolicy:
+      type: object
+      required:
+      - version
+      - title
+      - summary
+      - included
+      - excluded
+      - statement
+      - statement_version
+      - terms_url
+      - scanner
+      - disclaimer
+      properties:
+        version:
+          type: string
+        title:
+          type: string
+        summary:
+          type: string
+        included:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyItem'
+        excluded:
+          type: array
+          items:
+            $ref: '#/components/schemas/PolicyItem'
+        statement:
+          type: string
+        statement_version:
+          type: string
+        terms_url:
+          type: string
+          format: uri
+        scanner:
+          $ref: '#/components/schemas/ScannerIdentity'
+        disclaimer:
+          type: string
+    Problem:
+      type: object
+      required:
+      - error
+      - request_id
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: 'Stable error code. Among them: `unauthorized`, `forbidden`,
+
+                `not_found`, `validation_failed`, `domain_invalid`,
+
+                `domain_exists`, `domain_limit_reached`,
+
+                `verification_pending_limit`, `verification_required`,
+
+                `already_verified`, `authorisation_required`,
+
+                `policy_outdated`, `scan_in_progress`, `scan_cooldown`,
+
+                `daily_limit_reached`, `domain_rate_limited`, `scan_not_active`,
+
+                `recheck_unavailable`, `recheck_cooldown`, `check_rate_limited`,
+
+                `organisation_suspended`, `scans_paused`, `security_disabled`,
+
+                `verification_expired`, `verification_unavailable`,
+
+                `verification_pending_limit`, `finding_fixed`, `internal`.
+
+                From the Ironfang API in front of the service:
+
+                `api_keys_not_supported`, `permissions_unavailable`,
+
+                `body_too_large`, `invalid_body`, `invalid_tenant`,
+
+                `security_unavailable`, `security_timeout`.
+
+                '
+            message:
+              type: string
+            docs:
+              type: string
+              format: uri
+            retry_after_seconds:
+              type: integer
+              description: Set on cooldowns and rate limits.
+        request_id:
+          type: string
+    DomainSummary:
+      type: object
+      required:
+      - id
+      - name
+      - display_name
+      - verification_status
+      - authorised
+      - can_scan
+      - open_findings
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: ASCII (punycode) name.
+        display_name:
+          type: string
+        verification_status:
+          $ref: '#/components/schemas/VerificationStatus'
+        authorised:
+          type: boolean
+        can_scan:
+          type: boolean
+        scan_blocked_reason:
+          $ref: '#/components/schemas/ScanBlockedReason'
+        next_scan_at:
+          type: string
+          format: date-time
+          description: When the cooldown ends.
+        latest_scan:
+          $ref: '#/components/schemas/ScanSummary'
+        open_findings:
+          $ref: '#/components/schemas/SeverityCounts'
+        created_at:
+          type: string
+          format: date-time
+    ScanKind:
+      type: string
+      enum:
+      - full
+      - recheck
+    PolicyItem:
+      type: object
+      required:
+      - id
+      - title
+      - description
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+    ScanCounts:
+      type: object
+      required:
+      - critical
+      - high
+      - medium
+      - low
+      - info
+      - passed
+      - confirmed
+      - unverified
+      - errors
+      properties:
+        critical:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+        info:
+          type: integer
+        passed:
+          type: integer
+          description: Checks that observed a control working.
+        confirmed:
+          type: integer
+          description: Findings with confirmed or high confidence.
+        unverified:
+          type: integer
+          description: Findings with medium or low confidence.
+        errors:
+          type: integer
+          description: Checks that could not complete.
+    RecommendedAction:
+      type: object
+      required:
+      - finding_id
+      - title
+      - severity
+      - confidence
+      - host
+      - domain_id
+      - reason
+      properties:
+        finding_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        severity:
+          $ref: '#/components/schemas/Severity'
+        confidence:
+          $ref: '#/components/schemas/Confidence'
+        host:
+          type: string
+        domain_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+    ScannerIdentity:
+      type: object
+      required:
+      - user_agent
+      - info_url
+      - source_addresses
+      properties:
+        user_agent:
+          type: string
+        info_url:
+          type: string
+          format: uri
+        source_addresses:
+          type: array
+          description: Public addresses scanner traffic comes from, for allowlisting.
+          items:
+            type: string
+  responses:
+    Problem:
+      description: An error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+
+        reads need `security.read`; everything that changes state needs
+
+        `security.write`. A missing permission is 403; a permission lookup
+
+        failure is 503. Platform API keys are not accepted yet.
+
+        '
+externalDocs:
+  description: Ironfang Security documentation
+  url: https://ironfang.com/security/docs

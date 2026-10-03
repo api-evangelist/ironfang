@@ -1,0 +1,381 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Audit Retention API
+  version: 1.0.0
+  summary: Website audits with findings and signed, independently timestamped evidence.
+  description: Asynchronous website audits with signed, independently timestamped evidence.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/audit
+  description: Production
+security:
+- bearerAuth: []
+- apiKey: []
+tags:
+- name: Retention
+  description: Quoted, fixed-price extensions of hosted evidence retention.
+paths:
+  /v1/retention/quotes:
+    post:
+      operationId: createRetentionQuote
+      tags:
+      - Retention
+      summary: Price an extension of hosted evidence retention
+      description: 'Prices keeping the hosted evidence of the chosen audits (every hosted
+
+        artifact of each) and artifacts for `months` whole months past each one''s
+
+        current deadline. New audits are promised the standard retention (30 days
+
+        in the draft catalogue); an extension is how evidence stays hosted longer.
+
+        The quantity is in the `audit.retention_extension` meter''s unit: the
+
+        selection''s bytes rounded up to that unit''s share of a decimal gigabyte,
+
+        times the months, never below ten GB-months. `amount` is the fixed price of
+
+        that quantity at the organisation''s position this month, exact and before
+
+        tax, charged on the month''s invoice through the billing account. A quote
+
+        can be bought until `expires_at` (about fifteen minutes), in the month and
+
+        at the catalogue version it was made in; it moves nothing and charges
+
+        nothing by itself, and nothing ever renews. Expired (deleted) evidence
+
+        cannot be extended. An extension that would take the storage held under
+
+        extended retention past the deployment''s capacity is refused, paid or not.
+
+        Needs audit.read: a quote is a price, not a purchase.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - months
+              properties:
+                audit_ids:
+                  type: array
+                  maxItems: 200
+                  items:
+                    type: string
+                    format: uuid
+                artifact_ids:
+                  type: array
+                  maxItems: 5000
+                  items:
+                    type: string
+                    format: uuid
+                months:
+                  type: integer
+                  minimum: 1
+                  maximum: 120
+                  description: Whole months of extra retention past each current deadline.
+      responses:
+        '201':
+          description: The quote, with each artifact's deadline before and after.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionQuote'
+        '400':
+          $ref: '#/components/responses/Problem'
+          description: invalid_json or invalid_id
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.read
+        '404':
+          $ref: '#/components/responses/Problem'
+          description: 'not_found: an audit or artifact that is not this organisation''s'
+        '409':
+          $ref: '#/components/responses/Problem'
+          description: 'retention_capacity_reached: the deployment cannot hold more evidence under extended retention'
+        '413':
+          $ref: '#/components/responses/Problem'
+          description: 'Billing refusal: operation_too_large'
+        '422':
+          $ref: '#/components/responses/Problem'
+          description: selection_required, selection_too_large, invalid_months, or nothing_to_extend when none of the selection is still hosted
+        '503':
+          $ref: '#/components/responses/Problem'
+          description: 'billing_disabled: unified billing is not running here'
+  /v1/retention/purchases:
+    post:
+      operationId: purchaseRetentionQuote
+      tags:
+      - Retention
+      summary: Buy a retention quote
+      description: 'Buys a quote exactly as quoted, in one step: the quoted quantity of
+
+        `audit.retention_extension` is admitted by the billing account, every
+
+        quoted deadline moves to its quoted date, and the usage is committed -
+
+        all of it or none. Needs billing.manage from a signed-in person with a
+
+        verified email address: API keys and connected apps are refused
+
+        (`insufficient_scope`, `person_required`), as for every billing change.
+
+        A refusal from the billing account (paid usage not enabled, a budget
+
+        reached) is the shared billing answer. A quote past its `expires_at`,
+
+        made in another month or at another catalogue version, that the
+
+        account''s position would now price differently, or whose evidence has
+
+        changed since (deleted, or its deadline moved) is `quote_expired`: ask
+
+        for a new quote. Buying a quote that is already bought returns it with
+
+        200 and charges nothing more.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - quote_id
+              properties:
+                quote_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Bought; the quote with its new deadlines.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionQuote'
+        '200':
+          description: Already bought; the quote as it was bought.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionQuote'
+        '400':
+          $ref: '#/components/responses/Problem'
+          description: invalid_json
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '402':
+          $ref: '#/components/responses/Problem'
+          description: 'Billing refusal: paid_usage_paused, payment_required, payment_action_required or account_restricted'
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: forbidden or insufficient_scope (billing.manage), person_required, email_unverified, or the billing refusal product_not_eligible
+        '404':
+          $ref: '#/components/responses/Problem'
+          description: 'not_found: no such quote in this organisation'
+        '409':
+          $ref: '#/components/responses/Problem'
+          description: quote_expired, or retention_capacity_reached
+        '422':
+          $ref: '#/components/responses/Problem'
+          description: quote_required
+        '429':
+          $ref: '#/components/responses/Problem'
+          description: 'Billing refusal: free_allowance_exhausted (the extension has no free allowance: paid usage must be enabled), account_budget_exhausted or product_budget_exhausted'
+        '503':
+          $ref: '#/components/responses/Problem'
+          description: billing_disabled, or the billing refusal billing_temporarily_unavailable
+components:
+  schemas:
+    RetentionQuote:
+      type: object
+      required:
+      - id
+      - status
+      - meter
+      - months
+      - bytes
+      - quantity
+      - unit
+      - amount
+      - amount_minor
+      - currency
+      - prices_exclude_tax
+      - catalogue_version
+      - created_at
+      - expires_at
+      - audit_ids
+      - artifacts
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - open
+          - expired
+          - purchased
+        meter:
+          type: string
+          const: audit.retention_extension
+        months:
+          type: integer
+          minimum: 1
+          maximum: 120
+        bytes:
+          type: integer
+          minimum: 1
+          description: Hosted bytes the quote covers.
+        quantity:
+          type: integer
+          minimum: 1
+          description: 'In the meter''s unit (unit): the bytes rounded up to the unit''s share of a decimal gigabyte, times months, at least ten GB-months.'
+        unit:
+          type: string
+          description: The meter's unit, for example 0.1 GB-month.
+        amount:
+          type: string
+          description: The fixed price, exact, before tax, in pounds.
+        amount_minor:
+          type: integer
+          description: The price rounded to pence.
+        currency:
+          type: string
+          const: GBP
+        prices_exclude_tax:
+          type: boolean
+          const: true
+        catalogue_version:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+          description: The quote can be bought until then.
+        purchased_at:
+          type: string
+          format: date-time
+        audit_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        artifacts:
+          type: integer
+          minimum: 0
+        deadlines:
+          type: array
+          items:
+            type: object
+            required:
+            - artifact_id
+            - audit_id
+            - byte_length
+            - expires_before
+            - expires_after
+            properties:
+              artifact_id:
+                type: string
+                format: uuid
+              audit_id:
+                type: string
+                format: uuid
+              byte_length:
+                type: integer
+                minimum: 0
+              expires_before:
+                type: string
+                format: date-time
+              expires_after:
+                type: string
+                format: date-time
+  responses:
+    Problem:
+      description: Problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Stable machine-readable code. Billing refusals use the codes every Ironfang product shares (BillingCode), with the same status and message whichever product answered; everything else is Ironfang Audit's own.
+                  message:
+                    type: string
+                  docs:
+                    type: string
+                    format: uri
+                    description: Where the errors are documented.
+                    example: https://ironfang.com/audit/docs#errors
+                  product:
+                    type: string
+                    description: 'Billing refusals only: the product the refused work belongs to (audit).'
+                  meter:
+                    type: string
+                    description: 'Billing refusals only: the meter that refused, audit.capture or audit.retention_extension.'
+                  reset_at:
+                    type: string
+                    format: date-time
+                    description: 'Billing refusals only: when the free allowance renews (the next month''s start, UTC).'
+              request_id:
+                type: string
+                description: The X-Ironfang-Request-ID of the failed request.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `audit:read`, `audit:run`, `audit:manage`,
+
+        `audit:evidence`, `audit:integrations`, or `audit:*` - and
+
+        it acts only in the organisation it was minted for. Legacy Ironfang Render
+
+        keys carry no Ironfang Audit scopes and are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission
+
+        in the acting tenant, resolved live from Warden: read routes need
+
+        `audit.read`; creating sites and rules `audit.manage`; queueing
+
+        an audit `audit.run`; evidence bundles and raw artifacts
+
+        `audit.evidence`; webhooks, export destinations and manual exports
+
+        `audit.integrations`; billing changes `billing.manage`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Audit documentation
+  url: https://ironfang.com/audit/docs

@@ -1,0 +1,474 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Rig Usage API
+  version: 0.1.0
+  summary: Disposable inboxes, callback URLs, mock endpoints and connector routes for integration tests.
+  description: 'Ironfang Rig gives an application under test a disposable external
+
+    world: temporary inbox addresses, public callback URLs, mock HTTP
+
+    endpoints and connector routes, allocated fresh for every run, with an
+
+    append-only, sequenced timeline of everything Ironfang observed.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/rig
+security:
+- apiKey: []
+- bearerAuth: []
+tags:
+- name: Usage
+  description: What the organisation has used, and the deployment's fixed facts.
+paths:
+  /v1/usage:
+    get:
+      tags:
+      - Usage
+      operationId: getUsage
+      summary: Runs, events and metered interactions
+      description: 'Counts the organisation''s runs started in the window and the events those runs recorded, by type, plus how many runs are active now. The window defaults to the current UTC calendar month to date and may span at most 92 days. Where unified billing runs, `billing` adds the organisation''s `rig.interaction` meter for the current billing period (the UTC calendar month, whatever the window) from the billing ledger: the free allowance, how many interactions were used and are reserved, and the charge so far before tax. One interaction is one accepted inbound email, inbound callback or mock exchange with its response; a transport retry carrying the same identity (an email''s Message-ID with the same bytes, a callback''s `Idempotency-Key` or `Webhook-Id` with the same request) counts once, so `used` can be below the event counts. Creating projects, suites, runs and resources, faults, replays, waits, reads and assertions are never metered. `billing` is null where interactions are not metered. Reading usage is never metered. Needs rig.read.'
+      parameters:
+      - name: since
+        in: query
+        required: false
+        description: Start of the window, RFC 3339; default the first of the current UTC month.
+        schema:
+          type: string
+          format: date-time
+      - name: until
+        in: query
+        required: false
+        description: End of the window, RFC 3339, exclusive; default now.
+        schema:
+          type: string
+          format: date-time
+      responses:
+        '200':
+          description: The counts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usage'
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/home:
+    get:
+      tags:
+      - Usage
+      operationId: getProductHome
+      summary: Tenant-scoped setup facts and recent activity for the portal
+      description: Counts of projects, suites and runs, the moments that mark setup (a key first reached the product, the first run started, the first run finished), and the seven most recent runs as activity. Labels carry no addresses, names or payloads. Needs rig.read.
+      responses:
+        '200':
+          description: Counts, timestamps and at most seven activity labels
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - product
+                - counts
+                - activity
+                properties:
+                  product:
+                    type: string
+                    const: rig
+                  first_value_at:
+                    type: string
+                    format: date-time
+                  integrated_at:
+                    type: string
+                    format: date-time
+                  key_at:
+                    type: string
+                    format: date-time
+                  last_activity_at:
+                    type: string
+                    format: date-time
+                  counts:
+                    type: object
+                    additionalProperties:
+                      type: integer
+                  activity:
+                    type: array
+                    maxItems: 7
+                    items:
+                      type: object
+                      required:
+                      - id
+                      - label
+                      - href
+                      - at
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        label:
+                          type: string
+                        href:
+                          type: string
+                        at:
+                          type: string
+                          format: date-time
+                        issue:
+                          type: string
+                          enum:
+                          - error
+                          - warning
+                          description: Present when the run failed (error) or expired (warning).
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/environment:
+    get:
+      tags:
+      - Usage
+      operationId: getEnvironment
+      summary: The hosts, bounds and retention a client builds against
+      description: 'The fixed facts of this deployment: the domain inbox addresses are minted under, the base URLs of callback and mock addresses, the gateway connectors dial, the ironfang-connect release to run when the API knows it, every per-organisation, per-suite and per-run bound, what is metered, and how long payload bytes and runs are kept. The bounds are capacity limits, the same whatever the account pays. Read-only. Needs rig.read.'
+      responses:
+        '200':
+          description: The environment
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Environment'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  responses:
+    Forbidden:
+      description: The credential lacks the permission or scope, or names another organisation (`forbidden`, `insufficient_scope`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No credential, an invalid one, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidQuery:
+      description: An unknown, repeated or malformed query parameter (`invalid_query`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Environment:
+      type: object
+      required:
+      - inbox_domain
+      - hooks_base_url
+      - mock_base_url
+      - connect_url
+      - limits
+      - metering
+      - retention
+      properties:
+        inbox_domain:
+          type: string
+          example: inbox.rig.ironfang.com
+        hooks_base_url:
+          type: string
+          format: uri
+          example: https://hooks.rig.ironfang.com
+        mock_base_url:
+          type: string
+          format: uri
+          example: https://mock.rig.ironfang.com
+        connect_url:
+          type: string
+          format: uri
+          example: wss://connect.rig.ironfang.com/v1/connect
+        release:
+          type: object
+          nullable: true
+          description: The ironfang-connect build to run, when the API knows it.
+          required:
+          - version
+          - checksums_url
+          properties:
+            version:
+              type: string
+            checksums_url:
+              type: string
+              format: uri
+        limits:
+          type: object
+          description: Every capacity bound, in the unit its name says. These are the same whatever the account pays; billing refusals are separate (see metering).
+          additionalProperties:
+            type: integer
+        metering:
+          type: object
+          description: 'What is metered where unified billing runs. Each counted event is one rig.interaction, once per transport identity. An interaction the billing ledger refuses is not recorded: the sender gets the billing code (HTTP callbacks and mocks the problem''s status, such as 429 free_allowance_exhausted, in the usual error body with product, meter and reset_at beside the code; mail a 452 4.2.2 reply naming the code, or 550 for a closed account) and the run''s timeline gets refusal_event.'
+          required:
+          - enabled
+          - meter
+          - counted_events
+          - refusal_event
+          properties:
+            enabled:
+              type: boolean
+              description: Whether this deployment meters interactions.
+            meter:
+              type: string
+              const: rig.interaction
+            counted_events:
+              type: array
+              items:
+                type: string
+              example:
+              - email.received
+              - callback.received
+              - mock.request.received
+            refusal_event:
+              type: string
+              const: usage.refused
+        retention:
+          type: object
+          required:
+          - payload_days
+          - run_days
+          properties:
+            payload_days:
+              type: integer
+              description: Days after a run ends that raw message and request bytes are kept.
+            run_days:
+              type: integer
+              description: Days after a run ends that the run and its timeline are kept.
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            docs:
+              type: string
+              format: uri
+              description: Where the API and its error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request.
+    Usage:
+      type: object
+      required:
+      - period
+      - runs
+      - events
+      - billing
+      properties:
+        period:
+          type: object
+          required:
+          - start
+          - end
+          properties:
+            start:
+              type: string
+              format: date-time
+            end:
+              type: string
+              format: date-time
+        runs:
+          type: object
+          description: Runs started in the window by how they ended, plus the number active right now.
+          required:
+          - started
+          - active_now
+          - finished
+          - cancelled
+          - expired
+          - passed
+          - failed
+          - no_outcome
+          properties:
+            started:
+              type: integer
+            active_now:
+              type: integer
+            finished:
+              type: integer
+            cancelled:
+              type: integer
+            expired:
+              type: integer
+            passed:
+              type: integer
+            failed:
+              type: integer
+            no_outcome:
+              type: integer
+        events:
+          type: object
+          description: Events recorded by the runs started in the window; by_type carries every type seen.
+          required:
+          - total
+          - email_received
+          - callback_received
+          - mock_request_received
+          - connector_request_completed
+          - callback_replayed
+          - fault_injected
+          - usage_refused
+          - by_type
+          properties:
+            total:
+              type: integer
+            email_received:
+              type: integer
+            callback_received:
+              type: integer
+            mock_request_received:
+              type: integer
+            connector_request_completed:
+              type: integer
+            callback_replayed:
+              type: integer
+            fault_injected:
+              type: integer
+            usage_refused:
+              type: integer
+              description: Inbound interactions the billing ledger refused; they were not recorded.
+            by_type:
+              type: object
+              additionalProperties:
+                type: integer
+        billing:
+          type: object
+          nullable: true
+          description: The rig.interaction meter in the current billing period, from the billing ledger; null where interactions are not metered.
+          required:
+          - meter
+          - unit
+          - unit_plural
+          - period
+          - catalogue_version
+          - mode
+          - allowance
+          - used
+          - free_used
+          - billable
+          - reserved
+          - remaining_free
+          - charge
+          - currency
+          - exempt
+          properties:
+            meter:
+              type: string
+              const: rig.interaction
+            unit:
+              type: string
+              example: interaction
+            unit_plural:
+              type: string
+              example: interactions
+            period:
+              type: object
+              required:
+              - start
+              - end
+              properties:
+                start:
+                  type: string
+                  format: date-time
+                end:
+                  type: string
+                  format: date-time
+            catalogue_version:
+              type: string
+              description: The rate catalogue version that prices the period.
+            mode:
+              type: string
+              enum:
+              - free
+              - setup_pending
+              - enabled
+              - paused
+              - closed
+              description: 'The billing account''s mode: free accounts stop at the free allowance.'
+            allowance:
+              type: integer
+              description: Free interactions this period.
+            used:
+              type: integer
+              description: Interactions counted this period.
+            free_used:
+              type: integer
+            billable:
+              type: integer
+              description: Interactions beyond the free allowance.
+            reserved:
+              type: integer
+              description: Interactions admitted and not yet settled; normally 0.
+            remaining_free:
+              type: integer
+            charge:
+              type: string
+              example: '0.00'
+              description: The exact charge so far in pounds before tax.
+            currency:
+              type: string
+              const: GBP
+            exempt:
+              type: boolean
+              description: The account is exempt from settlement for Ironfang Rig.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `rig:read`, `rig:write`, `rig:run`,
+
+        `rig:connector`, or `rig:*` - and it acts only in the organisation
+
+        it was minted for. Keys without Rig scopes are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+
+        reads need `rig.read`; creating and revising projects and suites
+
+        `rig.write`; starting, finishing and cancelling runs and allocating
+
+        resources `rig.run`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Rig documentation
+  url: https://ironfang.com/rig/docs

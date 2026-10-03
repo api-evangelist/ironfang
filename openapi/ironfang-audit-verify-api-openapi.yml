@@ -1,0 +1,91 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Audit Verify API
+  version: 1.0.0
+  summary: Website audits with findings and signed, independently timestamped evidence.
+  description: Asynchronous website audits with signed, independently timestamped evidence.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/audit
+  description: Production
+security:
+- bearerAuth: []
+- apiKey: []
+tags:
+- name: Verify
+  description: Public verification of evidence bundles.
+paths:
+  /verify/v1/bundles:
+    post:
+      operationId: createVerifyBundles
+      description: Accepts an evidence ZIP without requiring an account and checks its integrity, signature and timestamp trust. Invalid evidence returns a verification report with status 422; successful verification does not assert that the audited website complies with any law.
+      tags:
+      - Verify
+      security: []
+      summary: Verify an Ironfang Audit evidence ZIP
+      requestBody:
+        required: true
+        content:
+          application/zip: {}
+      responses:
+        '200':
+          description: Every integrity and trust check is valid
+        '422':
+          description: Verification report for invalid evidence
+  /verify/v1/signing-keys:
+    get:
+      operationId: listVerifySigningKeys
+      description: Publishes the public signing-key ledger and lifecycle metadata used to inspect Ironfang Audit evidence signatures. Authentication is not required and private signing keys are never returned.
+      tags:
+      - Verify
+      security: []
+      summary: List the Ironfang Audit signing-key ledger
+      responses:
+        '200':
+          description: Public signing keys and lifecycle metadata
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `audit:read`, `audit:run`, `audit:manage`,
+
+        `audit:evidence`, `audit:integrations`, or `audit:*` - and
+
+        it acts only in the organisation it was minted for. Legacy Ironfang Render
+
+        keys carry no Ironfang Audit scopes and are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission
+
+        in the acting tenant, resolved live from Warden: read routes need
+
+        `audit.read`; creating sites and rules `audit.manage`; queueing
+
+        an audit `audit.run`; evidence bundles and raw artifacts
+
+        `audit.evidence`; webhooks, export destinations and manual exports
+
+        `audit.integrations`; billing changes `billing.manage`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Audit documentation
+  url: https://ironfang.com/audit/docs

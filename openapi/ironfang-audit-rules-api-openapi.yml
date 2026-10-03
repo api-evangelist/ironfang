@@ -1,0 +1,322 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Audit Rules API
+  version: 1.0.0
+  summary: Website audits with findings and signed, independently timestamped evidence.
+  description: Asynchronous website audits with signed, independently timestamped evidence.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/audit
+  description: Production
+security:
+- bearerAuth: []
+- apiKey: []
+tags:
+- name: Rules
+  description: Rules and their revisions.
+paths:
+  /v1/rules/{lineageId}:
+    parameters:
+    - name: lineageId
+      in: path
+      required: true
+      description: The stable id of the rule. A rule keeps this id for its whole life; each edit writes a new revision underneath it.
+      schema:
+        type: string
+        format: uuid
+    get:
+      operationId: getRulesByLineageId
+      description: Resolves a rule's stable lineage identifier to its current revision within the authenticated organisation.
+      tags:
+      - Rules
+      summary: Get the active revision of a rule
+      responses:
+        '200':
+          description: Rule
+        '404':
+          $ref: '#/components/responses/Problem'
+    patch:
+      operationId: updateRulesByLineageId
+      tags:
+      - Rules
+      summary: Revise a rule
+      description: Writes the next version of the rule and makes it active. Nothing about the previous revision changes, so evidence captured before the edit still names the wording that produced it. Omitted fields carry forward from the active revision.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                rule_type:
+                  type: string
+                severity:
+                  type: string
+                  enum:
+                  - info
+                  - warning
+                  - failure
+                  - critical
+                configuration:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '200':
+          description: The new active revision
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+    delete:
+      operationId: deleteRulesByLineageId
+      tags:
+      - Rules
+      summary: Retire a rule
+      description: Stops the rule being evaluated in future audits. Revisions are kept, so every historical result still resolves to the exact rule that ran. Retirement is permanent; stating the requirement again creates a new rule with its own history.
+      responses:
+        '204':
+          description: Retired
+        '404':
+          $ref: '#/components/responses/Problem'
+  /v1/rules/{lineageId}/revisions:
+    parameters:
+    - name: lineageId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      operationId: listRulesByLineageIdRevisions
+      description: Returns the revision history for the organisation's rule in descending version order, preserving access to the configurations referenced by earlier audit results.
+      tags:
+      - Rules
+      summary: List every revision of a rule, newest first
+      parameters:
+      - name: limit
+        in: query
+        description: Bounded page size. The existing default of 200 is preserved; the portal requests 50.
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 200
+      - name: cursor
+        in: query
+        description: The next_cursor from the preceding page. This collection is keyed on the revision version, which is unique and monotonic within a rule, so the cursor is that version and the page continues below it.
+        schema:
+          type: string
+          maxLength: 16
+      responses:
+        '200':
+          description: Revisions
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RuleRevisionList'
+        '400':
+          $ref: '#/components/responses/Problem'
+          description: Invalid, repeated or unknown collection parameter
+        '404':
+          $ref: '#/components/responses/Problem'
+  /v1/rules/{lineageId}/enable:
+    parameters:
+    - name: lineageId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      operationId: enableRulesByLineageId
+      description: Enables the organisation's rule for evaluation by future audits. Previously recorded audit results are unchanged.
+      tags:
+      - Rules
+      summary: Enable a rule for future audits
+      responses:
+        '200':
+          description: Rule
+        '404':
+          $ref: '#/components/responses/Problem'
+  /v1/rules/{lineageId}/disable:
+    parameters:
+    - name: lineageId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      operationId: disableRulesByLineageId
+      tags:
+      - Rules
+      summary: Disable a rule for future audits
+      description: 'Affects future audits only. A historical result keeps the status it had: a rule that was failing in March was still failing in March.'
+      responses:
+        '200':
+          description: Rule
+        '404':
+          $ref: '#/components/responses/Problem'
+components:
+  responses:
+    Problem:
+      description: Problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Stable machine-readable code. Billing refusals use the codes every Ironfang product shares (BillingCode), with the same status and message whichever product answered; everything else is Ironfang Audit's own.
+                  message:
+                    type: string
+                  docs:
+                    type: string
+                    format: uri
+                    description: Where the errors are documented.
+                    example: https://ironfang.com/audit/docs#errors
+                  product:
+                    type: string
+                    description: 'Billing refusals only: the product the refused work belongs to (audit).'
+                  meter:
+                    type: string
+                    description: 'Billing refusals only: the meter that refused, audit.capture or audit.retention_extension.'
+                  reset_at:
+                    type: string
+                    format: date-time
+                    description: 'Billing refusals only: when the free allowance renews (the next month''s start, UTC).'
+              request_id:
+                type: string
+                description: The X-Ironfang-Request-ID of the failed request.
+  schemas:
+    RuleRevision:
+      type: object
+      additionalProperties: true
+      required:
+      - id
+      - lineage_id
+      - organisation_id
+      - name
+      - rule_type
+      - severity
+      - configuration
+      - version
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        lineage_id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+        rule_type:
+          type: string
+        severity:
+          type: string
+          enum:
+          - info
+          - warning
+          - failure
+          - critical
+        configuration: {}
+        version:
+          type: integer
+          minimum: 1
+        supersedes_rule_id:
+          type: string
+        created_by:
+          type: string
+        enabled:
+          type: boolean
+        retired_at:
+          type: string
+          format: date-time
+        origin_pack_installation_id:
+          type: string
+        origin_pack_rule_key:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    RuleRevisionList:
+      type: object
+      additionalProperties: false
+      required:
+      - revisions
+      properties:
+        revisions:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/RuleRevision'
+        next_cursor:
+          type: string
+          maxLength: 16
+          description: The version to continue below. Absent on the final page.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `audit:read`, `audit:run`, `audit:manage`,
+
+        `audit:evidence`, `audit:integrations`, or `audit:*` - and
+
+        it acts only in the organisation it was minted for. Legacy Ironfang Render
+
+        keys carry no Ironfang Audit scopes and are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission
+
+        in the acting tenant, resolved live from Warden: read routes need
+
+        `audit.read`; creating sites and rules `audit.manage`; queueing
+
+        an audit `audit.run`; evidence bundles and raw artifacts
+
+        `audit.evidence`; webhooks, export destinations and manual exports
+
+        `audit.integrations`; billing changes `billing.manage`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Audit documentation
+  url: https://ironfang.com/audit/docs

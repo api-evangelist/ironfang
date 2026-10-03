@@ -1,0 +1,404 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Rig Faults API
+  version: 0.1.0
+  summary: Disposable inboxes, callback URLs, mock endpoints and connector routes for integration tests.
+  description: 'Ironfang Rig gives an application under test a disposable external
+
+    world: temporary inbox addresses, public callback URLs, mock HTTP
+
+    endpoints and connector routes, allocated fresh for every run, with an
+
+    append-only, sequenced timeline of everything Ironfang observed.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/rig
+security:
+- apiKey: []
+- bearerAuth: []
+tags:
+- name: Faults
+  description: Deterministic interference armed on a run's resources.
+paths:
+  /v1/runs/{runId}/faults:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    get:
+      tags:
+      - Faults
+      operationId: listFaults
+      summary: List a run's faults
+      description: Returns every fault armed on the run - active, spent and removed - in the order they were armed, with how often each has fired. The fault history is evidence and is kept with the run. Read-only.
+      responses:
+        '200':
+          description: The faults
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - faults
+                properties:
+                  faults:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Fault'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+      - Faults
+      operationId: addFault
+      summary: Arm a fault
+      description: 'Arms deterministic interference on one resource of an active run. `delay`, `duplicate` and `drop` act on the forwarding of a callback resource that has a connector route: the delivery is held for the duration, made `copies` extra times, or recorded and never forwarded. `status_override` makes a `mock_http` resource answer the given status whatever its rules said, body and headers unchanged. A fault fires on the next observation it applies to, `count` times (default once) or, if `persistent`, until removed or the run ends; every firing is a `fault.injected` event beside the observation it acted on. One active fault of each type per resource. Needs rig.run. No randomness: the same faults against the same traffic give the same timeline.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FaultSpec'
+      responses:
+        '201':
+          description: Fault armed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - fault
+                properties:
+                  fault:
+                    $ref: '#/components/schemas/Fault'
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The run has ended, or an active fault of that type is already armed on the resource
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '429':
+          description: The run has its limit of faults
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/runs/{runId}/faults/{faultId}:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    - $ref: '#/components/parameters/FaultId'
+    delete:
+      tags:
+      - Faults
+      operationId: removeFault
+      summary: Disarm a fault
+      description: 'Disarms an active fault and records `fault.removed`. A fault that is already spent or removed is returned as it is. The row is kept: the fault history is evidence. Needs rig.run.'
+      responses:
+        '200':
+          description: The fault, now removed
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - fault
+                properties:
+                  fault:
+                    $ref: '#/components/schemas/Fault'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/RunNotActive'
+components:
+  responses:
+    InvalidJSON:
+      description: The body is not one strict JSON value of the documented shape (`invalid_json`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such object in this organisation (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidRequest:
+      description: A field is invalid; the message names it (`invalid_request`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The credential lacks the permission or scope, or names another organisation (`forbidden`, `insufficient_scope`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No credential, an invalid one, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RunNotActive:
+      description: The run has already ended (`run_not_active`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  parameters:
+    FaultId:
+      name: faultId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    Fault:
+      type: object
+      required:
+      - id
+      - organisation_id
+      - run_id
+      - resource_id
+      - resource
+      - type
+      - spec
+      - status
+      - fired
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        resource_id:
+          type: string
+          format: uuid
+        resource:
+          type: string
+        type:
+          type: string
+          enum:
+          - delay
+          - duplicate
+          - drop
+          - status_override
+          - reorder
+          - payload_mutation
+          - connection_reset
+          - bandwidth_limit
+          - partial_response
+        spec:
+          $ref: '#/components/schemas/FaultSpec'
+        status:
+          type: string
+          enum:
+          - active
+          - spent
+          - removed
+        remaining:
+          type: integer
+          description: Firings left; absent when persistent.
+        fired:
+          type: integer
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        removed_at:
+          type: string
+          format: date-time
+    FaultSpec:
+      type: object
+      description: Deterministic interference on one resource. delay, duplicate, drop, reorder and payload_mutation act on the forwarding of a callback with a connector route; status_override, connection_reset, bandwidth_limit and partial_response act on a mock's answer. Each type takes its own parameter and no other.
+      required:
+      - type
+      - resource
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum:
+          - delay
+          - duplicate
+          - drop
+          - status_override
+          - reorder
+          - payload_mutation
+          - connection_reset
+          - bandwidth_limit
+          - partial_response
+        resource:
+          type: string
+          description: The resource, by the name the suite gave it.
+        delay:
+          type: string
+          description: 'For delay: a duration such as "500ms" or "5s", at most 30s.'
+        copies:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: 'For duplicate: extra deliveries; default 1.'
+        status:
+          type: integer
+          minimum: 100
+          maximum: 599
+          description: 'For status_override: the status to answer.'
+        batch:
+          type: integer
+          minimum: 2
+          maximum: 10
+          description: 'For reorder: how many deliveries to hold before releasing them last-first. A batch left incomplete when the run ends expires with outcome held.'
+        mutations:
+          type: array
+          minItems: 1
+          maxItems: 8
+          description: 'For payload_mutation: the changes made to the forwarded body, in order. The received body stays on the timeline untouched; the body sent is the payload of the fault.injected event.'
+          items:
+            $ref: '#/components/schemas/Mutation'
+        bytes_per_second:
+          type: integer
+          minimum: 64
+          maximum: 1048576
+          description: 'For bandwidth_limit: the rate the mock sends its body at. Raised, and recorded as capped, if the body would otherwise take longer than 30s.'
+        bytes:
+          type: integer
+          minimum: 0
+          maximum: 65536
+          description: 'For partial_response: how much of the body the mock sends before closing the connection; 0 sends the headers alone.'
+        count:
+          type: integer
+          minimum: 1
+          maximum: 100
+          description: How many times the fault fires before it is spent; default 1. A reorder fires once per released batch.
+        persistent:
+          type: boolean
+          description: Fire on every observation until removed; count is then not given.
+    Mutation:
+      type: object
+      description: One deterministic change to a forwarded body. set and remove address a JSON body by JSON Pointer (RFC 6901) and re-encode it with sorted keys; replace substitutes every occurrence of a string in any body; truncate keeps the first bytes. A change that does not apply (a body that is not JSON, a path that does not exist, text not found, a body already shorter) is recorded as not applied and the rest still run.
+      required:
+      - op
+      additionalProperties: false
+      properties:
+        op:
+          type: string
+          enum:
+          - set
+          - remove
+          - replace
+          - truncate
+        path:
+          type: string
+          maxLength: 256
+          description: 'For set and remove: a JSON Pointer such as "/customer/email" or "/items/0"; "" names the whole body, "-" appends to an array.'
+        value:
+          description: 'For set: any JSON value, at most 4096 bytes encoded.'
+        find:
+          type: string
+          maxLength: 1024
+          description: 'For replace: the text to find.'
+        replace:
+          type: string
+          maxLength: 1024
+          description: 'For replace: the text put in its place; may be empty.'
+        bytes:
+          type: integer
+          minimum: 0
+          maximum: 65536
+          description: 'For truncate: how many bytes to keep.'
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            docs:
+              type: string
+              format: uri
+              description: Where the API and its error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `rig:read`, `rig:write`, `rig:run`,
+
+        `rig:connector`, or `rig:*` - and it acts only in the organisation
+
+        it was minted for. Keys without Rig scopes are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+
+        reads need `rig.read`; creating and revising projects and suites
+
+        `rig.write`; starting, finishing and cancelling runs and allocating
+
+        resources `rig.run`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Rig documentation
+  url: https://ironfang.com/rig/docs

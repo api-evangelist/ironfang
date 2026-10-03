@@ -1,0 +1,471 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Rig Events API
+  version: 0.1.0
+  summary: Disposable inboxes, callback URLs, mock endpoints and connector routes for integration tests.
+  description: 'Ironfang Rig gives an application under test a disposable external
+
+    world: temporary inbox addresses, public callback URLs, mock HTTP
+
+    endpoints and connector routes, allocated fresh for every run, with an
+
+    append-only, sequenced timeline of everything Ironfang observed.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/rig
+security:
+- apiKey: []
+- bearerAuth: []
+tags:
+- name: Events
+  description: The run timeline.
+paths:
+  /v1/runs/{runId}/events/{eventId}/replay:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    - $ref: '#/components/parameters/EventId'
+    post:
+      tags:
+      - Events
+      operationId: replayCallback
+      summary: Replay a recorded callback
+      description: 'Forwards a callback the run received to its connector route again, exactly as recorded, to prove the application handles a repeat. The event must be a `callback.received` on a resource with a connector route and the run must be active. The replay is recorded as `callback.replayed`, then travels like any delivery: the timeline shows its own `callback.forwarded` and `connector.request.completed` against the original event id. Armed faults do not act on a replay; it is the test''s explicit act. At most 200 replays per run. Needs rig.run.'
+      responses:
+        '202':
+          description: The replay is queued for the route
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - event
+                - delivery_id
+                properties:
+                  event:
+                    $ref: '#/components/schemas/Event'
+                  delivery_id:
+                    type: string
+                    format: uuid
+                    description: The delivery the connector will receive; its completion event names it.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/RunNotActive'
+        '422':
+          description: The event is not a callback on a resource with a connector route
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '429':
+          description: The run has replayed its limit of callbacks
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/runs/{runId}/evidence:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    post:
+      tags:
+      - Events
+      operationId: exportEvidence
+      summary: Export the run's evidence bundle
+      description: 'Builds the run''s evidence bundle from what it recorded and returns it: a ZIP holding `manifest.json` (the run, counts, and every file''s size and SHA-256), `events.json` (the whole timeline in sequence order), `expectations.json` (each expectation with its verdict once the run is finished), `faults.json`, `resources.json`, `definition.json`, every message under `messages/` and every request body under `requests/`, named by sequence and event id. Bounded at 10,000 events and 256 MiB of payloads; the manifest says when a bound bit or when retention had already taken some bytes. With `Accept: application/json` the manifest alone is returned. Read-only: the bundle is what the caller can already read event by event.'
+      responses:
+        '200':
+          description: The bundle, or its manifest
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+            application/json:
+              schema:
+                type: object
+                required:
+                - manifest
+                - download
+                properties:
+                  manifest:
+                    type: object
+                    additionalProperties: true
+                  download:
+                    type: string
+                    description: The path that returns the bundle itself.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/runs/{runId}/events:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    get:
+      tags:
+      - Events
+      operationId: listEvents
+      summary: Read the timeline
+      description: 'Returns the run''s events in sequence order after `since`, which is a sequence number (0 for the start). Sequences are contiguous from 1 and never change: the same request always returns the same events, so a client can page deterministically with `next_since`. Payloads larger than an event carries are referenced by blob_ref, never embedded. Read-only.'
+      parameters:
+      - name: since
+        in: query
+        required: false
+        description: Return events with a sequence greater than this.
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 100
+      responses:
+        '200':
+          description: Events in sequence order
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - events
+                - next_since
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+                  next_since:
+                    type: integer
+                    description: The last sequence returned; pass it as since for the next page.
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/runs/{runId}/wait:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    post:
+      tags:
+      - Events
+      operationId: waitForEvent
+      summary: Wait for an event
+      description: 'Blocks until an event after `since` matches, or the timeout passes. The wait reads the timeline first, so an event that already happened is answered at once, then wakes as new events land. A timeout is a 200 with `matched: false`, never an error: nothing went wrong, the thing has not happened yet, and `next_since` says where to continue. Timeouts are 1s to 90s (default 30s); loop with `next_since` for longer. `match` keys are top-level fields of the event''s data: `field` compares as JSON, `field_contains` requires a string containing the value. Deterministic: the same timeline and request always answer the same event. At most 16 waits per organisation may be open at once.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - type
+              additionalProperties: false
+              properties:
+                type:
+                  type: string
+                  example: callback.received
+                resource:
+                  type: string
+                  description: Limit to one of the run's resources, by name.
+                match:
+                  type: object
+                  maxProperties: 16
+                  additionalProperties: true
+                  example:
+                    method: POST
+                since:
+                  type: integer
+                  minimum: 0
+                  default: 0
+                  description: Consider only events with a greater sequence.
+                timeout:
+                  type: string
+                  default: 30s
+                  example: 30s
+      responses:
+        '200':
+          description: Matched, or timed out without a match
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - matched
+                - next_since
+                - waited_ms
+                properties:
+                  matched:
+                    type: boolean
+                  event:
+                    $ref: '#/components/schemas/Event'
+                  next_since:
+                    type: integer
+                    description: The last sequence examined; pass it as since to continue.
+                  waited_ms:
+                    type: integer
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '429':
+          description: Too many waits are open for this organisation (`too_many_waiters`); retry after a moment.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/runs/{runId}/events/{eventId}:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    - $ref: '#/components/parameters/EventId'
+    get:
+      tags:
+      - Events
+      operationId: getEvent
+      summary: Get an event
+      description: Returns one event of the run with its full data.
+      responses:
+        '200':
+          description: The event
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - event
+                properties:
+                  event:
+                    $ref: '#/components/schemas/Event'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/runs/{runId}/events/{eventId}/payload:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    - $ref: '#/components/parameters/EventId'
+    get:
+      tags:
+      - Events
+      operationId: getEventPayload
+      summary: Download an event's payload
+      description: The exact bytes a callback carried, as an opaque attachment whatever the sender declared, so third-party content is never rendered on the API origin. The recorded media type is in `X-Ironfang-Payload-Media-Type` and the SHA-256 in `X-Ironfang-Payload-SHA256`; the same digest is in the event's data. Events without a payload (anything but a received callback) are not found.
+      responses:
+        '200':
+          description: The payload bytes
+          headers:
+            X-Ironfang-Payload-Media-Type:
+              schema:
+                type: string
+              description: The Content-Type the sender declared.
+            X-Ironfang-Payload-SHA256:
+              schema:
+                type: string
+              description: Hex SHA-256 of the bytes.
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          description: The payload's bytes were retired by retention; the event and its digest remain
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  responses:
+    InvalidJSON:
+      description: The body is not one strict JSON value of the documented shape (`invalid_json`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such object in this organisation (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidRequest:
+      description: A field is invalid; the message names it (`invalid_request`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The credential lacks the permission or scope, or names another organisation (`forbidden`, `insufficient_scope`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No credential, an invalid one, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidQuery:
+      description: An unknown, repeated or malformed query parameter (`invalid_query`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RunNotActive:
+      description: The run has already ended (`run_not_active`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  parameters:
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    EventId:
+      name: eventId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            docs:
+              type: string
+              format: uri
+              description: Where the API and its error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request.
+    Event:
+      type: object
+      required:
+      - id
+      - organisation_id
+      - project_id
+      - suite_id
+      - run_id
+      - type
+      - sequence
+      - occurred_at
+      - data
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        suite_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        resource_id:
+          type: string
+          format: uuid
+        type:
+          type: string
+          example: resource.allocated
+        sequence:
+          type: integer
+          description: The run's own counter, contiguous from 1.
+        occurred_at:
+          type: string
+          format: date-time
+          description: Ironfang's clock.
+        data:
+          type: object
+          additionalProperties: true
+        blob_ref:
+          type: string
+          description: Reference to a stored payload too large to embed.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `rig:read`, `rig:write`, `rig:run`,
+
+        `rig:connector`, or `rig:*` - and it acts only in the organisation
+
+        it was minted for. Keys without Rig scopes are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+
+        reads need `rig.read`; creating and revising projects and suites
+
+        `rig.write`; starting, finishing and cancelling runs and allocating
+
+        resources `rig.run`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Rig documentation
+  url: https://ironfang.com/rig/docs

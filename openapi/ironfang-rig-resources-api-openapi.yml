@@ -1,0 +1,415 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Rig Resources API
+  version: 0.1.0
+  summary: Disposable inboxes, callback URLs, mock endpoints and connector routes for integration tests.
+  description: 'Ironfang Rig gives an application under test a disposable external
+
+    world: temporary inbox addresses, public callback URLs, mock HTTP
+
+    endpoints and connector routes, allocated fresh for every run, with an
+
+    append-only, sequenced timeline of everything Ironfang observed.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/rig
+security:
+- apiKey: []
+- bearerAuth: []
+tags:
+- name: Resources
+  description: The external identities a run receives.
+paths:
+  /v1/runs/{runId}/resources:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    get:
+      tags:
+      - Resources
+      operationId: listResources
+      summary: List a run's resources
+      description: Returns every resource allocated to the run, in allocation order, with the address or URL each one answers at. Read-only.
+      responses:
+        '200':
+          description: The resources
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - resources
+                properties:
+                  resources:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Resource'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+      - Resources
+      operationId: createResource
+      summary: Allocate a resource
+      description: 'Allocates one more resource on an active run, beyond what the suite declared, with the run''s expiry. Names are unique within the run. Needs rig.run. Public effect: the address or URL is reachable from the Internet for the rest of the run.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - type
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  pattern: ^[a-z][a-z0-9_]{0,63}$
+                  example: shipping_api
+                type:
+                  type: string
+                  enum:
+                  - email
+                  - callback
+                  - mock_http
+                  - connector_route
+                route:
+                  type: string
+                  description: The route label of a connector_route.
+                connector:
+                  $ref: '#/components/schemas/ConnectorSpec'
+                rules:
+                  type: array
+                  maxItems: 32
+                  description: For a mock_http, the rules it answers with.
+                  items:
+                    $ref: '#/components/schemas/MockRule'
+      responses:
+        '201':
+          description: Resource allocated
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - resource
+                properties:
+                  resource:
+                    $ref: '#/components/schemas/Resource'
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/RunNotActive'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+  /v1/runs/{runId}/resources/{resourceId}/mock:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    - $ref: '#/components/parameters/ResourceId'
+    put:
+      tags:
+      - Resources
+      operationId: setMockRules
+      summary: Replace a mock's rules
+      description: Replaces the rules a mock_http resource answers with, in order, while the run is active. The first rule whose match holds decides the response; no match answers 404 with code `no_mock_rule`. The change is recorded on the timeline as `mock.rules.updated`. Needs rig.run.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - rules
+              additionalProperties: false
+              properties:
+                rules:
+                  type: array
+                  maxItems: 32
+                  items:
+                    $ref: '#/components/schemas/MockRule'
+      responses:
+        '200':
+          description: The resource with its new rules
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - resource
+                properties:
+                  resource:
+                    $ref: '#/components/schemas/Resource'
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/RunNotActive'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+components:
+  responses:
+    InvalidJSON:
+      description: The body is not one strict JSON value of the documented shape (`invalid_json`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such object in this organisation (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidRequest:
+      description: A field is invalid; the message names it (`invalid_request`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The credential lacks the permission or scope, or names another organisation (`forbidden`, `insufficient_scope`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RunNotActive:
+      description: The run has already ended (`run_not_active`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No credential, an invalid one, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  parameters:
+    ResourceId:
+      name: resourceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    ConnectorSpec:
+      type: object
+      description: Binds a callback to a local route by label. The label is all the platform ever sends; the destination behind it belongs to the connector on the developer's machine.
+      required:
+      - route
+      additionalProperties: false
+      properties:
+        route:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+          example: stripe
+    Resource:
+      type: object
+      required:
+      - id
+      - organisation_id
+      - run_id
+      - name
+      - type
+      - scope
+      - expires_at
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          enum:
+          - email
+          - callback
+          - mock_http
+          - connector_route
+        scope:
+          type: string
+          enum:
+          - run
+        email_address:
+          type: string
+          description: For email resources - the inbox that receives for this run.
+        public_url:
+          type: string
+          format: uri
+          description: For callback and mock resources - the unguessable URL to configure elsewhere.
+        route_label:
+          type: string
+          description: For connector routes, and callbacks forwarded through one.
+        config:
+          type: object
+          additionalProperties: true
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    MockResponse:
+      type: object
+      required:
+      - status
+      additionalProperties: false
+      description: 'One answer. With template, the body and the header values are rendered from the request: {{request.method}}, {{request.path}}, {{request.query}}, {{request.query.name}}, {{request.header.Name}}, {{request.body}}, {{request.json.a.b.0}}, {{run.id}}, {{resource.name}}, {{step}}, {{call}} and {{received_at}}. In a json body a placeholder sits inside a string and is escaped for it. An unknown placeholder is refused when the rules are written.'
+      properties:
+        status:
+          type: integer
+          minimum: 100
+          maximum: 599
+          example: 201
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        body:
+          type: string
+          maxLength: 65536
+          description: A text body; exclusive with json.
+        json:
+          description: A JSON body; sets Content-Type unless a header does.
+        delay:
+          type: string
+          description: Held before answering, a duration such as "250ms", at most 10s.
+        template:
+          type: boolean
+          description: Render the body and header values from the request.
+    MockRule:
+      type: object
+      description: 'One rule of a mock: what to match and what to answer. Rules are evaluated in order and the first match answers. A rule answers with respond, one answer, or with sequence, its calls taking the responses in turn and repeat saying what later calls get. Deterministic: the same request against the same rules, at the same step, gets the same answer, delay included.'
+      required:
+      - match
+      additionalProperties: false
+      properties:
+        match:
+          type: object
+          additionalProperties: false
+          properties:
+            method:
+              type: string
+              description: An HTTP method, or "*" or omitted for any.
+              example: POST
+            path:
+              type: string
+              description: Exact path under the mock URL, a prefix ending in "/*", or a template whose {name} segments match any one segment; omitted for any.
+              example: /v1/ship/{id}
+            headers:
+              type: object
+              additionalProperties:
+                type: string
+              description: Headers that must be present with exactly these values.
+            json:
+              type: object
+              additionalProperties: true
+              description: Top-level fields a JSON request body must equal.
+        respond:
+          $ref: '#/components/schemas/MockResponse'
+        sequence:
+          type: array
+          minItems: 2
+          maxItems: 16
+          description: The responses this rule gives its calls in turn; exclusive with respond. Replacing the rules starts every sequence afresh.
+          items:
+            $ref: '#/components/schemas/MockResponse'
+        repeat:
+          type: string
+          enum:
+          - last
+          - cycle
+          description: 'After a sequence''s last response: keep giving the last (the default) or start again.'
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            docs:
+              type: string
+              format: uri
+              description: Where the API and its error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `rig:read`, `rig:write`, `rig:run`,
+
+        `rig:connector`, or `rig:*` - and it acts only in the organisation
+
+        it was minted for. Keys without Rig scopes are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+
+        reads need `rig.read`; creating and revising projects and suites
+
+        `rig.write`; starting, finishing and cancelling runs and allocating
+
+        resources `rig.run`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Rig documentation
+  url: https://ironfang.com/rig/docs

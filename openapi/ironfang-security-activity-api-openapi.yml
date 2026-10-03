@@ -1,0 +1,204 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Security Activity API
+  version: 0.1.0
+  summary: External Security Check - verify a domain, run a low-impact external assessment, fix and recheck findings.
+  description: 'Ironfang Security helps an organisation understand what it exposes to
+
+    the internet, fix what matters and keep evidence that it did.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/security
+security:
+- bearerAuth: []
+tags:
+- name: Activity
+  description: What happened in the organisation's Security account.
+paths:
+  /v1/activity:
+    get:
+      tags:
+      - Activity
+      operationId: listActivity
+      summary: Activity
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Activity, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                - next_cursor
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActivityItem'
+                  next_cursor:
+                    type: string
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: The next_cursor of the previous page.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+  schemas:
+    ActivityItem:
+      type: object
+      required:
+      - id
+      - at
+      - action
+      - actor
+      - summary
+      properties:
+        id:
+          type: string
+          format: uuid
+        at:
+          type: string
+          format: date-time
+        action:
+          type: string
+          description: e.g. domain.added, domain.verified, authorisation.recorded, scan.started, scan.completed, finding.status_changed.
+        actor:
+          type: object
+          required:
+          - kind
+          - label
+          properties:
+            kind:
+              type: string
+              enum:
+              - user
+              - staff
+              - system
+            label:
+              type: string
+        subject:
+          type: object
+          required:
+          - kind
+          - id
+          - label
+          properties:
+            kind:
+              type: string
+              enum:
+              - domain
+              - scan
+              - finding
+            id:
+              type: string
+              format: uuid
+            label:
+              type: string
+        summary:
+          type: string
+    Problem:
+      type: object
+      required:
+      - error
+      - request_id
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: 'Stable error code. Among them: `unauthorized`, `forbidden`,
+
+                `not_found`, `validation_failed`, `domain_invalid`,
+
+                `domain_exists`, `domain_limit_reached`,
+
+                `verification_pending_limit`, `verification_required`,
+
+                `already_verified`, `authorisation_required`,
+
+                `policy_outdated`, `scan_in_progress`, `scan_cooldown`,
+
+                `daily_limit_reached`, `domain_rate_limited`, `scan_not_active`,
+
+                `recheck_unavailable`, `recheck_cooldown`, `check_rate_limited`,
+
+                `organisation_suspended`, `scans_paused`, `security_disabled`,
+
+                `verification_expired`, `verification_unavailable`,
+
+                `verification_pending_limit`, `finding_fixed`, `internal`.
+
+                From the Ironfang API in front of the service:
+
+                `api_keys_not_supported`, `permissions_unavailable`,
+
+                `body_too_large`, `invalid_body`, `invalid_tenant`,
+
+                `security_unavailable`, `security_timeout`.
+
+                '
+            message:
+              type: string
+            docs:
+              type: string
+              format: uri
+            retry_after_seconds:
+              type: integer
+              description: Set on cooldowns and rate limits.
+        request_id:
+          type: string
+  responses:
+    Problem:
+      description: An error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+
+        reads need `security.read`; everything that changes state needs
+
+        `security.write`. A missing permission is 403; a permission lookup
+
+        failure is 503. Platform API keys are not accepted yet.
+
+        '
+externalDocs:
+  description: Ironfang Security documentation
+  url: https://ironfang.com/security/docs

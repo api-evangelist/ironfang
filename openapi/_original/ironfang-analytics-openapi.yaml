@@ -1,0 +1,1918 @@
+# x-archived-from: ironfang-analytics-openapi.yaml (https://api.ironfang.com/analytics/openapi.yaml, fetched 2026-10-03)
+# x-archived-on: 2026-10-03
+openapi: 3.1.0
+info:
+  title: Ironfang Analytics API
+  version: 0.1.0
+  summary: Sites, origins, public keys and capture settings for session replay and web analytics.
+  description: |
+    Ironfang Analytics follows each visit to your website as a session:
+    the pages a visitor saw, in every tab, with how long they stayed, the
+    errors and failed requests they met, the events your pages tracked, and
+    the recordings that let you replay it, live or afterwards. This API
+    manages sites (the origins a recorder may send from, the public key its
+    install snippet carries, and the capture configuration that decides
+    what is collected and masked), searches and reads sessions and their
+    timelines, plays recordings back, and computes heatmaps.
+    GET /v1/capabilities says what this deployment can do.
+
+    A new site collects sessions as soon as its snippet runs and records
+    nothing until recording is turned on. Anything that looks like a payment
+    card number is masked wherever it appears, and password, payment and
+    authentication fields are always blocked; no setting changes that.
+    Every change to a site's configuration creates a new immutable version,
+    so a recording can always name the rules it was captured under.
+
+    Everything is organisation-bound: an object in another organisation is
+    reported as not found. Authenticate with an Ironfang platform API key
+    carrying Analytics scopes, or a Warden user token. Base URL
+    https://api.ironfang.com/analytics.
+
+    For agents and tools: every operation has a stable `operationId`, and
+    every error is JSON of the shape
+    `{"error": {"code", "message", "docs"}, "request_id"}`: branch on `code`
+    and the HTTP status, never on `message`.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+  - url: https://api.ironfang.com/analytics
+externalDocs:
+  description: Ironfang Analytics documentation
+  url: https://ironfang.com/analytics/docs
+security:
+  - apiKey: []
+  - bearerAuth: []
+tags:
+  - name: Capabilities
+    description: What this deployment can do and the limits it applies.
+  - name: Sites
+    description: Instrumented websites and their capture configuration.
+  - name: Origins
+    description: The origins a site's recorder may send from and their DNS verification.
+  - name: Keys
+    description: The public collection key a site's install snippet carries.
+  - name: Sessions
+    description: >-
+      One browser's visit to one site: every tab, from the first page until
+      thirty minutes pass without the visitor doing anything, or twelve
+      hours from its start. A session holds its pages, its events and its
+      recordings, and stays readable when recording is off or its
+      recordings have expired. Sessions keep the visitor's IP address, user
+      agent and visitor id for the site's recording retention, then lose
+      them, and the rest for its session retention.
+  - name: Recordings
+    description: >-
+      Recordings of one tab within a session: search, what the visitor's
+      browser reported, the batches to play them back from, live viewing and
+      deletion. Every recording keeps the visitor's IP address and full user
+      agent until it expires or is deleted; its session then keeps a note
+      that it was there.
+  - name: Heatmaps
+    description: >-
+      Totals of where visitors click, how far they scroll, how long each part
+      of a page is on screen and where the pointer goes, across the recorded
+      visits to one page. Computed from recordings, so they keep what
+      recordings keep and need analytics.sessions.read. Every figure is per
+      page visit; horizontal positions count from the centre of the viewport.
+  - name: Usage
+    description: >-
+      This month's recordings as the organisation's billing account counts
+      them, and whether new recordings are being admitted. Ironfang Analytics
+      has no plans of its own: every Ironfang account has one billing
+      account, with a free monthly allowance of recordings and pay-as-you-go
+      usage beyond it, managed with every other product's usage at
+      https://api.ironfang.com/billing/v1. A recording is counted once, when
+      it ends kept: it became playable and was not discarded as untouched,
+      empty or too short. The former /v1/billing routes answer 410
+      `billing_moved`.
+paths:
+  /v1/capabilities:
+    get:
+      tags: [Capabilities]
+      operationId: getCapabilities
+      summary: Get capabilities and limits
+      description: >-
+        Which features this deployment offers today (a planned feature is
+        listed as false rather than left out), the limits it applies and
+        the schema versions it speaks. Needs analytics.sites.read.
+      responses:
+        '200':
+          description: Capabilities
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Capabilities' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/sites:
+    get:
+      tags: [Sites]
+      operationId: listSites
+      summary: List sites
+      description: >-
+        Returns the organisation's sites, newest first, as a bounded keyset
+        page. Each row carries the counts a setup state is read from, so a
+        page of sites is one request. `total` is the organisation's sites,
+        independent of the page. With `external_id`, only the site that has
+        it: the exact lookup an integration uses to find a site it created.
+        Needs analytics.sites.read.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: external_id
+          in: query
+          required: false
+          description: Only the site with this external id, within the organisation.
+          schema: { type: string, pattern: '^[A-Za-z0-9._:-]{1,128}$' }
+      responses:
+        '200':
+          description: A page of sites
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sites, next_cursor, total]
+                properties:
+                  sites:
+                    type: array
+                    items: { $ref: '#/components/schemas/SiteListRow' }
+                  next_cursor: { type: string, description: Opaque cursor for the next page; empty on the last page. }
+                  total: { type: integer, description: How many sites the organisation has. }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+    post:
+      tags: [Sites]
+      operationId: createSite
+      summary: Create a site
+      description: >-
+        Creates a site with its first configuration version and one active
+        public key. Origins are optional here and can be added later. A
+        configuration that is left out, or names only some fields, takes
+        the privacy-first defaults for the rest; recording is not switched
+        on by creating a site. With an `Idempotency-Key`, a retry of the
+        same request returns the first answer (with `Idempotent-Replayed:
+        true`) and creates nothing; the key is honoured for 24 hours. A
+        partner integration's managed key must send one. `external_id` is
+        your own identifier: unique in the organisation and fixed, it finds
+        the site with `GET /v1/sites?external_id=` even after the key has
+        expired. Needs analytics.sites.write.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              additionalProperties: false
+              properties:
+                name: { type: string, maxLength: 120, example: Checkout }
+                external_id:
+                  type: string
+                  pattern: '^[A-Za-z0-9._:-]{1,128}$'
+                  description: Your own identifier for the site. Opaque to Ironfang, not a secret, and never changes.
+                  example: checkout-1042
+                timezone: { type: string, default: UTC, description: IANA time zone used for reports., example: Europe/London }
+                retention_days: { type: integer, minimum: 1, maximum: 28, default: 28 }
+                session_retention_days:
+                  type: integer
+                  minimum: 1
+                  maximum: 90
+                  default: 90
+                  description: How long session history is kept; at least retention_days.
+                origins:
+                  type: array
+                  maxItems: 20
+                  items: { type: string, example: 'https://shop.example.com' }
+                config: { $ref: '#/components/schemas/SiteConfig' }
+      responses:
+        '201':
+          description: Site created, or the stored answer to the same request with the same Idempotency-Key
+          headers:
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteDetail' }
+        '400': { $ref: '#/components/responses/InvalidIdempotency' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409':
+          description: >-
+            An origin is already another site's (`conflict`); the
+            Idempotency-Key was used for a different request
+            (`idempotency_conflict`); or another site already has this
+            external_id (`external_id_conflict`, whose `site_id` names it).
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/Error' }
+                  - type: object
+                    properties:
+                      site_id: { type: string, format: uuid, description: 'The site that has the external_id, for external_id_conflict.' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /v1/sites/{siteId}:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    get:
+      tags: [Sites]
+      operationId: getSite
+      summary: Get a site
+      description: >-
+        The site with its configuration in force, its origins (with the DNS
+        record each still needs) and the public keys currently accepted.
+        Needs analytics.sites.read.
+      responses:
+        '200':
+          description: The site
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [Sites]
+      operationId: updateSite
+      summary: Change a site
+      description: >-
+        Changes a site, made against the version you read: if the site has
+        changed since, the request is refused with 409 `version_conflict`
+        and nothing is applied. `config` merges onto the configuration in
+        force: a field left out keeps its value and a list that is named
+        replaces the whole list. A configuration that differs from the one
+        in force becomes a new immutable version. Setting `status` to
+        `disabled` stops collection without deleting anything. Needs
+        analytics.sites.write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              additionalProperties: false
+              properties:
+                version: { type: integer, minimum: 1, description: The site version the change was made against. }
+                name: { type: string, maxLength: 120 }
+                timezone: { type: string }
+                retention_days:
+                  type: integer
+                  minimum: 1
+                  maximum: 28
+                  description: Raising it above session_retention_days raises that too.
+                session_retention_days: { type: integer, minimum: 1, maximum: 90, description: At least retention_days. }
+                status: { type: string, enum: [active, disabled] }
+                config: { $ref: '#/components/schemas/SiteConfig' }
+      responses:
+        '200':
+          description: The site after the change
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteDetail' }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+  /v1/sites/{siteId}/config-versions:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    get:
+      tags: [Sites]
+      operationId: listConfigVersions
+      summary: List a site's configuration history
+      description: >-
+        Every configuration version the site has had, newest first, as a
+        bounded keyset page, with who made each one. Versions are never
+        edited. Needs analytics.sites.read.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of configuration versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [config_versions, next_cursor]
+                properties:
+                  config_versions:
+                    type: array
+                    items: { $ref: '#/components/schemas/ConfigVersion' }
+                  next_cursor: { type: string, description: Opaque cursor for the next page; empty on the last page. }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/sites/{siteId}/origins:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    post:
+      tags: [Origins]
+      operationId: addOrigin
+      summary: Add an origin
+      description: >-
+        Adds an origin the site's recorder may send from. It is normalised
+        to exactly what a browser sends (lower case, no default port, no
+        path). HTTPS is required except on localhost and loopback
+        addresses, which are for development and need no verification.
+        A public origin stays pending until its DNS TXT record is verified.
+        Needs analytics.sites.write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [origin]
+              additionalProperties: false
+              properties:
+                origin: { type: string, example: 'https://shop.example.com' }
+      responses:
+        '201':
+          description: Origin added
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [origin]
+                properties:
+                  origin: { $ref: '#/components/schemas/Origin' }
+        '400': { $ref: '#/components/responses/InvalidJSON' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '422': { $ref: '#/components/responses/InvalidRequest' }
+  /v1/sites/{siteId}/origins/{originId}:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+      - $ref: '#/components/parameters/OriginId'
+    delete:
+      tags: [Origins]
+      operationId: removeOrigin
+      summary: Remove an origin
+      description: Removes an origin; recorders on it are refused from then on. Needs analytics.sites.write.
+      responses:
+        '204':
+          description: Origin removed
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/sites/{siteId}/origins/{originId}/verify:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+      - $ref: '#/components/parameters/OriginId'
+    post:
+      tags: [Origins]
+      operationId: verifyOrigin
+      summary: Check an origin's DNS record
+      description: >-
+        Looks up the origin's TXT record (`dns_record` on the origin) once.
+        If a record has exactly the expected value the origin is verified
+        for good; a later failed lookup never un-verifies it. Not finding
+        the record is a normal answer (200 with `found` false), because DNS
+        changes take time to appear. Needs analytics.sites.write.
+      responses:
+        '200':
+          description: The result of the check
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [origin, found]
+                properties:
+                  origin: { $ref: '#/components/schemas/Origin' }
+                  found: { type: boolean }
+                  detail: { type: string, description: 'Why the record was not found, when it was not.' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/sites/{siteId}/keys/rotate:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    post:
+      tags: [Keys]
+      operationId: rotateSiteKey
+      summary: Rotate the public key
+      description: >-
+        Mints a new public collection key. The key it replaces stays
+        accepted for 24 hours so pages cached with the old snippet keep
+        working; a key that was already retiring is revoked, so at most two
+        keys are ever accepted. Public keys are not secrets and can only
+        ever ask to record for their own site. With an `Idempotency-Key`, a
+        retry rotates once and returns the first answer; a partner
+        integration's managed key must send one. Needs analytics.sites.write.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      responses:
+        '200':
+          description: The site with its keys after rotation, or the stored answer to a retry
+          headers:
+            Idempotent-Replayed: { $ref: '#/components/headers/IdempotentReplayed' }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SiteDetail' }
+        '400': { $ref: '#/components/responses/InvalidIdempotency' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The Idempotency-Key was used for a different request (`idempotency_conflict`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+  /v1/sites/{siteId}/installation:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    get:
+      tags: [Sites]
+      operationId: getInstallation
+      summary: Get installation status
+      description: >-
+        What must be true before the site records, step by step, and the
+        public key its snippet will carry. `snippet` is the script tag that
+        installs the current SDK release, pinned by integrity; it is null
+        only when no release or active key is available. Needs analytics.sites.read.
+      responses:
+        '200':
+          description: Installation status
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Installation' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/sites/{siteId}/pages:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    get:
+      tags: [Heatmaps]
+      operationId: listHeatmapPages
+      summary: List pages with visits
+      description: >-
+        The site's pages that recorded visits showed in a period, most visited
+        first, by device. A recording is indexed shortly after it ends. Needs
+        analytics.sessions.read.
+      parameters:
+        - $ref: '#/components/parameters/HeatmapFrom'
+        - $ref: '#/components/parameters/HeatmapTo'
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 500, default: 100 } }
+      responses:
+        '200':
+          description: Pages
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [from, to, pages]
+                properties:
+                  from: { type: string, format: date-time }
+                  to: { type: string, format: date-time }
+                  pages: { type: array, items: { $ref: '#/components/schemas/HeatmapPage' } }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/sites/{siteId}/pages/changes:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    get:
+      tags: [Heatmaps]
+      operationId: listLayoutChanges
+      summary: List the days a page's layout changed
+      description: >-
+        Each day whose most common layout differs from the previous day the
+        page was visited: when the page changed, for comparing the week
+        before with the week after. Days are in tz, or the site's time zone.
+        Needs analytics.sessions.read.
+      parameters:
+        - $ref: '#/components/parameters/HeatmapPath'
+        - { name: bucket, in: query, required: false, description: One device; every device when left out., schema: { $ref: '#/components/schemas/HeatmapBucket' } }
+        - $ref: '#/components/parameters/HeatmapFrom'
+        - $ref: '#/components/parameters/HeatmapTo'
+        - { name: tz, in: query, required: false, description: An IANA time zone for the days., schema: { type: string, example: Europe/London } }
+      responses:
+        '200':
+          description: Layout changes
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [path, timezone, changes]
+                properties:
+                  path: { type: string }
+                  timezone: { type: string }
+                  changes:
+                    type: array
+                    items:
+                      type: object
+                      required: [day, from, to]
+                      properties:
+                        day: { type: string, format: date }
+                        from: { type: [string, 'null'] }
+                        to: { type: [string, 'null'] }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/sites/{siteId}/heatmaps:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    get:
+      tags: [Heatmaps]
+      operationId: getHeatmap
+      summary: Get a page's heatmap
+      description: >-
+        Attention, scroll reach, clicks and movement for one page and device
+        over a period, from at most 20,000 of its visits (a deterministic
+        sample when there are more), with the visit to draw it over. Fewer
+        than 30 visits is flagged small_sample. Needs analytics.sessions.read.
+      parameters:
+        - $ref: '#/components/parameters/HeatmapPath'
+        - $ref: '#/components/parameters/HeatmapBucketParam'
+        - $ref: '#/components/parameters/HeatmapFrom'
+        - $ref: '#/components/parameters/HeatmapTo'
+      responses:
+        '200':
+          description: Heatmap
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Heatmap' }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/sites/{siteId}/heatmaps/compare:
+    parameters:
+      - $ref: '#/components/parameters/SiteId'
+    get:
+      tags: [Heatmaps]
+      operationId: compareHeatmaps
+      summary: Compare two periods
+      description: >-
+        One page and device over two periods, with the targets clicked in
+        both and how their rate changed. overlay_valid says both periods have
+        the same most common layout, so a difference overlay on one page
+        means something; across a redesign, show them side by side. Needs
+        analytics.sessions.read.
+      parameters:
+        - $ref: '#/components/parameters/HeatmapPath'
+        - $ref: '#/components/parameters/HeatmapBucketParam'
+        - { name: a_from, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: a_to, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: b_from, in: query, required: true, schema: { type: string, format: date-time } }
+        - { name: b_to, in: query, required: true, schema: { type: string, format: date-time } }
+      responses:
+        '200':
+          description: Comparison
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [a, b, overlay_valid, elements]
+                properties:
+                  a: { $ref: '#/components/schemas/Heatmap' }
+                  b: { $ref: '#/components/schemas/Heatmap' }
+                  overlay_valid: { type: boolean }
+                  elements:
+                    type: array
+                    items:
+                      type: object
+                      required: [selector, a, b, change]
+                      properties:
+                        selector: { type: string }
+                        a: { type: number, description: Clicks per visit in the first period. }
+                        b: { type: number, description: Clicks per visit in the second period. }
+                        change: { type: number }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/sessions:
+    get:
+      tags: [Sessions]
+      operationId: listSessions
+      summary: Search sessions
+      description: >-
+        Returns the organisation's sessions across its sites, newest first by
+        when they started, as a bounded keyset page. Every filter is optional
+        and they combine. Needs analytics.sessions.read.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - { name: site_id, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: false, description: Started at or after this time., schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: false, description: Started before this time., schema: { type: string, format: date-time } }
+        - name: state
+          in: query
+          required: false
+          description: live (heard from in the last 90 seconds), active (not ended) or ended.
+          schema: { type: string, enum: [live, active, ended] }
+        - { name: country, in: query, required: false, description: 'Two-letter country code, upper case.', schema: { type: string, pattern: '^[A-Z]{2}$' } }
+        - { name: device, in: query, required: false, schema: { type: string, example: mobile } }
+        - { name: browser, in: query, required: false, schema: { type: string, example: chrome } }
+        - { name: os, in: query, required: false, schema: { type: string, example: windows } }
+        - name: ip
+          in: query
+          required: false
+          description: One address, or a network in CIDR notation.
+          schema: { type: string, example: 203.0.113.0/24 }
+        - { name: entry_path, in: query, required: false, description: Entry paths starting with this., schema: { type: string, example: /apply } }
+        - name: visited_path
+          in: query
+          required: false
+          description: Sessions that visited this page, by its path without a query string or fragment.
+          schema: { type: string, example: /pricing }
+        - name: visitor_id
+          in: query
+          required: false
+          description: One browser's sessions.
+          schema: { type: string, format: uuid }
+        - name: recording
+          in: query
+          required: false
+          description: with, sessions with a recording that can be played; without, the rest.
+          schema: { type: string, enum: [with, without] }
+        - name: diagnostics
+          in: query
+          required: false
+          description: >-
+            Sessions with errors (uncaught, unhandled rejections or console
+            errors), with failed requests (an error answer, no answer, a
+            timeout or a resource that did not load; not an aborted one), or
+            with either (any).
+          schema: { type: string, enum: [errors, requests, any] }
+      responses:
+        '200':
+          description: A page of sessions
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sessions, next_cursor]
+                properties:
+                  sessions:
+                    type: array
+                    items: { $ref: '#/components/schemas/SessionRow' }
+                  next_cursor: { type: string, description: Opaque cursor for the next page; empty on the last page. }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/sessions/{sessionId}:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [Sessions]
+      operationId: getSession
+      summary: Get a session
+      description: >-
+        One session with what its browser reported, its journey (every page
+        in the order the visitor saw them, with how long they stayed) and its
+        recordings, each page placed in the recording that saw it. Needs
+        analytics.sessions.read.
+      responses:
+        '200':
+          description: The session
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Sessions]
+      operationId: deleteSession
+      summary: Delete a session
+      description: >-
+        Erases the session: its recordings' stored batches, then the session
+        with its pages, events, recordings, IP address, user agent and every
+        other detail. Recordings already counted stay counted. Needs
+        analytics.sessions.delete.
+      responses:
+        '204':
+          description: Session deleted
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503':
+          description: This deployment cannot delete sessions yet (`deletion_unavailable`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/sessions/{sessionId}/events:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [Sessions]
+      operationId: getSessionEvents
+      summary: Get a session's timeline
+      description: >-
+        Everything that happened in the session: its pages, events, and
+        recordings starting and ending, in the order they happened by the
+        browser's own clock (which every tab of a session shares), then each
+        tab's own order; never in the order they arrived. A session holds at
+        most 300 pages and 1,000 events, so the timeline comes whole. Needs
+        analytics.sessions.read.
+      parameters:
+        - name: type
+          in: query
+          required: false
+          description: A comma list of page, visibility, error, request, custom and recording.
+          schema: { type: string, example: 'error,request' }
+      responses:
+        '200':
+          description: The timeline
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [events]
+                properties:
+                  events:
+                    type: array
+                    items: { $ref: '#/components/schemas/TimelineItem' }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/sessions/{sessionId}/heatmap:
+    parameters:
+      - $ref: '#/components/parameters/SessionId'
+    get:
+      tags: [Sessions]
+      operationId: getSessionHeatmap
+      summary: Get a session's heatmap
+      description: >-
+        Attention, scroll reach, clicks and movement on one page from this
+        session's visits alone, every tab's, drawn over its own recording;
+        the same figures as a site's heatmap. Heatmaps come from recordings,
+        extracted once each ends, so a page the session did not record, or
+        whose recording is still open, expired or deleted, has none. Needs
+        analytics.sessions.read.
+      parameters:
+        - name: path
+          in: query
+          required: false
+          description: The page; without one, the first page the session came to.
+          schema: { type: string, example: /pricing }
+        - name: bucket
+          in: query
+          required: false
+          description: The device; without one, the one the session saw the page on most.
+          schema: { $ref: '#/components/schemas/HeatmapBucket' }
+      responses:
+        '200':
+          description: The session's heatmap
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionHeatmap' }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/recordings:
+    get:
+      tags: [Recordings]
+      operationId: listRecordings
+      summary: Search recordings
+      description: >-
+        Returns the organisation's unexpired recordings across its sites,
+        newest first, as a bounded keyset page. Every filter is optional and
+        they combine. Needs analytics.sessions.read.
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - { name: site_id, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: from, in: query, required: false, description: Created at or after this time., schema: { type: string, format: date-time } }
+        - { name: to, in: query, required: false, description: Created before this time., schema: { type: string, format: date-time } }
+        - name: state
+          in: query
+          required: false
+          description: One state, or several separated by commas.
+          schema: { type: string, example: 'ready,partial' }
+        - { name: country, in: query, required: false, description: 'Two-letter country code, upper case.', schema: { type: string, pattern: '^[A-Z]{2}$' } }
+        - { name: device, in: query, required: false, schema: { type: string, example: mobile } }
+        - { name: browser, in: query, required: false, schema: { type: string, example: chrome } }
+        - { name: os, in: query, required: false, schema: { type: string, example: windows } }
+        - name: ip
+          in: query
+          required: false
+          description: One address, or a network in CIDR notation.
+          schema: { type: string, example: 203.0.113.0/24 }
+        - { name: entry_path, in: query, required: false, description: Entry paths starting with this., schema: { type: string, example: /apply } }
+        - name: visited_path
+          in: query
+          required: false
+          description: >-
+            Recordings that showed this page at any point, by its path without a query string
+            or fragment. Pages are indexed when a recording is processed for heatmaps, shortly
+            after it ends; until then it does not match.
+          schema: { type: string, example: /pricing }
+        - name: visitor_id
+          in: query
+          required: false
+          description: One browser's recordings, by the visitor id on any of them.
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: A page of recordings
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [recordings, next_cursor]
+                properties:
+                  recordings:
+                    type: array
+                    items: { $ref: '#/components/schemas/RecordingRow' }
+                  next_cursor: { type: string, description: Opaque cursor for the next page; empty on the last page. }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /v1/recordings/{recordingId}:
+    parameters:
+      - $ref: '#/components/parameters/RecordingId'
+    get:
+      tags: [Recordings]
+      operationId: getRecording
+      summary: Get a recording
+      description: One recording with everything kept about it and its epochs. Needs analytics.sessions.read.
+      responses:
+        '200':
+          description: The recording
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RecordingDetail' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    delete:
+      tags: [Recordings]
+      operationId: deleteRecording
+      summary: Delete a recording
+      description: >-
+        Deletes the recording's stored batches, then the recording with its
+        IP address, user agent and every other detail. A recording deleted
+        before it ended is not counted; one already counted stays counted.
+        Needs analytics.sessions.delete.
+      responses:
+        '204':
+          description: Recording deleted
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503':
+          description: This deployment cannot delete recordings yet (`deletion_unavailable`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/recordings/{recordingId}/playback:
+    parameters:
+      - $ref: '#/components/parameters/RecordingId'
+    get:
+      tags: [Recordings]
+      operationId: getPlayback
+      summary: List a recording's playable batches
+      description: >-
+        The committed batches that can be played, in order: in each epoch,
+        those before its first gap. Fetch each from the chunk endpoint. A live
+        viewer passes `after`, the last batch it has, and gets only the
+        batches since. Needs analytics.sessions.read.
+      parameters:
+        - name: after
+          in: query
+          required: false
+          description: Only batches after this one, as `<epoch>:<sequence>`.
+          schema: { type: string, pattern: '^[0-9]+:[0-9]+$', example: '0:12' }
+      responses:
+        '200':
+          description: The batches
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [chunks]
+                properties:
+                  chunks:
+                    type: array
+                    items: { $ref: '#/components/schemas/PlaybackChunk' }
+        '400': { $ref: '#/components/responses/InvalidQuery' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /v1/recordings/{recordingId}/watch:
+    parameters:
+      - $ref: '#/components/parameters/RecordingId'
+    post:
+      tags: [Recordings]
+      operationId: watchRecording
+      summary: Take or renew the live-view lease
+      description: >-
+        Marks an open recording as watched for 30 seconds from now; renew it
+        while the recording is on screen. While the lease holds, the collector
+        tells the visitor's recorder to upload every second instead of every
+        ten, so new batches reach `playback` within a few seconds. That is all
+        it changes: the visitor's page shows nothing and behaves no
+        differently. Needs analytics.sessions.read.
+      responses:
+        '200':
+          description: The lease
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [watched_until]
+                properties:
+                  watched_until: { type: string, format: date-time }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The recording has ended (`recording_ended`); replay it instead.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/recordings/{recordingId}/chunks/{epoch}/{sequence}:
+    parameters:
+      - $ref: '#/components/parameters/RecordingId'
+      - { name: epoch, in: path, required: true, schema: { type: integer, minimum: 0 } }
+      - { name: sequence, in: path, required: true, schema: { type: integer, minimum: 0 } }
+    get:
+      tags: [Recordings]
+      operationId: getChunk
+      summary: Get one batch of events
+      description: >-
+        The batch's rrweb events as a JSON array, masked in the browser
+        before they were sent. A gzip batch is served with Content-Encoding:
+        gzip. The bytes are checked against the hash recorded when the batch
+        was accepted. Needs analytics.sessions.read.
+      responses:
+        '200':
+          description: The events
+          content:
+            application/json:
+              schema: { type: array, items: { type: object } }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '503':
+          description: This deployment cannot play recordings yet (`playback_unavailable`).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+  /v1/usage:
+    get:
+      tags: [Usage]
+      operationId: getUsage
+      summary: Get this month's usage
+      description: >-
+        This calendar month's (UTC) recordings: the analytics.recording meter
+        of the organisation's billing account (its free allowance, what is
+        used, held and charged), whether a new recording would be admitted
+        now and, if not, whether Ironfang paused it, the organisation holds
+        its stored-bytes limit or billing refuses it, and the
+        organisation's capacity: sites, open recordings, and what it
+        stores against what it may.
+        A recording belongs to the month it was admitted in. Needs
+        analytics.usage.read.
+      responses:
+        '200':
+          description: This month's usage
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Usage' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: |
+        A platform API key minted in the portal. Its scopes are its
+        permissions - `analytics:sites:read`, `analytics:sites:write` and the
+        other `analytics:` scopes, or `analytics:*` - and it acts only in the
+        organisation it was minted for. Keys without the scope a route needs
+        are refused with 403.
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: |
+        A Warden user token. Each route also requires a tenant permission in
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden,
+        which each operation names: sites need `analytics.sites.read` to read
+        and `analytics.sites.write` to change; sessions, recordings and
+        heatmaps need `analytics.sessions.read`, and deleting a session or a
+        recording `analytics.sessions.delete`. A missing permission is 403; a
+        permission lookup failure is 503.
+  parameters:
+    HeatmapPath:
+      name: path
+      in: query
+      required: true
+      description: The page's path, without a query string or fragment.
+      schema: { type: string, example: /pricing }
+    HeatmapBucketParam:
+      name: bucket
+      in: query
+      required: true
+      schema: { $ref: '#/components/schemas/HeatmapBucket' }
+    HeatmapFrom:
+      name: from
+      in: query
+      required: false
+      description: The period's start; with to, at most 93 days. Both left out is the seven days to now.
+      schema: { type: string, format: date-time }
+    HeatmapTo:
+      name: to
+      in: query
+      required: false
+      description: The period's end, not included.
+      schema: { type: string, format: date-time }
+    SiteId:
+      name: siteId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    OriginId:
+      name: originId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    RecordingId:
+      name: recordingId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    SessionId:
+      name: sessionId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: The next_cursor of the previous page.
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >-
+        Makes the request safe to retry: the same key with the same request
+        returns the first answer for 24 hours. Generate one per logical
+        change. Required when the caller is a partner integration's managed
+        key.
+      schema: { type: string, pattern: '^[A-Za-z0-9._:-]{8,255}$' }
+  headers:
+    IdempotentReplayed:
+      description: '`true` when this is the stored answer to an earlier request with the same Idempotency-Key.'
+      schema: { type: string, enum: ['true'] }
+  responses:
+    InvalidIdempotency:
+      description: >-
+        The body is not valid JSON of the documented shape (`invalid_json`);
+        the Idempotency-Key is malformed (`invalid_idempotency_key`); or a
+        partner integration sent none (`idempotency_key_required`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: Too many requests; wait for Retry-After (`rate_limited`).
+      headers:
+        Retry-After: { schema: { type: integer }, description: Seconds to wait. }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidJSON:
+      description: The body is not one strict JSON value of the documented shape (`invalid_json`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidQuery:
+      description: An unknown, repeated or malformed query parameter (`invalid_query`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidRequest:
+      description: A field is invalid, or a limit would be exceeded; the message names it (`invalid_request`, `limit_reached`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: >-
+        No credential, an invalid one, an expired partner integration key,
+        or a delegated token where none is accepted (`unauthorized`,
+        `invalid_api_key`, `api_key_expired`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: >-
+        The credential lacks the permission or scope, names another
+        organisation, or belongs to a partner integration that is not active
+        (`forbidden`, `insufficient_scope`, `integration_inactive`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: No such object in this organisation (`not_found`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: The object already exists (`conflict`), or the site changed since it was read (`version_conflict`).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    HeatmapBucket:
+      type: string
+      enum: [mobile, tablet, desktop]
+      description: By viewport width when the visit began, under 768, under 1280, and wider.
+    HeatmapPage:
+      type: object
+      required: [path, visits, mobile, tablet, desktop]
+      properties:
+        path: { type: string }
+        visits: { type: integer }
+        mobile: { type: integer }
+        tablet: { type: integer }
+        desktop: { type: integer }
+    HeatmapCell:
+      type: array
+      description: '[x, y, value]: x cells from the centre of the viewport (negative to the left), y cells from the top of the page (of the viewport for fixed clicks), and the value per visit.'
+      items: { type: number }
+      minItems: 3
+      maxItems: 3
+    HeatmapBackground:
+      type: object
+      required: [recording_id, epoch_index, started_at, offset_ms, duration_ms, layout_hash, viewport_width, viewport_height]
+      properties:
+        recording_id: { type: string, format: uuid }
+        epoch_index: { type: integer }
+        started_at: { type: string, format: date-time }
+        offset_ms: { type: integer, description: "Where the visit starts in its recording, in milliseconds from the recording's first event, as the replay player counts them." }
+        duration_ms: { type: integer, description: How long the visit lasted. }
+        layout_hash: { type: [string, 'null'] }
+        viewport_width: { type: integer }
+        viewport_height: { type: integer }
+    Heatmap:
+      type: object
+      required: [path, bucket, from, to, visits, sampled, small_sample, visibility_known, seconds_on_screen, layouts, background, backgrounds, bands, clicks, moves]
+      properties:
+        path: { type: string }
+        bucket: { $ref: '#/components/schemas/HeatmapBucket' }
+        from: { type: string, format: date-time }
+        to: { type: string, format: date-time }
+        visits: { type: integer, description: Page visits in the period. }
+        sampled: { type: integer, description: "The visits the totals come from, at most 20000." }
+        small_sample: { type: boolean, description: Fewer than 30 visits. }
+        visibility_known: { type: number, description: The share of visits whose time excludes a hidden tab (SDK 0.5.0). }
+        seconds_on_screen:
+          type: object
+          required: [mean, median]
+          properties:
+            mean: { type: number }
+            median: { type: number }
+        layouts:
+          type: array
+          description: The layouts seen, most common first.
+          items:
+            type: object
+            required: [hash, visits]
+            properties:
+              hash: { type: [string, 'null'] }
+              visits: { type: integer }
+        background:
+          description: The visit whose page at load the heatmap is drawn over; play it through the playback routes.
+          anyOf: [{ $ref: '#/components/schemas/HeatmapBackground' }, { type: 'null' }]
+        backgrounds:
+          type: array
+          description: "The visits the heatmap can be drawn over, background first: of the most common layout, at a width near the period's median, and of those the ones that scrolled furthest. At most 5."
+          items: { $ref: '#/components/schemas/HeatmapBackground' }
+        bands:
+          type: object
+          required: [px, attention_share, ms_per_visit, reach]
+          properties:
+            px: { type: integer, description: The height of a band. }
+            attention_share: { type: array, items: { type: number }, description: "Per band from the top, the share of a visit's time it was on screen." }
+            ms_per_visit: { type: array, items: { type: number } }
+            reach: { type: array, items: { type: number }, description: "Per band, the share of visits that scrolled to its bottom." }
+        clicks:
+          type: object
+          required: [per_visit, fixed_per_visit, cell_px, cells, fixed_cells, elements]
+          properties:
+            per_visit: { type: number }
+            fixed_per_visit: { type: number, description: "Clicks on fixed or sticky elements, which belong to the screen rather than a place on the page." }
+            cell_px: { type: integer }
+            cells: { type: array, items: { $ref: '#/components/schemas/HeatmapCell' } }
+            fixed_cells: { type: array, items: { $ref: '#/components/schemas/HeatmapCell' } }
+            elements:
+              type: array
+              description: The targets most clicked, named without text.
+              items:
+                type: object
+                required: [selector, clicks, per_visit, fixed, located, offsets, cells]
+                properties:
+                  selector: { type: string }
+                  clicks: { type: integer }
+                  per_visit: { type: number }
+                  fixed: { type: boolean, description: "Whether most of its clicks landed on it while fixed or sticky. located, offsets and cells cover those clicks only." }
+                  located: { type: integer, description: "How many of its clicks carry where within the target they landed (SDK 0.5.0)." }
+                  offsets:
+                    type: array
+                    description: A sample of the located clicks, where within the target each landed, 0 to 10000 across and down.
+                    items: { type: array, items: { type: integer }, minItems: 2, maxItems: 2 }
+                  cells:
+                    type: array
+                    description: "The located clicks in the page grid (the fixed grid when fixed), per visit. Drawing them inside the target's box instead, take these out of cells or fixed_cells so they are not counted twice."
+                    items: { $ref: '#/components/schemas/HeatmapCell' }
+        moves:
+          type: object
+          required: [cell_px, cells]
+          properties:
+            cell_px: { type: integer }
+            cells: { type: array, items: { $ref: '#/components/schemas/HeatmapCell' }, description: Milliseconds per visit the pointer rested in each cell. }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message, docs]
+          properties:
+            code: { type: string, description: Stable machine-readable code. }
+            message: { type: string, description: Human-readable explanation; do not parse. }
+            docs: { type: string, format: uri }
+        request_id: { type: string }
+    Capabilities:
+      type: object
+      required: [features, limits, schema_versions]
+      properties:
+        features:
+          type: object
+          additionalProperties: { type: boolean }
+          description: Each feature and whether this deployment offers it now.
+        limits:
+          type: object
+          additionalProperties: { type: integer }
+          description: >-
+            Each limit by name. sites_per_organisation and
+            stored_bytes_per_organisation are this organisation's own; the
+            second is what its unexpired recordings may hold before new
+            recordings are refused, 10 GiB unless a managed partner's
+            agreement sets another figure.
+        schema_versions:
+          type: object
+          additionalProperties: { type: integer }
+    Site:
+      type: object
+      required: [id, organisation_id, name, external_id, status, timezone, retention_days, session_retention_days, version, config_version,
+        created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        organisation_id: { type: string, format: uuid }
+        name: { type: string }
+        external_id: { type: [string, 'null'], description: 'Your own identifier for the site, when one was given at creation.' }
+        status: { type: string, enum: [active, disabled] }
+        timezone: { type: string }
+        retention_days: { type: integer, description: Days a recording is kept. }
+        session_retention_days:
+          type: integer
+          description: >-
+            Days session history is kept, never fewer than retention_days.
+            A session loses its IP address, user agent and visitor id after
+            retention_days.
+        version: { type: integer, description: Name this in a PATCH. }
+        config_version: { type: integer, description: The configuration version in force. }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        disabled_at: { type: string, format: date-time }
+    SiteListRow:
+      allOf:
+        - $ref: '#/components/schemas/Site'
+        - type: object
+          required: [summary]
+          properties:
+            summary:
+              type: object
+              description: The site's setup state, counted for the list.
+              required: [origins, verified_origins, recording_enabled, analytics_enabled]
+              properties:
+                origins: { type: integer }
+                verified_origins: { type: integer }
+                recording_enabled: { type: boolean }
+                analytics_enabled: { type: boolean }
+    SiteConfig:
+      type: object
+      additionalProperties: false
+      description: >-
+        What the site's recorder may capture. Whatever this says, anything
+        that looks like a payment card number (13 to 19 digits passing the
+        Luhn check) is masked wherever it appears, and card, CVV, password
+        and one-time-code fields are blocked.
+      properties:
+        recording:
+          type: object
+          additionalProperties: false
+          properties:
+            enabled: { type: boolean, default: false }
+            consent:
+              type: string
+              enum: [opt_out, required]
+              default: opt_out
+              description: >-
+                opt_out records from page load unless the page opts the
+                visitor out with setConsent({replay: false}), which the
+                browser remembers. required records nothing until the page
+                grants replay consent; the site's snippet then carries
+                data-consent="required" so nothing is requested before it.
+            sample_rate_percent: { type: integer, minimum: 0, maximum: 100, default: 100 }
+            mask_text: { type: boolean, default: false, description: Mask every text node; unmask_selectors then expose reviewed static text. }
+            mask_inputs: { type: boolean, default: false, description: Mask every form field's value and text typed into an editable region. }
+            mask_selectors: { type: array, maxItems: 100, items: { type: string, maxLength: 256 } }
+            unmask_selectors: { type: array, maxItems: 100, items: { type: string, maxLength: 256 } }
+            block_selectors: { type: array, maxItems: 100, items: { type: string, maxLength: 256 } }
+            allowed_query_parameters:
+              type: array
+              maxItems: 50
+              description: Query parameters whose values are kept in recorded URLs while record_all_query_parameters is off; all others are removed.
+              items: { type: string, pattern: '^[A-Za-z0-9_.\-\[\]]{1,64}$' }
+            record_all_query_parameters:
+              type: boolean
+              default: false
+              description: >-
+                Keep every query value in recorded URLs except those in
+                removed_query_parameters. Off, only allowed_query_parameters
+                keep theirs. Fragments are removed either way. Needs SDK 0.2.1
+                or later; older recorders keep only the allowed parameters.
+            removed_query_parameters:
+              type: array
+              maxItems: 50
+              description: Query parameters whose values are removed while record_all_query_parameters is on, such as a token or an email address.
+              items: { type: string, pattern: '^[A-Za-z0-9_.\-\[\]]{1,64}$' }
+            excluded_ip_ranges:
+              type: array
+              maxItems: 100
+              description: >-
+                Visitor addresses that are never recorded, such as the site
+                owner's own networks: public IPv4 or IPv6 addresses, or CIDR
+                ranges such as 203.0.113.0/24 or 2001:db8:1:2::/64. A visitor
+                inside one is refused at admission, and a recording already
+                open from there does not continue. The list is not sent to
+                pages; the collector's GET /v1/address tells a browser its own
+                address and the range to add for it.
+              items: { type: string, maxLength: 64 }
+            checkpoint_interval_seconds: { type: integer, minimum: 15, maximum: 300, default: 60 }
+            max_duration_minutes: { type: integer, minimum: 1, maximum: 60, default: 60 }
+            max_compressed_mib: { type: integer, minimum: 1, maximum: 100, default: 100 }
+        analytics:
+          type: object
+          additionalProperties: false
+          description: >-
+            Session analytics, from SDK 0.6.0. Sessions are the root: a
+            recording belongs to its session, so a site records only while it
+            follows sessions, and may follow sessions without recording. The
+            site's consent mode and excluded addresses apply as they do to
+            recording.
+          properties:
+            enabled:
+              type: boolean
+              default: true
+              description: >-
+                Report every eligible visitor's pages from page load, recorded
+                or not. Must be true while recording.enabled is (422 otherwise).
+                A version stored before this rule that records reads as true.
+            errors: { type: boolean, default: true, description: Add uncaught errors and unhandled rejections to sessions. }
+            console_errors:
+              type: boolean
+              default: true
+              description: >-
+                Add console.error calls to sessions (SDK 0.7.0), their
+                arguments serialised safely and scrubbed as error messages
+                are. A version stored before this switch reads as false.
+            requests:
+              type: boolean
+              default: true
+              description: >-
+                Add requests that fail (an answer of 400 or above, no answer,
+                a timeout, a resource that did not load), that the page
+                aborted, or that take 5 seconds or longer, to sessions.
+            successful_requests:
+              type: boolean
+              default: true
+              description: >-
+                Add the rest, quick successes, to sessions too (SDK 0.7.0). A
+                version stored before this switch reads as false.
+            request_sample_percent:
+              type: integer
+              minimum: 1
+              maximum: 100
+              default: 100
+              description: >-
+                The share of successful requests kept, decided per request in
+                the browser. Failures are never sampled. A session says the
+                share it was kept at, and how many were left out.
+    ConfigVersion:
+      type: object
+      required: [id, site_id, version, config, sha256, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        site_id: { type: string, format: uuid }
+        version: { type: integer }
+        config: { $ref: '#/components/schemas/SiteConfig' }
+        sha256: { type: string, description: SHA-256 of the stored configuration document. }
+        created_by: { type: string, description: 'The user id, or key:<id> for a platform key.' }
+        created_at: { type: string, format: date-time }
+    Origin:
+      type: object
+      required: [id, site_id, origin, verification, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        site_id: { type: string, format: uuid }
+        origin: { type: string, example: 'https://shop.example.com' }
+        verification: { type: string, enum: [pending, verified, not_required] }
+        verification_token: { type: string }
+        dns_record:
+          type: object
+          description: The TXT record to publish; absent for loopback origins.
+          required: [type, name, value]
+          properties:
+            type: { type: string, enum: [TXT] }
+            name: { type: string, example: _ironfang-analytics.shop.example.com }
+            value: { type: string }
+        created_at: { type: string, format: date-time }
+        verified_at: { type: string, format: date-time }
+        checked_at: { type: string, format: date-time }
+    SiteKey:
+      type: object
+      required: [id, site_id, key, state, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        site_id: { type: string, format: uuid }
+        key: { type: string, pattern: '^ifa_site_[a-z2-7]{26}$', description: 'Public collection key; safe to publish.' }
+        state: { type: string, enum: [active, retiring] }
+        created_at: { type: string, format: date-time }
+        retires_at: { type: string, format: date-time }
+    SiteDetail:
+      type: object
+      required: [site, config, origins, keys]
+      properties:
+        site: { $ref: '#/components/schemas/Site' }
+        config: { $ref: '#/components/schemas/ConfigVersion' }
+        origins:
+          type: array
+          items: { $ref: '#/components/schemas/Origin' }
+        keys:
+          type: array
+          description: The keys currently accepted, newest first.
+          items: { $ref: '#/components/schemas/SiteKey' }
+    SessionRow:
+      type: object
+      required: [id, site_id, site_name, state, live, end_reason, source, started_at, last_activity_at, ended_at, expires_at,
+        duration_ms, entry_path, exit_path, origin, referrer, browser, os, device, country, ip, visitor_id, anonymised, counts, recording]
+      properties:
+        id: { type: string, format: uuid }
+        site_id: { type: string, format: uuid }
+        site_name: { type: string }
+        state: { type: string, enum: [active, ended] }
+        live: { type: boolean, description: Active and heard from in the last 90 seconds. }
+        end_reason:
+          type: [string, 'null']
+          enum: [idle_timeout, duration_cap, null]
+          description: idle_timeout, 30 minutes without the visitor doing anything; duration_cap, 12 hours from its start.
+        source:
+          type: string
+          enum: [sdk, recording]
+          description: >-
+            sdk, reported page by page by the SDK (0.6.0 and later);
+            recording, known only from its recordings (older SDKs, and visits
+            recorded before sessions), so only recorded pages are in it.
+        started_at: { type: string, format: date-time }
+        last_activity_at: { type: string, format: date-time, description: The visitor's last activity in any tab. }
+        ended_at: { type: [string, 'null'], format: date-time }
+        expires_at: { type: string, format: date-time }
+        duration_ms: { type: integer, description: From the start to the last activity. }
+        entry_path: { type: [string, 'null'] }
+        exit_path: { type: [string, 'null'] }
+        origin: { type: string }
+        referrer: { type: [string, 'null'], description: Origin and path only. }
+        browser: { type: [string, 'null'] }
+        os: { type: [string, 'null'] }
+        device: { type: [string, 'null'], enum: [desktop, mobile, tablet, null] }
+        country: { type: [string, 'null'] }
+        ip: { type: [string, 'null'], description: Null once the session is anonymised. }
+        visitor_id: { type: [string, 'null'], format: uuid, description: Null once the session is anonymised. }
+        anonymised:
+          type: boolean
+          description: Its IP address, user agent, visitor id, error messages and event properties were cleared at the recording retention.
+        counts:
+          type: object
+          required: [pages, events, errors, console_errors, requests, failed_requests, custom, tabs, dropped, errors_not_kept,
+            requests_not_kept, requests_sampled_out, request_sample_percent, replayable_pages]
+          properties:
+            pages: { type: integer }
+            events: { type: integer, description: 'Every event, of every type.' }
+            errors: { type: integer, description: Uncaught errors and unhandled rejections. }
+            console_errors: { type: integer, description: console.error calls (SDK 0.7.0). }
+            requests: { type: integer, description: 'Requests kept: every outcome before SDK 0.7.0 only failed or slow ones.' }
+            failed_requests: { type: integer, description: 'Requests that failed: an error answer, no answer, a timeout or a resource that did not load.' }
+            custom: { type: integer, description: Events the page tracked. }
+            tabs: { type: integer }
+            dropped: { type: integer, description: "Pages and other events beyond the session's limits, counted and not kept." }
+            errors_not_kept:
+              type: integer
+              description: Errors and console errors past the per-page or per-session limits, counted and not kept.
+            requests_not_kept:
+              type: integer
+              description: Requests past the per-page or per-session limits, counted and not kept.
+            requests_sampled_out: { type: integer, description: Successful requests sampling left out. }
+            request_sample_percent:
+              type: [integer, 'null']
+              description: The smallest share of successful requests kept while the session was reported; null when none were sampled.
+            replayable_pages: { type: integer, description: Pages a recording that can still be played saw. }
+        recording:
+          type: object
+          required: [status, total, available, open_recording_id, live]
+          properties:
+            status:
+              type: string
+              enum: [none, recording, available, partial, expired, deleted, unavailable]
+              description: >-
+                none, no recording; recording, one is still open; available,
+                every page can be replayed; partial, some can; expired,
+                deleted or unavailable, recordings exist and none can be
+                played.
+            total: { type: integer }
+            available: { type: integer, description: Recordings that can be played. }
+            open_recording_id: { type: [string, 'null'], format: uuid, description: 'The recording still open, to watch live.' }
+            live: { type: boolean, description: The open recording was heard from in the last 90 seconds. }
+    SessionHeatmap:
+      type: object
+      required: [pages, heatmap]
+      properties:
+        pages:
+          type: array
+          description: The pages with a heatmap, in the order the session first came to them, by device.
+          items: { $ref: '#/components/schemas/HeatmapPage' }
+        heatmap:
+          description: The page and device asked for, or the defaults; null when the session has no heatmap for it.
+          oneOf:
+            - $ref: '#/components/schemas/Heatmap'
+            - type: 'null'
+    SessionDetail:
+      allOf:
+        - $ref: '#/components/schemas/SessionRow'
+        - type: object
+          required: [sdk_version, ip_source, user_agent, viewport, screen, pixel_ratio, language, timezone, clock_offset_ms, pages, recordings]
+          properties:
+            sdk_version: { type: [string, 'null'] }
+            ip_source: { type: [string, 'null'], enum: [cloudflare, edge, peer, null] }
+            user_agent: { type: [string, 'null'] }
+            viewport: { oneOf: [{ $ref: '#/components/schemas/Size' }, { type: 'null' }] }
+            screen: { oneOf: [{ $ref: '#/components/schemas/Size' }, { type: 'null' }] }
+            pixel_ratio: { type: [number, 'null'] }
+            language: { type: [string, 'null'] }
+            timezone: { type: [string, 'null'] }
+            clock_offset_ms:
+              type: integer
+              description: The server's clock minus the browser's, measured when the session started; journey and timeline times include it.
+            pages:
+              type: array
+              items: { $ref: '#/components/schemas/JourneyPage' }
+            recordings:
+              type: array
+              items: { $ref: '#/components/schemas/SessionRecording' }
+    ReplayPoint:
+      type: object
+      required: [recording_id, offset_ms, replay]
+      properties:
+        recording_id: { type: [string, 'null'], format: uuid, description: The recording that saw this moment. }
+        offset_ms: { type: [integer, 'null'], description: "Where in that recording's replay it happened, when it can be played." }
+        replay:
+          type: string
+          enum: [available, recording, expired, deleted, discarded, unplayable, not_recorded]
+          description: >-
+            Whether this moment can be watched: available; recording, in a
+            recording still open; expired, deleted, discarded (too short or
+            without interaction) or unplayable, a recording saw it and cannot be
+            played; not_recorded, no recording covers it.
+    JourneyPage:
+      allOf:
+        - $ref: '#/components/schemas/ReplayPoint'
+        - type: object
+          required: [id, tab, kind, path, query, at, ended_at, visible_ms, dwell_ms, dwell]
+          properties:
+            id: { type: string, format: uuid }
+            tab: { type: integer, description: 'The tab, numbered from 1 in the order tabs first reported a page; 0 when unknown.' }
+            kind:
+              type: string
+              enum: [load, reload, back_forward, route, resume, recorded]
+              description: >-
+                How the page came to be: a document load, a reload, back or
+                forward, an in-page navigation, a page reported again when the
+                next session started, or a page known only from a recording.
+            path: { type: string }
+            query: { type: [string, 'null'], description: The query parameters the site keeps. }
+            at: { type: string, format: date-time }
+            ended_at: { type: [string, 'null'], format: date-time }
+            visible_ms: { type: [integer, 'null'], description: 'How long the tab was visible on the page, when known.' }
+            dwell_ms: { type: [integer, 'null'] }
+            dwell:
+              type: string
+              enum: [measured, estimated, open, unknown]
+              description: >-
+                measured, the page reported its end; estimated, from the next
+                page in the same tab; open, the visitor is still on it; unknown,
+                neither.
+    SessionRecording:
+      type: object
+      required: [id, tab, state, end_reason, playable, live, status, discarded, created_at, ended_at, from, until, duration_ms,
+        expires_at, entry_path, pages]
+      properties:
+        id: { type: string, format: uuid }
+        tab: { type: integer, description: 0 when the recorder did not name its tab (before SDK 0.6.0). }
+        state: { type: string, enum: [pending, recording, ready, partial, unplayable] }
+        end_reason: { type: [string, 'null'], enum: [finished, idle_timeout, duration_cap, byte_cap, site_disabled, null] }
+        playable: { type: boolean }
+        live: { type: boolean }
+        status:
+          type: string
+          enum: [available, recording, expired, deleted, discarded, unplayable]
+        discarded: { type: [string, 'null'], enum: [empty, no_interaction, too_short, null], description: Why it was not kept. }
+        created_at: { type: string, format: date-time }
+        ended_at: { type: [string, 'null'], format: date-time }
+        from: { type: [string, 'null'], format: date-time, description: When its first event happened. }
+        until: { type: [string, 'null'], format: date-time, description: When its latest event happened. }
+        duration_ms: { type: integer }
+        expires_at: { type: string, format: date-time }
+        entry_path: { type: [string, 'null'] }
+        pages: { type: integer, description: Pages of the journey it saw. }
+    TimelineItem:
+      allOf:
+        - $ref: '#/components/schemas/ReplayPoint'
+        - type: object
+          required: [id, type, at, tab, page_id, path, kind, name, message, url, status, duration_ms, line, column, properties,
+            outcome, stack, repeats]
+          properties:
+            id: { type: string }
+            type:
+              type: string
+              enum: [page, visibility, error, request, custom, recording_started, recording_ended]
+            at: { type: string, format: date-time }
+            tab: { type: integer }
+            page_id: { type: [string, 'null'], format: uuid }
+            path: { type: [string, 'null'], description: The page it happened on. }
+            kind:
+              type: [string, 'null']
+              description: >-
+                A page's kind; hidden or visible; an error's kind (error,
+                rejection, console); a request's initiator (fetch, xhr,
+                script, img, link, other); or why a recording ended.
+            name: { type: [string, 'null'], description: "An error's name, a request's method or a custom event's name." }
+            message: { type: [string, 'null'], description: "An error's message, scrubbed of email addresses and long numbers." }
+            url: { type: [string, 'null'], description: "A request's address or an error's source, under the site's query rules." }
+            status:
+              type: [integer, 'null']
+              description: >-
+                A request's status, when the browser exposed one: only for
+                success and http_error. Null otherwise; never a made-up 0.
+            duration_ms: { type: [integer, 'null'], description: "A request's time from its start, which is its at." }
+            outcome:
+              type: [string, 'null']
+              enum: [success, http_error, network_error, timeout, aborted, opaque, load_failed, null]
+              description: >-
+                A request's outcome. network_error: no answer, and the browser
+                does not say why (offline, DNS, refused, CORS). opaque: a
+                cross-origin answer whose status the browser hides.
+                load_failed: a script, image or stylesheet that did not load;
+                the browser does not say whether a server answered. aborted:
+                the page stopped it, which is not a failure.
+            stack:
+              type: [string, 'null']
+              description: >-
+                An error's stack: at most 12 frames, addresses without their
+                query, scrubbed as messages are. Cleared with messages at the
+                recording retention.
+            repeats: { type: [integer, 'null'], description: How many times an error happened on its page. }
+            line: { type: [integer, 'null'] }
+            column: { type: [integer, 'null'] }
+            properties:
+              type: [object, 'null']
+              description: A custom event's properties.
+              additionalProperties: { type: [string, number, boolean] }
+    RecordingRow:
+      type: object
+      required: [id, site_id, site_name, state, end_reason, playable, origin, entry_path, browser, os, device, country, ip,
+        bytes, chunks, events, duration_ms, created_at, first_received_at, last_received_at, ended_at, expires_at,
+        last_seen_at, live, visitor_id, session_id]
+      properties:
+        id: { type: string, format: uuid }
+        site_id: { type: string, format: uuid }
+        site_name: { type: string }
+        session_id:
+          type: [string, 'null']
+          format: uuid
+          description: >-
+            The session the recording belongs to. Null only for a recording
+            made before sessions that has not been placed in one yet.
+        state: { type: string, enum: [pending, recording, ready, partial, unplayable] }
+        end_reason: { type: [string, 'null'], enum: [finished, idle_timeout, duration_cap, byte_cap, site_disabled, null] }
+        playable: { type: boolean, description: True once some epoch holds a checkpoint at its start. }
+        origin: { type: string }
+        entry_path: { type: [string, 'null'] }
+        browser: { type: [string, 'null'], description: Coarse class from the user agent. }
+        os: { type: [string, 'null'] }
+        device: { type: [string, 'null'], enum: [desktop, mobile, tablet, null] }
+        country: { type: [string, 'null'], description: 'From Cloudflare, when the request came through it.' }
+        ip: { type: [string, 'null'], description: The visitor's IP address. }
+        bytes: { type: integer, description: Compressed bytes stored. }
+        chunks: { type: integer }
+        events: { type: integer }
+        duration_ms:
+          type: integer
+          description: >-
+            The recorded activity, in milliseconds: in each page load, from its
+            first batch's start to its last batch's end by the browser's
+            monotonic clock, summed.
+        created_at: { type: string, format: date-time }
+        first_received_at: { type: [string, 'null'], format: date-time }
+        last_received_at: { type: [string, 'null'], format: date-time }
+        last_seen_at:
+          type: string
+          format: date-time
+          description: The last batch or heartbeat. An open page sends a heartbeat every 30 seconds.
+        live:
+          type: boolean
+          description: >-
+            Still open and heard from in the last 90 seconds: someone is on the
+            page. Open but quiet means the visitor has most likely gone; the
+            recording closes after 30 minutes without a word, because leaving a
+            page cannot be told apart from moving to the next one.
+        visitor_id:
+          type: [string, 'null']
+          format: uuid
+          description: >-
+            The browser that made the recording: a random id the recorder (SDK
+            0.3.0 and later) keeps in the site's localStorage. The same id on
+            two recordings is the same browser, unless its storage was cleared
+            in between. Null for recordings from older recorders.
+        ended_at: { type: [string, 'null'], format: date-time }
+        expires_at: { type: string, format: date-time }
+    Size:
+      type: object
+      required: [width, height]
+      properties:
+        width: { type: integer }
+        height: { type: integer }
+    RecordingDetail:
+      allOf:
+        - $ref: '#/components/schemas/RecordingRow'
+        - type: object
+          required: [config_version, sdk_version, rrweb_version, ip_source, user_agent, viewport, screen, pixel_ratio,
+            language, timezone, referrer, epochs]
+          properties:
+            config_version: { type: integer, description: The site configuration the recording was made under. }
+            sdk_version: { type: [string, 'null'] }
+            rrweb_version: { type: [string, 'null'] }
+            ip_source:
+              type: [string, 'null']
+              enum: [cloudflare, edge, peer, null]
+              description: >-
+                cloudflare is the visitor's address as Cloudflare reported it;
+                edge and peer are whoever connected, which is the visitor
+                only when nothing sat in between.
+            user_agent: { type: [string, 'null'], description: 'The full User-Agent header, at most 512 characters.' }
+            viewport: { oneOf: [{ $ref: '#/components/schemas/Size' }, { type: 'null' }] }
+            screen: { oneOf: [{ $ref: '#/components/schemas/Size' }, { type: 'null' }] }
+            pixel_ratio: { type: [number, 'null'] }
+            language: { type: [string, 'null'] }
+            timezone: { type: [string, 'null'], description: IANA time zone the browser reported. }
+            referrer: { type: [string, 'null'], description: Origin and path only; the query and fragment are never kept. }
+            epochs:
+              type: array
+              items: { $ref: '#/components/schemas/Epoch' }
+    Epoch:
+      type: object
+      required: [id, index, contiguous_through, max_sequence, has_checkpoint, bytes, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        index: { type: integer, description: A page load or a restart from a fresh checkpoint. }
+        contiguous_through: { type: integer, description: The highest sequence before the first gap; -1 when none. }
+        max_sequence: { type: integer }
+        has_checkpoint: { type: boolean }
+        bytes: { type: integer }
+        created_at: { type: string, format: date-time }
+    PlaybackChunk:
+      type: object
+      required: [epoch_index, sequence, encoding, compressed_bytes, expanded_bytes, event_count, contains_full_snapshot,
+        monotonic_start_ms, monotonic_end_ms, client_wall_time]
+      properties:
+        epoch_index: { type: integer }
+        sequence: { type: integer }
+        encoding: { type: string, enum: [gzip, identity] }
+        compressed_bytes: { type: integer }
+        expanded_bytes: { type: integer }
+        event_count: { type: integer }
+        contains_full_snapshot: { type: boolean }
+        monotonic_start_ms: { type: number }
+        monotonic_end_ms: { type: number }
+        client_wall_time: { type: [string, 'null'], format: date-time, description: The browser's clock; for display only. }
+    Installation:
+      type: object
+      required: [site_id, public_key, ready, steps, snippet]
+      properties:
+        site_id: { type: string, format: uuid }
+        public_key: { type: string }
+        ready: { type: boolean, description: True when every step is done. }
+        steps:
+          type: array
+          items:
+            type: object
+            required: [id, done, detail]
+            properties:
+              id: { type: string, enum: [site_active, collection_active, origin_verified, recording_enabled, recorder_released] }
+              done: { type: boolean }
+              detail: { type: string }
+        snippet:
+          type: [string, 'null']
+          description: The script tag to install, pinned by Subresource Integrity; null when no SDK release or active key is available.
+    Usage:
+      type: object
+      required: [period_start, period_end, recordings, billing, collection, open_recordings, stored_bytes, max_stored_bytes, max_sites, max_open_recordings]
+      properties:
+        period_start: { type: string, format: date-time, description: The first instant of the UTC calendar month the figures are for. }
+        period_end: { type: string, format: date-time }
+        recordings: { type: integer, description: 'Recordings admitted in the month and kept: the billing count when billing is on.' }
+        billing:
+          description: The analytics.recording meter of the organisation's billing account; null when this deployment does not bill yet.
+          oneOf:
+            - { $ref: '#/components/schemas/Meter' }
+            - { type: 'null' }
+        collection:
+          type: object
+          required: [state]
+          properties:
+            state:
+              type: string
+              enum: [recording, paused, storage_limit, billing_paused]
+              description: >-
+                recording when a new recording would be admitted now; paused
+                when Ironfang paused the organisation's collection;
+                storage_limit when its unexpired recordings hold
+                max_stored_bytes, until expiry or deletion frees room;
+                billing_paused when its billing account refuses new
+                recordings (the free allowance is used without paid usage, a
+                budget is reached, paid usage is paused, and so on).
+                Recordings already open carry on.
+            code: { type: string, description: 'The refusal code, as the collector answers a new recording: storage_limit, or the billing code; only with storage_limit and billing_paused.' }
+            message: { type: string, description: What to do about it; do not parse. }
+        open_recordings: { type: integer, description: Recordings admitted and not yet ended. }
+        stored_bytes: { type: integer, description: What the organisation's unexpired recordings hold. }
+        max_stored_bytes:
+          type: integer
+          description: >-
+            What the organisation's unexpired recordings may hold: once
+            stored_bytes reaches it, no new recording is admitted (the
+            collector answers 429 storage_limit) until expiry or deletion
+            frees room. 10 GiB, unless a managed partner's agreement sets
+            another figure; paying more does not lift it.
+        max_sites: { type: integer, description: Sites the organisation may have. }
+        max_open_recordings: { type: [integer, 'null'], description: 'Recordings the organisation may have open at once; null for no limit of its own.' }
+    Meter:
+      type: object
+      required: [meter, free_allowance, used, free_used, billable, reserved, remaining_free, charge, currency, exempt, budget]
+      properties:
+        meter: { type: string, enum: [analytics.recording] }
+        free_allowance: { type: integer, description: Recordings the month includes free. }
+        used: { type: integer, description: Kept recordings counted in the month. }
+        free_used: { type: integer, description: How many of them the free allowance covers. }
+        billable: { type: integer, description: How many are charged. }
+        reserved: { type: integer, description: Recordings admitted and not yet ended; each holds its unit until then. }
+        remaining_free: { type: integer, description: Free recordings neither used nor held. }
+        charge: { type: string, description: 'The exact charge for used, before tax, in major units (for example "1.25").' }
+        currency: { type: string, description: 'ISO 4217 currency code: GBP.' }
+        exempt: { type: boolean, description: True when the account's Ironfang Analytics usage is counted and not charged. }
+        budget: { type: [string, 'null'], description: The monthly limit set for Ironfang Analytics before tax; null when it shares the account's. }

@@ -1,0 +1,841 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Analytics Sites API
+  version: 0.1.0
+  summary: Sites, origins, public keys and capture settings for session replay and web analytics.
+  description: 'Ironfang Analytics follows each visit to your website as a session:
+
+    the pages a visitor saw, in every tab, with how long they stayed, the
+
+    errors and failed requests they met, the events your pages tracked, and
+
+    the recordings that let you replay it, live or afterwards.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/analytics
+security:
+- apiKey: []
+- bearerAuth: []
+tags:
+- name: Sites
+  description: Instrumented websites and their capture configuration.
+paths:
+  /v1/sites:
+    get:
+      tags:
+      - Sites
+      operationId: listSites
+      summary: List sites
+      description: 'Returns the organisation''s sites, newest first, as a bounded keyset page. Each row carries the counts a setup state is read from, so a page of sites is one request. `total` is the organisation''s sites, independent of the page. With `external_id`, only the site that has it: the exact lookup an integration uses to find a site it created. Needs analytics.sites.read.'
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: external_id
+        in: query
+        required: false
+        description: Only the site with this external id, within the organisation.
+        schema:
+          type: string
+          pattern: ^[A-Za-z0-9._:-]{1,128}$
+      responses:
+        '200':
+          description: A page of sites
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - sites
+                - next_cursor
+                - total
+                properties:
+                  sites:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SiteListRow'
+                  next_cursor:
+                    type: string
+                    description: Opaque cursor for the next page; empty on the last page.
+                  total:
+                    type: integer
+                    description: How many sites the organisation has.
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags:
+      - Sites
+      operationId: createSite
+      summary: Create a site
+      description: 'Creates a site with its first configuration version and one active public key. Origins are optional here and can be added later. A configuration that is left out, or names only some fields, takes the privacy-first defaults for the rest; recording is not switched on by creating a site. With an `Idempotency-Key`, a retry of the same request returns the first answer (with `Idempotent-Replayed: true`) and creates nothing; the key is honoured for 24 hours. A partner integration''s managed key must send one. `external_id` is your own identifier: unique in the organisation and fixed, it finds the site with `GET /v1/sites?external_id=` even after the key has expired. Needs analytics.sites.write.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  maxLength: 120
+                  example: Checkout
+                external_id:
+                  type: string
+                  pattern: ^[A-Za-z0-9._:-]{1,128}$
+                  description: Your own identifier for the site. Opaque to Ironfang, not a secret, and never changes.
+                  example: checkout-1042
+                timezone:
+                  type: string
+                  default: UTC
+                  description: IANA time zone used for reports.
+                  example: Europe/London
+                retention_days:
+                  type: integer
+                  minimum: 1
+                  maximum: 28
+                  default: 28
+                session_retention_days:
+                  type: integer
+                  minimum: 1
+                  maximum: 90
+                  default: 90
+                  description: How long session history is kept; at least retention_days.
+                origins:
+                  type: array
+                  maxItems: 20
+                  items:
+                    type: string
+                    example: https://shop.example.com
+                config:
+                  $ref: '#/components/schemas/SiteConfig'
+      responses:
+        '201':
+          description: Site created, or the stored answer to the same request with the same Idempotency-Key
+          headers:
+            Idempotent-Replayed:
+              $ref: '#/components/headers/IdempotentReplayed'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteDetail'
+        '400':
+          $ref: '#/components/responses/InvalidIdempotency'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: An origin is already another site's (`conflict`); the Idempotency-Key was used for a different request (`idempotency_conflict`); or another site already has this external_id (`external_id_conflict`, whose `site_id` names it).
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/Error'
+                - type: object
+                  properties:
+                    site_id:
+                      type: string
+                      format: uuid
+                      description: The site that has the external_id, for external_id_conflict.
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+  /v1/sites/{siteId}:
+    parameters:
+    - $ref: '#/components/parameters/SiteId'
+    get:
+      tags:
+      - Sites
+      operationId: getSite
+      summary: Get a site
+      description: The site with its configuration in force, its origins (with the DNS record each still needs) and the public keys currently accepted. Needs analytics.sites.read.
+      responses:
+        '200':
+          description: The site
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    patch:
+      tags:
+      - Sites
+      operationId: updateSite
+      summary: Change a site
+      description: 'Changes a site, made against the version you read: if the site has changed since, the request is refused with 409 `version_conflict` and nothing is applied. `config` merges onto the configuration in force: a field left out keeps its value and a list that is named replaces the whole list. A configuration that differs from the one in force becomes a new immutable version. Setting `status` to `disabled` stops collection without deleting anything. Needs analytics.sites.write.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - version
+              additionalProperties: false
+              properties:
+                version:
+                  type: integer
+                  minimum: 1
+                  description: The site version the change was made against.
+                name:
+                  type: string
+                  maxLength: 120
+                timezone:
+                  type: string
+                retention_days:
+                  type: integer
+                  minimum: 1
+                  maximum: 28
+                  description: Raising it above session_retention_days raises that too.
+                session_retention_days:
+                  type: integer
+                  minimum: 1
+                  maximum: 90
+                  description: At least retention_days.
+                status:
+                  type: string
+                  enum:
+                  - active
+                  - disabled
+                config:
+                  $ref: '#/components/schemas/SiteConfig'
+      responses:
+        '200':
+          description: The site after the change
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteDetail'
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+  /v1/sites/{siteId}/config-versions:
+    parameters:
+    - $ref: '#/components/parameters/SiteId'
+    get:
+      tags:
+      - Sites
+      operationId: listConfigVersions
+      summary: List a site's configuration history
+      description: Every configuration version the site has had, newest first, as a bounded keyset page, with who made each one. Versions are never edited. Needs analytics.sites.read.
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of configuration versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - config_versions
+                - next_cursor
+                properties:
+                  config_versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ConfigVersion'
+                  next_cursor:
+                    type: string
+                    description: Opaque cursor for the next page; empty on the last page.
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sites/{siteId}/installation:
+    parameters:
+    - $ref: '#/components/parameters/SiteId'
+    get:
+      tags:
+      - Sites
+      operationId: getInstallation
+      summary: Get installation status
+      description: What must be true before the site records, step by step, and the public key its snippet will carry. `snippet` is the script tag that installs the current SDK release, pinned by integrity; it is null only when no release or active key is available. Needs analytics.sites.read.
+      responses:
+        '200':
+          description: Installation status
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Installation'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: The next_cursor of the previous page.
+      schema:
+        type: string
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: 'Makes the request safe to retry: the same key with the same request returns the first answer for 24 hours. Generate one per logical change. Required when the caller is a partner integration''s managed key.'
+      schema:
+        type: string
+        pattern: ^[A-Za-z0-9._:-]{8,255}$
+    SiteId:
+      name: siteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+  responses:
+    InvalidRequest:
+      description: A field is invalid, or a limit would be exceeded; the message names it (`invalid_request`, `limit_reached`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The credential lacks the permission or scope, names another organisation, or belongs to a partner integration that is not active (`forbidden`, `insufficient_scope`, `integration_inactive`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidQuery:
+      description: An unknown, repeated or malformed query parameter (`invalid_query`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No credential, an invalid one, an expired partner integration key, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `api_key_expired`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such object in this organisation (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RateLimited:
+      description: Too many requests; wait for Retry-After (`rate_limited`).
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+          description: Seconds to wait.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidIdempotency:
+      description: The body is not valid JSON of the documented shape (`invalid_json`); the Idempotency-Key is malformed (`invalid_idempotency_key`); or a partner integration sent none (`idempotency_key_required`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidJSON:
+      description: The body is not one strict JSON value of the documented shape (`invalid_json`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: The object already exists (`conflict`), or the site changed since it was read (`version_conflict`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    SiteDetail:
+      type: object
+      required:
+      - site
+      - config
+      - origins
+      - keys
+      properties:
+        site:
+          $ref: '#/components/schemas/Site'
+        config:
+          $ref: '#/components/schemas/ConfigVersion'
+        origins:
+          type: array
+          items:
+            $ref: '#/components/schemas/Origin'
+        keys:
+          type: array
+          description: The keys currently accepted, newest first.
+          items:
+            $ref: '#/components/schemas/SiteKey'
+    ConfigVersion:
+      type: object
+      required:
+      - id
+      - site_id
+      - version
+      - config
+      - sha256
+      - created_by
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        config:
+          $ref: '#/components/schemas/SiteConfig'
+        sha256:
+          type: string
+          description: SHA-256 of the stored configuration document.
+        created_by:
+          type: string
+          description: The user id, or key:<id> for a platform key.
+        created_at:
+          type: string
+          format: date-time
+    Site:
+      type: object
+      required:
+      - id
+      - organisation_id
+      - name
+      - external_id
+      - status
+      - timezone
+      - retention_days
+      - session_retention_days
+      - version
+      - config_version
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        external_id:
+          type:
+          - string
+          - 'null'
+          description: Your own identifier for the site, when one was given at creation.
+        status:
+          type: string
+          enum:
+          - active
+          - disabled
+        timezone:
+          type: string
+        retention_days:
+          type: integer
+          description: Days a recording is kept.
+        session_retention_days:
+          type: integer
+          description: Days session history is kept, never fewer than retention_days. A session loses its IP address, user agent and visitor id after retention_days.
+        version:
+          type: integer
+          description: Name this in a PATCH.
+        config_version:
+          type: integer
+          description: The configuration version in force.
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        disabled_at:
+          type: string
+          format: date-time
+    SiteConfig:
+      type: object
+      additionalProperties: false
+      description: What the site's recorder may capture. Whatever this says, anything that looks like a payment card number (13 to 19 digits passing the Luhn check) is masked wherever it appears, and card, CVV, password and one-time-code fields are blocked.
+      properties:
+        recording:
+          type: object
+          additionalProperties: false
+          properties:
+            enabled:
+              type: boolean
+              default: false
+            consent:
+              type: string
+              enum:
+              - opt_out
+              - required
+              default: opt_out
+              description: 'opt_out records from page load unless the page opts the visitor out with setConsent({replay: false}), which the browser remembers. required records nothing until the page grants replay consent; the site''s snippet then carries data-consent="required" so nothing is requested before it.'
+            sample_rate_percent:
+              type: integer
+              minimum: 0
+              maximum: 100
+              default: 100
+            mask_text:
+              type: boolean
+              default: false
+              description: Mask every text node; unmask_selectors then expose reviewed static text.
+            mask_inputs:
+              type: boolean
+              default: false
+              description: Mask every form field's value and text typed into an editable region.
+            mask_selectors:
+              type: array
+              maxItems: 100
+              items:
+                type: string
+                maxLength: 256
+            unmask_selectors:
+              type: array
+              maxItems: 100
+              items:
+                type: string
+                maxLength: 256
+            block_selectors:
+              type: array
+              maxItems: 100
+              items:
+                type: string
+                maxLength: 256
+            allowed_query_parameters:
+              type: array
+              maxItems: 50
+              description: Query parameters whose values are kept in recorded URLs while record_all_query_parameters is off; all others are removed.
+              items:
+                type: string
+                pattern: ^[A-Za-z0-9_.\-\[\]]{1,64}$
+            record_all_query_parameters:
+              type: boolean
+              default: false
+              description: Keep every query value in recorded URLs except those in removed_query_parameters. Off, only allowed_query_parameters keep theirs. Fragments are removed either way. Needs SDK 0.2.1 or later; older recorders keep only the allowed parameters.
+            removed_query_parameters:
+              type: array
+              maxItems: 50
+              description: Query parameters whose values are removed while record_all_query_parameters is on, such as a token or an email address.
+              items:
+                type: string
+                pattern: ^[A-Za-z0-9_.\-\[\]]{1,64}$
+            excluded_ip_ranges:
+              type: array
+              maxItems: 100
+              description: 'Visitor addresses that are never recorded, such as the site owner''s own networks: public IPv4 or IPv6 addresses, or CIDR ranges such as 203.0.113.0/24 or 2001:db8:1:2::/64. A visitor inside one is refused at admission, and a recording already open from there does not continue. The list is not sent to pages; the collector''s GET /v1/address tells a browser its own address and the range to add for it.'
+              items:
+                type: string
+                maxLength: 64
+            checkpoint_interval_seconds:
+              type: integer
+              minimum: 15
+              maximum: 300
+              default: 60
+            max_duration_minutes:
+              type: integer
+              minimum: 1
+              maximum: 60
+              default: 60
+            max_compressed_mib:
+              type: integer
+              minimum: 1
+              maximum: 100
+              default: 100
+        analytics:
+          type: object
+          additionalProperties: false
+          description: 'Session analytics, from SDK 0.6.0. Sessions are the root: a recording belongs to its session, so a site records only while it follows sessions, and may follow sessions without recording. The site''s consent mode and excluded addresses apply as they do to recording.'
+          properties:
+            enabled:
+              type: boolean
+              default: true
+              description: Report every eligible visitor's pages from page load, recorded or not. Must be true while recording.enabled is (422 otherwise). A version stored before this rule that records reads as true.
+            errors:
+              type: boolean
+              default: true
+              description: Add uncaught errors and unhandled rejections to sessions.
+            console_errors:
+              type: boolean
+              default: true
+              description: Add console.error calls to sessions (SDK 0.7.0), their arguments serialised safely and scrubbed as error messages are. A version stored before this switch reads as false.
+            requests:
+              type: boolean
+              default: true
+              description: Add requests that fail (an answer of 400 or above, no answer, a timeout, a resource that did not load), that the page aborted, or that take 5 seconds or longer, to sessions.
+            successful_requests:
+              type: boolean
+              default: true
+              description: Add the rest, quick successes, to sessions too (SDK 0.7.0). A version stored before this switch reads as false.
+            request_sample_percent:
+              type: integer
+              minimum: 1
+              maximum: 100
+              default: 100
+              description: The share of successful requests kept, decided per request in the browser. Failures are never sampled. A session says the share it was kept at, and how many were left out.
+    Installation:
+      type: object
+      required:
+      - site_id
+      - public_key
+      - ready
+      - steps
+      - snippet
+      properties:
+        site_id:
+          type: string
+          format: uuid
+        public_key:
+          type: string
+        ready:
+          type: boolean
+          description: True when every step is done.
+        steps:
+          type: array
+          items:
+            type: object
+            required:
+            - id
+            - done
+            - detail
+            properties:
+              id:
+                type: string
+                enum:
+                - site_active
+                - collection_active
+                - origin_verified
+                - recording_enabled
+                - recorder_released
+              done:
+                type: boolean
+              detail:
+                type: string
+        snippet:
+          type:
+          - string
+          - 'null'
+          description: The script tag to install, pinned by Subresource Integrity; null when no SDK release or active key is available.
+    SiteKey:
+      type: object
+      required:
+      - id
+      - site_id
+      - key
+      - state
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          pattern: ^ifa_site_[a-z2-7]{26}$
+          description: Public collection key; safe to publish.
+        state:
+          type: string
+          enum:
+          - active
+          - retiring
+        created_at:
+          type: string
+          format: date-time
+        retires_at:
+          type: string
+          format: date-time
+    SiteListRow:
+      allOf:
+      - $ref: '#/components/schemas/Site'
+      - type: object
+        required:
+        - summary
+        properties:
+          summary:
+            type: object
+            description: The site's setup state, counted for the list.
+            required:
+            - origins
+            - verified_origins
+            - recording_enabled
+            - analytics_enabled
+            properties:
+              origins:
+                type: integer
+              verified_origins:
+                type: integer
+              recording_enabled:
+                type: boolean
+              analytics_enabled:
+                type: boolean
+    Origin:
+      type: object
+      required:
+      - id
+      - site_id
+      - origin
+      - verification
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+          format: uuid
+        origin:
+          type: string
+          example: https://shop.example.com
+        verification:
+          type: string
+          enum:
+          - pending
+          - verified
+          - not_required
+        verification_token:
+          type: string
+        dns_record:
+          type: object
+          description: The TXT record to publish; absent for loopback origins.
+          required:
+          - type
+          - name
+          - value
+          properties:
+            type:
+              type: string
+              enum:
+              - TXT
+            name:
+              type: string
+              example: _ironfang-analytics.shop.example.com
+            value:
+              type: string
+        created_at:
+          type: string
+          format: date-time
+        verified_at:
+          type: string
+          format: date-time
+        checked_at:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          - docs
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable code.
+            message:
+              type: string
+              description: Human-readable explanation; do not parse.
+            docs:
+              type: string
+              format: uri
+        request_id:
+          type: string
+  headers:
+    IdempotentReplayed:
+      description: '`true` when this is the stored answer to an earlier request with the same Idempotency-Key.'
+      schema:
+        type: string
+        enum:
+        - 'true'
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal. Its scopes are its
+
+        permissions - `analytics:sites:read`, `analytics:sites:write` and the
+
+        other `analytics:` scopes, or `analytics:*` - and it acts only in the
+
+        organisation it was minted for. Keys without the scope a route needs
+
+        are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden,
+
+        which each operation names: sites need `analytics.sites.read` to read
+
+        and `analytics.sites.write` to change; sessions, recordings and
+
+        heatmaps need `analytics.sessions.read`, and deleting a session or a
+
+        recording `analytics.sessions.delete`. A missing permission is 403; a
+
+        permission lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Analytics documentation
+  url: https://ironfang.com/analytics/docs

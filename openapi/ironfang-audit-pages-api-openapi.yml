@@ -1,0 +1,458 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Audit Pages API
+  version: 1.0.0
+  summary: Website audits with findings and signed, independently timestamped evidence.
+  description: Asynchronous website audits with signed, independently timestamped evidence.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/audit
+  description: Production
+security:
+- bearerAuth: []
+- apiKey: []
+tags:
+- name: Pages
+  description: Pages within an audit.
+paths:
+  /v1/pages/{pageId}/observations:
+    get:
+      operationId: listPagesByPageIdObservations
+      description: Returns paginated observations for a page within the authenticated organisation. Supply the returned next_cursor to continue through older observations, ordered by immutable created_at then ID descending. Lists include rule results but omit artifacts. Empty and foreign page IDs return an empty list. Repeated and unknown query parameters are rejected.
+      tags:
+      - Pages
+      summary: A page's observation history, newest first
+      parameters:
+      - name: pageId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 200
+          default: 50
+      - name: cursor
+        in: query
+        schema:
+          type: string
+        description: next_cursor from the previous page
+      responses:
+        '200':
+          description: Retained observation metadata
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ObservationList'
+        '400':
+          $ref: '#/components/responses/Problem'
+components:
+  schemas:
+    Artifact:
+      type: object
+      required:
+      - id
+      - organisation_id
+      - audit_id
+      - type
+      - name
+      - media_type
+      - byte_length
+      - sha256
+      - object_key
+      - created_at
+      properties:
+        id:
+          type: string
+        organisation_id:
+          type: string
+        audit_id:
+          type: string
+        page_observation_id:
+          type: string
+        type:
+          type: string
+        name:
+          type: string
+        media_type:
+          type: string
+        byte_length:
+          type: integer
+        sha256:
+          type: string
+        object_key:
+          type: string
+        derived_from_sha256:
+          type: string
+        transformation:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        hosted_state:
+          type: string
+          enum:
+          - available
+          - expiring
+          - deleted
+        expires_at:
+          type: string
+          format: date-time
+    CaptureMetadata:
+      type: object
+      required:
+      - browser
+      - browser_version
+      - build_id
+      - user_agent
+      - viewport_width
+      - viewport_height
+      - device_scale_factor
+      - locale
+      - timezone
+      - colour_scheme
+      - settle_outcome
+      - settle_ms
+      - duration_ms
+      - worker_id
+      - region
+      - transformations
+      - response_headers
+      - dns_answers
+      - capture_truncated
+      properties:
+        browser:
+          type: string
+        browser_version:
+          type: string
+        build_id:
+          type: string
+        user_agent:
+          type: string
+        viewport_width:
+          type: integer
+        viewport_height:
+          type: integer
+        device_scale_factor:
+          type: number
+        locale:
+          type: string
+        timezone:
+          type: string
+        colour_scheme:
+          type: string
+        settle_outcome:
+          type: string
+        settle_ms:
+          type: integer
+        duration_ms:
+          type: integer
+        worker_id:
+          type: string
+        region:
+          type: string
+        transformations:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        response_headers:
+          type:
+          - object
+          - 'null'
+          additionalProperties:
+            type: string
+        dns_answers:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        remote_port:
+          type: integer
+        tls_protocol:
+          type: string
+        tls_cipher:
+          type: string
+        tls_subject:
+          type: string
+        tls_issuer:
+          type: string
+        tls_certificate_sha256:
+          type: string
+        tls_valid_from:
+          type: string
+        tls_valid_to:
+          type: string
+        capture_truncated:
+          type: boolean
+    ObservationList:
+      type: object
+      required:
+      - observations
+      - next_cursor
+      properties:
+        observations:
+          type: array
+          items:
+            $ref: '#/components/schemas/PageObservation'
+        next_cursor:
+          type: string
+          description: Opaque timestamp/ID boundary; empty on the final page.
+    MerkleStep:
+      type: object
+      required:
+      - side
+      - hash
+      properties:
+        side:
+          type: string
+          enum:
+          - left
+          - right
+        hash:
+          type: string
+    RuleResult:
+      type: object
+      required:
+      - id
+      - audit_id
+      - page_observation_id
+      - rule_id
+      - rule_lineage_id
+      - rule_version
+      - rule_name
+      - severity
+      - status
+      - evaluated_at
+      properties:
+        id:
+          type: string
+        audit_id:
+          type: string
+        page_observation_id:
+          type: string
+        rule_id:
+          type: string
+          description: The exact rule revision this result was evaluated against.
+        rule_lineage_id:
+          type: string
+          description: The rule across every revision of it. Match a finding on this rather than reading a rule's whole revision history to see whether a result is its own.
+        rule_version:
+          type: integer
+        rule_name:
+          type: string
+        severity:
+          type: string
+          enum:
+          - info
+          - warning
+          - failure
+          - critical
+        status:
+          type: string
+          enum:
+          - pass
+          - fail
+          - warning
+          - not_applicable
+          - error
+        expected:
+          type: string
+        observed:
+          type: string
+        evidence_excerpt:
+          type: string
+        evaluated_at:
+          type: string
+          format: date-time
+    Redirect:
+      type: object
+      required:
+      - url
+      - status_code
+      properties:
+        url:
+          type: string
+        status_code:
+          type: integer
+    PageObservation:
+      type: object
+      required:
+      - id
+      - audit_id
+      - page_id
+      - requested_url
+      - redirect_chain
+      - capture_status
+      - text_changed
+      - visual_changed
+      - textual_change_score
+      - visual_change_score
+      - metadata
+      - created_at
+      properties:
+        id:
+          type: string
+        audit_id:
+          type: string
+        page_id:
+          type: string
+        requested_url:
+          type: string
+        final_url:
+          type: string
+        redirect_chain:
+          type:
+          - array
+          - 'null'
+          items:
+            $ref: '#/components/schemas/Redirect'
+        captured_at:
+          type: string
+          format: date-time
+        capture_status:
+          type: string
+          enum:
+          - captured
+          - error
+        http_status:
+          type: integer
+        observed_remote_ip:
+          type: string
+        title:
+          type: string
+        canonical_url:
+          type: string
+        previous_observation_id:
+          type: string
+        text_changed:
+          type: boolean
+        visual_changed:
+          type: boolean
+        textual_change_score:
+          type: number
+        visual_change_score:
+          type: number
+        change_classification:
+          type: string
+          enum:
+          - NEW
+          - MOVED
+          - CHANGED
+          - UNCHANGED
+        compliance_state:
+          type: string
+          enum:
+          - PASS
+          - WARNING
+          - FAIL
+          - ERROR
+        page_hash:
+          type: string
+        merkle_proof:
+          type: array
+          items:
+            $ref: '#/components/schemas/MerkleStep'
+        metadata:
+          $ref: '#/components/schemas/CaptureMetadata'
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Artifact'
+        rule_results:
+          type: array
+          items:
+            $ref: '#/components/schemas/RuleResult'
+        error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+  responses:
+    Problem:
+      description: Problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Stable machine-readable code. Billing refusals use the codes every Ironfang product shares (BillingCode), with the same status and message whichever product answered; everything else is Ironfang Audit's own.
+                  message:
+                    type: string
+                  docs:
+                    type: string
+                    format: uri
+                    description: Where the errors are documented.
+                    example: https://ironfang.com/audit/docs#errors
+                  product:
+                    type: string
+                    description: 'Billing refusals only: the product the refused work belongs to (audit).'
+                  meter:
+                    type: string
+                    description: 'Billing refusals only: the meter that refused, audit.capture or audit.retention_extension.'
+                  reset_at:
+                    type: string
+                    format: date-time
+                    description: 'Billing refusals only: when the free allowance renews (the next month''s start, UTC).'
+              request_id:
+                type: string
+                description: The X-Ironfang-Request-ID of the failed request.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `audit:read`, `audit:run`, `audit:manage`,
+
+        `audit:evidence`, `audit:integrations`, or `audit:*` - and
+
+        it acts only in the organisation it was minted for. Legacy Ironfang Render
+
+        keys carry no Ironfang Audit scopes and are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission
+
+        in the acting tenant, resolved live from Warden: read routes need
+
+        `audit.read`; creating sites and rules `audit.manage`; queueing
+
+        an audit `audit.run`; evidence bundles and raw artifacts
+
+        `audit.evidence`; webhooks, export destinations and manual exports
+
+        `audit.integrations`; billing changes `billing.manage`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Audit documentation
+  url: https://ironfang.com/audit/docs

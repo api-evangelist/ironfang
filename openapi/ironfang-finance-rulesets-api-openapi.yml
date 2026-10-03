@@ -1,0 +1,1223 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Finance E-Invoicing Rulesets API
+  version: 1.4.0
+  summary: Generate UBL invoices and validate Invoice or CreditNote XML with PHIVE.
+  description: 'Ironfang Finance validates UBL e-invoices against the exact EN 16931 and Peppol
+
+    BIS Billing rule releases published by the standards bodies, and returns a
+
+    result that names the immutable ruleset it used so the outcome can be
+
+    reproduced later.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/finance
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Ironfang-Proprietary
+servers:
+- url: https://api.ironfang.com/finance
+  description: Production. Paths below are relative to this product prefix.
+security:
+- {}
+- platformKey: []
+tags:
+- name: rulesets
+  description: The immutable ruleset registry validation results are pinned to.
+paths:
+  /v1/einvoices/rulesets:
+    get:
+      tags:
+      - rulesets
+      operationId: listEInvoiceRulesets
+      summary: List rulesets available for selection and reproduction
+      description: 'Lists the immutable rulesets a caller may validate against:
+
+        `scheduled`, `sendable` and `historical` releases. Candidate releases
+
+        are internal and never listed; `disabled` releases are withdrawn and
+
+        never appear in a successful body - their ids answer `410` on the
+
+        exact read.
+
+
+        Exactly one `sendable` release per profile family and document type
+
+        carries `latest: true`: that is what `ruleset: latest` resolves to for
+
+        a request made now. `scheduled` releases show what `latest` will
+
+        become and when, and may be validated against by exact id for
+
+        migration testing; `historical` releases stay retrievable and
+
+        validatable by exact id so an older result can be reproduced.'
+      security:
+      - {}
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:rulesets:read
+      parameters:
+      - name: document_type
+        in: query
+        required: false
+        description: Restrict to one document type. Omit for both. A repeated or unknown query parameter is `400 malformed_request`.
+        schema:
+          $ref: '#/components/schemas/DocumentType'
+      - name: profile
+        in: query
+        required: false
+        schema:
+          $ref: '#/components/schemas/ProfileFamily'
+      - name: state
+        in: query
+        required: false
+        description: Restrict to one lifecycle state.
+        schema:
+          $ref: '#/components/schemas/RulesetState'
+      responses:
+        '200':
+          description: The matching rulesets, newest effective date first.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RulesetList'
+              examples:
+                list:
+                  summary: Upcoming, current and past releases for invoices
+                  externalValue: https://api.ironfang.com/finance/examples/v1-ruleset-list.json
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '429':
+          $ref: '#/components/responses/ReadRateLimited'
+        '500':
+          $ref: '#/components/responses/ReadInternalError'
+  /v1/einvoices/rulesets/{id}:
+    get:
+      tags:
+      - rulesets
+      operationId: getEInvoiceRuleset
+      summary: Fetch one ruleset by its immutable id
+      description: 'Returns the customer-safe identity of one ruleset: enough to select
+
+        it, to know its state, and to reproduce a validation that named it.
+
+        `scheduled`, `sendable` and `historical` releases are returned in
+
+        full. A `disabled` release answers `410 ruleset_disabled`: its id is
+
+        acknowledged, its content is withdrawn, and it never appears in a
+
+        successful body. `latest` is a selection keyword, not an id:
+
+        `GET .../rulesets/latest` is `404`. Candidate releases are internal
+
+        and indistinguishable from unknown: `404`.'
+      security:
+      - {}
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:einvoices:rulesets:read
+      parameters:
+      - name: id
+        in: path
+        required: true
+        schema:
+          $ref: '#/components/schemas/RulesetID'
+      responses:
+        '200':
+          description: The ruleset.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ruleset'
+              examples:
+                historical:
+                  summary: An exact historical release, still reproducible
+                  externalValue: https://api.ironfang.com/finance/examples/v1-ruleset-historical.json
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '410':
+          $ref: '#/components/responses/RulesetDisabled'
+        '429':
+          $ref: '#/components/responses/ReadRateLimited'
+        '500':
+          $ref: '#/components/responses/ReadInternalError'
+components:
+  schemas:
+    RulesetRuntime:
+      type: object
+      additionalProperties: false
+      description: Metadata observed from the running validator's installed dependencies and registered VES. Omitted for retained engines without runtime reporting or before a successful health observation. observed_at is not a readiness guarantee. Library versions are not Peppol or EN 16931 specification versions. Upstream deprecation/effective dates describe the VES; state/latest describe Ironfang Finance's independently managed release lifecycle.
+      required:
+      - validator_version
+      - phive_version
+      - phive_rules_version
+      - phive_rules_peppol_version
+      - saxon_version
+      - name
+      - upstream_deprecated
+      - observed_at
+      properties:
+        validator_version:
+          type: string
+          maxLength: 32
+          pattern: ^[0-9][0-9A-Za-z.+-]{0,31}$
+        phive_version:
+          type: string
+          maxLength: 32
+          pattern: ^[0-9][0-9A-Za-z.+-]{0,31}$
+        phive_rules_version:
+          type: string
+          maxLength: 32
+          pattern: ^[0-9][0-9A-Za-z.+-]{0,31}$
+        phive_rules_peppol_version:
+          type: string
+          maxLength: 32
+          pattern: ^[0-9][0-9A-Za-z.+-]{0,31}$
+        saxon_version:
+          type: string
+          maxLength: 32
+          pattern: ^[0-9][0-9A-Za-z.+-]{0,31}$
+        name:
+          type: string
+          minLength: 1
+          maxLength: 256
+        upstream_deprecated:
+          type: boolean
+        upstream_valid_from:
+          type: string
+          format: date-time
+        upstream_valid_until:
+          type: string
+          format: date-time
+        observed_at:
+          type: string
+          format: date-time
+    RulesetList:
+      type: object
+      additionalProperties: false
+      required:
+      - schema
+      - rulesets
+      properties:
+        schema:
+          type: string
+          const: financewolf/einvoice/ruleset-list/v1
+        rulesets:
+          type: array
+          description: Empty, never null.
+          items:
+            $ref: '#/components/schemas/Ruleset'
+    BillingRefusal:
+      type: object
+      description: 'On a billing refusal only: the product and meter the billing account refused, and when the free allowance renews (the start of the next UTC month) where that is the reason.'
+      additionalProperties: false
+      properties:
+        product:
+          type: string
+          enum:
+          - finance
+        meter:
+          type: string
+          enum:
+          - finance.validation
+          - finance.generation
+        reset_at:
+          type: string
+          format: date-time
+    RequestID:
+      type: string
+      pattern: ^[A-Za-z0-9_-]{8,64}$
+    ProfileFamily:
+      type: string
+      description: A supported profile family. V1 supports Peppol BIS Billing 3.
+      enum:
+      - peppol-bis-billing-3
+    EngineInfo:
+      type: object
+      description: What ran, exactly, so the result can be reproduced.
+      additionalProperties: false
+      required:
+      - name
+      - image_digest
+      properties:
+        name:
+          type: string
+          description: The validator engine and version, e.g. `phive/12.1.0`.
+          minLength: 1
+          maxLength: 64
+        image_digest:
+          $ref: '#/components/schemas/ImageDigest'
+        hint_pack_version:
+          type: string
+          description: The version of Ironfang's hint mappings applied, when any. Nonblank when present.
+          minLength: 1
+          maxLength: 32
+    HTTPSURL:
+      type: string
+      format: uri
+      description: 'A provenance URL under one narrow grammar: https, a lowercase DNS host of at least two labels, no userinfo, no IP literal, an optional port 1..65535, an optional path, query and fragment of unreserved and sub-delimiter characters or valid percent-escapes, no whitespace. The same expression is held by the registry review, the database and this document.'
+      pattern: ^https://[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\.[a-z]([a-z0-9-]{0,61}[a-z0-9])?(:([1-9][0-9]{0,3}|[1-5][0-9]{4}|6[0-4][0-9]{3}|65[0-4][0-9]{2}|655[0-2][0-9]|6553[0-5]))?(/([A-Za-z0-9._~!$&()*+,;=:@/-]|%[0-9A-Fa-f]{2})*)?(\?([A-Za-z0-9._~!$&()*+,;=:@/?-]|%[0-9A-Fa-f]{2})*)?(#([A-Za-z0-9._~!$&()*+,;=:@/?-]|%[0-9A-Fa-f]{2})*)?$
+    Ruleset:
+      type: object
+      description: 'The customer-safe identity of one immutable ruleset: everything needed to select it and to reproduce a validation that named it. Internal storage, review records and operator identities are not part of this contract.'
+      additionalProperties: false
+      required:
+      - schema
+      - id
+      - state
+      - latest
+      - profile_family
+      - document_type
+      - syntax
+      - official_release
+      - en16931_release
+      - bis_release
+      - vesid
+      - engine
+      - valid_from
+      - valid_until
+      - sources
+      - artifacts
+      properties:
+        runtime:
+          $ref: '#/components/schemas/RulesetRuntime'
+        schema:
+          type: string
+          const: financewolf/einvoice/ruleset/v1
+        id:
+          $ref: '#/components/schemas/RulesetID'
+        state:
+          $ref: '#/components/schemas/RulesetState'
+        latest:
+          type: boolean
+          description: 'True on the one `sendable` release `ruleset: latest` currently resolves to for this profile family and document type.'
+        profile_family:
+          $ref: '#/components/schemas/ProfileFamily'
+        document_type:
+          $ref: '#/components/schemas/DocumentType'
+        syntax:
+          type: string
+          enum:
+          - UBL 2.1
+        official_release:
+          type: string
+          description: The standards body's release name.
+          minLength: 1
+          maxLength: 128
+        en16931_release:
+          type: string
+          minLength: 1
+          maxLength: 32
+        bis_release:
+          type: string
+          minLength: 1
+          maxLength: 32
+        vesid:
+          type: string
+          minLength: 1
+          maxLength: 128
+        engine:
+          $ref: '#/components/schemas/EngineInfo'
+        valid_from:
+          $ref: '#/components/schemas/Timestamp'
+          description: When the official release takes effect. Part of the release's identity; never changes.
+        valid_until:
+          description: The official end of validity, or null when open-ended. Never changes.
+          oneOf:
+          - $ref: '#/components/schemas/Timestamp'
+          - type: 'null'
+        published_on:
+          description: The standards body's publication date, when known.
+          oneOf:
+          - type: string
+            format: date
+          - type: 'null'
+        retired_at:
+          description: When Ironfang stopped sending against this release. Distinct from the official window.
+          oneOf:
+          - $ref: '#/components/schemas/Timestamp'
+          - type: 'null'
+        replaced_by:
+          description: The release that superseded this one, when retired.
+          oneOf:
+          - $ref: '#/components/schemas/RulesetID'
+          - type: 'null'
+        sources:
+          type: array
+          description: Official sources for the release. Never empty.
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/HTTPSURL'
+        artifacts:
+          type: array
+          description: Exactly one checksummed rule artefact per layer - xsd, en16931 and peppol.
+          minItems: 3
+          maxItems: 3
+          items:
+            $ref: '#/components/schemas/RulesetArtifact'
+          allOf:
+          - contains:
+              properties:
+                layer:
+                  const: xsd
+          - contains:
+              properties:
+                layer:
+                  const: en16931
+          - contains:
+              properties:
+                layer:
+                  const: peppol
+      allOf:
+      - if:
+          properties:
+            latest:
+              const: true
+        then:
+          properties:
+            state:
+              const: sendable
+      - if:
+          properties:
+            state:
+              const: historical
+        then:
+          required:
+          - retired_at
+          properties:
+            retired_at:
+              $ref: '#/components/schemas/Timestamp'
+    OpaqueID:
+      type: string
+      description: An opaque Ironfang identifier.
+      minLength: 1
+      maxLength: 64
+      pattern: ^[A-Za-z0-9_-]+$
+    RulesetID:
+      type: string
+      description: An immutable ruleset identifier. Never reused, never edited.
+      pattern: ^fwrs_[a-z0-9_]{1,80}$
+    Timestamp:
+      type: string
+      format: date-time
+      description: RFC 3339, UTC.
+    RulesetState:
+      type: string
+      description: Public lifecycle state of a release that may be validated against. `sendable` is current and is what `latest` resolves to; `scheduled` is the next release, not yet in force, validatable for migration testing; `historical` has been superseded but stays validatable for reproduction. Withdrawn (`disabled`) releases answer `410` and never appear in a body; candidate releases are internal and never appear.
+      enum:
+      - scheduled
+      - sendable
+      - historical
+    ImageDigest:
+      type: string
+      description: The pinned validator engine image, as a sha256 digest.
+      pattern: ^sha256:[0-9a-f]{64}$
+    LicenceStatus:
+      type: string
+      description: 'Ironfang''s licence review of a rule artefact: `permissive`, `notice-required` (attribution travels with derived output), or `no-raw-redistribution` (Ironfang Finance executes it; raw files are not served).'
+      enum:
+      - permissive
+      - notice-required
+      - no-raw-redistribution
+    RulesetArtifact:
+      type: object
+      description: One rule artefact's checksum and provenance. Where the files live is not part of the contract.
+      additionalProperties: false
+      required:
+      - layer
+      - sha256
+      - licence
+      - licence_status
+      - source_url
+      properties:
+        layer:
+          type: string
+          enum:
+          - xsd
+          - en16931
+          - peppol
+        sha256:
+          $ref: '#/components/schemas/SHA256'
+        licence:
+          type: string
+          description: The artefact's own licence, as an SPDX identifier or `NOASSERTION`.
+          minLength: 1
+          maxLength: 64
+        licence_status:
+          $ref: '#/components/schemas/LicenceStatus'
+        source_url:
+          $ref: '#/components/schemas/HTTPSURL'
+    Problem:
+      type: object
+      description: An RFC 9457 problem. `code` is the stable, machine-readable Ironfang identifier; `type` is its URL and `status` its one HTTP status, both fixed per code below. `detail` is safe to show and never carries parser output, invoice content or stack traces. Validation findings are never Problems.
+      additionalProperties: false
+      required:
+      - type
+      - title
+      - status
+      - detail
+      - code
+      - request_id
+      properties:
+        type:
+          type: string
+          format: uri
+          pattern: ^https://ironfang\.com/problems/[a-z_]+$
+        title:
+          type: string
+          minLength: 1
+          maxLength: 128
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+          minLength: 1
+          maxLength: 512
+        instance:
+          type: string
+          format: uri-reference
+          maxLength: 256
+        code:
+          type: string
+          description: The stable Ironfang problem code.
+          enum:
+          - malformed_request
+          - unauthenticated
+          - insufficient_scope
+          - idempotency_conflict
+          - payload_too_large
+          - unsupported_content_type
+          - unknown_ruleset
+          - ruleset_disabled
+          - result_gone
+          - unsupported_profile
+          - profile_undetected
+          - unsupported_document_type
+          - not_found
+          - rate_limited
+          - quota_exhausted
+          - billing_moved
+          - free_allowance_exhausted
+          - account_budget_exhausted
+          - product_budget_exhausted
+          - exemption_limit_reached
+          - paid_usage_paused
+          - payment_required
+          - payment_action_required
+          - account_restricted
+          - account_closed
+          - product_not_eligible
+          - billing_temporarily_unavailable
+          - validation_timeout
+          - validator_unavailable
+          - jobs_unavailable
+          - delivery_unavailable
+          - generation_failed
+          - report_unavailable
+          - report_incomplete
+          - render_unavailable
+          - render_timeout
+          - internal_error
+        request_id:
+          $ref: '#/components/schemas/RequestID'
+        errors:
+          type: array
+          description: Field-level errors, on `malformed_request` only. Bounded; empty is omitted.
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/FieldError'
+        operation_id:
+          $ref: '#/components/schemas/OpaqueID'
+          description: On an indeterminate validation problem only, the operation record that was opened, if any.
+        outcome:
+          type: string
+          const: indeterminate
+        usage_charged:
+          type: boolean
+          const: false
+        retry_after_seconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          description: Only on problems that invite a retry (`rate_limited`, `quota_exhausted`, `validator_unavailable`, `billing_temporarily_unavailable`).
+        billing:
+          $ref: '#/components/schemas/BillingRefusal'
+      allOf:
+      - if:
+          properties:
+            code:
+              const: malformed_request
+        then:
+          properties:
+            status:
+              const: 400
+            type:
+              const: https://ironfang.com/problems/malformed_request
+      - if:
+          properties:
+            code:
+              const: unauthenticated
+        then:
+          properties:
+            status:
+              const: 401
+            type:
+              const: https://ironfang.com/problems/unauthenticated
+      - if:
+          properties:
+            code:
+              const: insufficient_scope
+        then:
+          properties:
+            status:
+              const: 403
+            type:
+              const: https://ironfang.com/problems/insufficient_scope
+      - if:
+          properties:
+            code:
+              const: not_found
+        then:
+          properties:
+            status:
+              const: 404
+            type:
+              const: https://ironfang.com/problems/not_found
+      - if:
+          properties:
+            code:
+              const: idempotency_conflict
+        then:
+          properties:
+            status:
+              const: 409
+            type:
+              const: https://ironfang.com/problems/idempotency_conflict
+      - if:
+          properties:
+            code:
+              const: result_gone
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/result_gone
+      - if:
+          properties:
+            code:
+              const: ruleset_disabled
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/ruleset_disabled
+      - if:
+          properties:
+            code:
+              const: payload_too_large
+        then:
+          properties:
+            status:
+              const: 413
+            type:
+              const: https://ironfang.com/problems/payload_too_large
+      - if:
+          properties:
+            code:
+              const: unsupported_content_type
+        then:
+          properties:
+            status:
+              const: 415
+            type:
+              const: https://ironfang.com/problems/unsupported_content_type
+      - if:
+          properties:
+            code:
+              const: unknown_ruleset
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/unknown_ruleset
+      - if:
+          properties:
+            code:
+              const: unsupported_profile
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/unsupported_profile
+      - if:
+          properties:
+            code:
+              const: profile_undetected
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/profile_undetected
+      - if:
+          properties:
+            code:
+              const: unsupported_document_type
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/unsupported_document_type
+      - if:
+          properties:
+            code:
+              const: rate_limited
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/rate_limited
+      - if:
+          properties:
+            code:
+              const: billing_moved
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/billing_moved
+      - if:
+          properties:
+            code:
+              const: free_allowance_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/free_allowance_exhausted
+      - if:
+          properties:
+            code:
+              const: account_budget_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/account_budget_exhausted
+      - if:
+          properties:
+            code:
+              const: product_budget_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/product_budget_exhausted
+      - if:
+          properties:
+            code:
+              const: exemption_limit_reached
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/exemption_limit_reached
+      - if:
+          properties:
+            code:
+              const: paid_usage_paused
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/paid_usage_paused
+      - if:
+          properties:
+            code:
+              const: payment_required
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/payment_required
+      - if:
+          properties:
+            code:
+              const: payment_action_required
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/payment_action_required
+      - if:
+          properties:
+            code:
+              const: account_restricted
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/account_restricted
+      - if:
+          properties:
+            code:
+              const: account_closed
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/account_closed
+      - if:
+          properties:
+            code:
+              const: product_not_eligible
+        then:
+          properties:
+            status:
+              const: 403
+            type:
+              const: https://ironfang.com/problems/product_not_eligible
+      - if:
+          properties:
+            code:
+              const: billing_temporarily_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/billing_temporarily_unavailable
+      - if:
+          properties:
+            code:
+              const: quota_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/quota_exhausted
+      - if:
+          properties:
+            code:
+              const: report_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/report_unavailable
+      - if:
+          properties:
+            code:
+              const: report_incomplete
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/report_incomplete
+      - if:
+          properties:
+            code:
+              const: render_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/render_unavailable
+      - if:
+          properties:
+            code:
+              const: render_timeout
+        then:
+          properties:
+            status:
+              const: 504
+            type:
+              const: https://ironfang.com/problems/render_timeout
+      - if:
+          properties:
+            code:
+              const: generation_failed
+        then:
+          required:
+          - outcome
+          - usage_charged
+          properties:
+            status:
+              const: 500
+            type:
+              const: https://ironfang.com/problems/generation_failed
+      - if:
+          properties:
+            code:
+              const: internal_error
+        then:
+          properties:
+            status:
+              const: 500
+            type:
+              const: https://ironfang.com/problems/internal_error
+      - if:
+          properties:
+            code:
+              const: delivery_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/delivery_unavailable
+      - if:
+          properties:
+            code:
+              const: jobs_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/jobs_unavailable
+      - if:
+          properties:
+            code:
+              const: validator_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/validator_unavailable
+      - if:
+          properties:
+            code:
+              const: validation_timeout
+        then:
+          properties:
+            status:
+              const: 504
+            type:
+              const: https://ironfang.com/problems/validation_timeout
+      - if:
+          properties:
+            code:
+              enum:
+              - validation_timeout
+              - validator_unavailable
+        then:
+          required:
+          - outcome
+          - usage_charged
+      - if:
+          not:
+            properties:
+              code:
+                enum:
+                - validation_timeout
+                - validator_unavailable
+                - internal_error
+                - generation_failed
+        then:
+          not:
+            anyOf:
+            - required:
+              - outcome
+            - required:
+              - usage_charged
+            - required:
+              - operation_id
+      - if:
+          anyOf:
+          - required:
+            - outcome
+          - required:
+            - usage_charged
+          - required:
+            - operation_id
+        then:
+          required:
+          - outcome
+          - usage_charged
+      - if:
+          required:
+          - errors
+        then:
+          properties:
+            code:
+              const: malformed_request
+      - if:
+          required:
+          - retry_after_seconds
+        then:
+          properties:
+            code:
+              enum:
+              - rate_limited
+              - quota_exhausted
+              - validator_unavailable
+              - jobs_unavailable
+              - delivery_unavailable
+              - billing_temporarily_unavailable
+      - if:
+          required:
+          - billing
+        then:
+          properties:
+            code:
+              enum:
+              - free_allowance_exhausted
+              - account_budget_exhausted
+              - product_budget_exhausted
+              - exemption_limit_reached
+              - paid_usage_paused
+              - payment_required
+              - payment_action_required
+              - account_restricted
+              - account_closed
+              - product_not_eligible
+              - billing_temporarily_unavailable
+    FieldError:
+      type: object
+      additionalProperties: false
+      required:
+      - field
+      - code
+      - message
+      properties:
+        field:
+          type: string
+          description: The option or parameter at fault, e.g. `ruleset`, `options.document_type`.
+          minLength: 1
+          maxLength: 128
+        code:
+          type: string
+          enum:
+          - required
+          - invalid_value
+          - unknown_field
+          - too_long
+        message:
+          type: string
+          minLength: 1
+          maxLength: 256
+    SHA256:
+      type: string
+      description: Lowercase hex SHA-256.
+      pattern: ^[0-9a-f]{64}$
+    DocumentType:
+      type: string
+      enum:
+      - invoice
+      - credit_note
+  headers:
+    XIronfangRequestID:
+      description: Ironfang's internal request id, minted at the edge for every request and carried in every Problem body as `request_id`. Quote it in support requests.
+      schema:
+        $ref: '#/components/schemas/RequestID'
+    XRequestIDEcho:
+      description: 'Your own correlation id, echoed back when the request carried a well-formed `X-Request-ID`: visible ASCII only (bytes 0x21 to 0x7E, so no spaces or control characters), 1 to 128 bytes. Anything else is ignored, not echoed. Never used as Ironfang''s identifier for the request.'
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: ^[\x21-\x7E]{1,128}$
+    RetryAfter:
+      description: Seconds to wait before retrying. Mirrors `retry_after_seconds` in the body.
+      schema:
+        type: integer
+        minimum: 1
+  responses:
+    RulesetDisabled:
+      description: The ruleset id is known but the release has been withdrawn from every use, validation included.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - ruleset_disabled
+                status:
+                  const: 410
+    NotFound:
+      description: No such ruleset visible to this caller (unknown, an internal candidate, or the keyword `latest`).
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - not_found
+                status:
+                  const: 404
+    MalformedRequest:
+      description: The request itself is wrong - not the document being validated.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - malformed_request
+                status:
+                  const: 400
+          examples:
+            field-errors:
+              summary: Bad option values
+              externalValue: https://api.ironfang.com/finance/examples/v1-problem-field-errors.json
+    ReadRateLimited:
+      description: Per-address or per-key rate limit. Ruleset reads are not metered, so no quota problem is possible here.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - rate_limited
+                status:
+                  const: 429
+    ReadInternalError:
+      description: 'Ironfang Finance failed while reading the registry. Not a validation verdict: the body carries no outcome or usage fields.'
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - internal_error
+                status:
+                  const: 500
+              not:
+                anyOf:
+                - required:
+                  - outcome
+                - required:
+                  - usage_charged
+                - required:
+                  - operation_id
+    InsufficientScope:
+      description: The key is valid but does not carry the scope this operation needs.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - insufficient_scope
+                status:
+                  const: 403
+    Unauthenticated:
+      description: A credential was presented and could not be verified. Anonymous access, where permitted, sends no credential at all.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - unauthenticated
+                status:
+                  const: 401
+  securitySchemes:
+    platformKey:
+      type: http
+      scheme: bearer
+      description: An Ironfang platform API key minted in the portal. Scopes listed on an operation are the ones the key must carry. Keys are the only credential this boundary accepts in V1.
+externalDocs:
+  description: Ironfang Finance documentation
+  url: https://ironfang.com/docs/finance

@@ -1,0 +1,712 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Analytics Recordings API
+  version: 0.1.0
+  summary: Sites, origins, public keys and capture settings for session replay and web analytics.
+  description: 'Ironfang Analytics follows each visit to your website as a session:
+
+    the pages a visitor saw, in every tab, with how long they stayed, the
+
+    errors and failed requests they met, the events your pages tracked, and
+
+    the recordings that let you replay it, live or afterwards.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/analytics
+security:
+- apiKey: []
+- bearerAuth: []
+tags:
+- name: Recordings
+  description: 'Recordings of one tab within a session: search, what the visitor''s browser reported, the batches to play them back from, live viewing and deletion. Every recording keeps the visitor''s IP address and full user agent until it expires or is deleted; its session then keeps a note that it was there.'
+paths:
+  /v1/recordings:
+    get:
+      tags:
+      - Recordings
+      operationId: listRecordings
+      summary: Search recordings
+      description: Returns the organisation's unexpired recordings across its sites, newest first, as a bounded keyset page. Every filter is optional and they combine. Needs analytics.sessions.read.
+      parameters:
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      - name: site_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: from
+        in: query
+        required: false
+        description: Created at or after this time.
+        schema:
+          type: string
+          format: date-time
+      - name: to
+        in: query
+        required: false
+        description: Created before this time.
+        schema:
+          type: string
+          format: date-time
+      - name: state
+        in: query
+        required: false
+        description: One state, or several separated by commas.
+        schema:
+          type: string
+          example: ready,partial
+      - name: country
+        in: query
+        required: false
+        description: Two-letter country code, upper case.
+        schema:
+          type: string
+          pattern: ^[A-Z]{2}$
+      - name: device
+        in: query
+        required: false
+        schema:
+          type: string
+          example: mobile
+      - name: browser
+        in: query
+        required: false
+        schema:
+          type: string
+          example: chrome
+      - name: os
+        in: query
+        required: false
+        schema:
+          type: string
+          example: windows
+      - name: ip
+        in: query
+        required: false
+        description: One address, or a network in CIDR notation.
+        schema:
+          type: string
+          example: 203.0.113.0/24
+      - name: entry_path
+        in: query
+        required: false
+        description: Entry paths starting with this.
+        schema:
+          type: string
+          example: /apply
+      - name: visited_path
+        in: query
+        required: false
+        description: Recordings that showed this page at any point, by its path without a query string or fragment. Pages are indexed when a recording is processed for heatmaps, shortly after it ends; until then it does not match.
+        schema:
+          type: string
+          example: /pricing
+      - name: visitor_id
+        in: query
+        required: false
+        description: One browser's recordings, by the visitor id on any of them.
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: A page of recordings
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - recordings
+                - next_cursor
+                properties:
+                  recordings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RecordingRow'
+                  next_cursor:
+                    type: string
+                    description: Opaque cursor for the next page; empty on the last page.
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/recordings/{recordingId}:
+    parameters:
+    - $ref: '#/components/parameters/RecordingId'
+    get:
+      tags:
+      - Recordings
+      operationId: getRecording
+      summary: Get a recording
+      description: One recording with everything kept about it and its epochs. Needs analytics.sessions.read.
+      responses:
+        '200':
+          description: The recording
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RecordingDetail'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+      - Recordings
+      operationId: deleteRecording
+      summary: Delete a recording
+      description: Deletes the recording's stored batches, then the recording with its IP address, user agent and every other detail. A recording deleted before it ended is not counted; one already counted stays counted. Needs analytics.sessions.delete.
+      responses:
+        '204':
+          description: Recording deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: This deployment cannot delete recordings yet (`deletion_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/recordings/{recordingId}/playback:
+    parameters:
+    - $ref: '#/components/parameters/RecordingId'
+    get:
+      tags:
+      - Recordings
+      operationId: getPlayback
+      summary: List a recording's playable batches
+      description: 'The committed batches that can be played, in order: in each epoch, those before its first gap. Fetch each from the chunk endpoint. A live viewer passes `after`, the last batch it has, and gets only the batches since. Needs analytics.sessions.read.'
+      parameters:
+      - name: after
+        in: query
+        required: false
+        description: Only batches after this one, as `<epoch>:<sequence>`.
+        schema:
+          type: string
+          pattern: ^[0-9]+:[0-9]+$
+          example: 0:12
+      responses:
+        '200':
+          description: The batches
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - chunks
+                properties:
+                  chunks:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlaybackChunk'
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/recordings/{recordingId}/watch:
+    parameters:
+    - $ref: '#/components/parameters/RecordingId'
+    post:
+      tags:
+      - Recordings
+      operationId: watchRecording
+      summary: Take or renew the live-view lease
+      description: 'Marks an open recording as watched for 30 seconds from now; renew it while the recording is on screen. While the lease holds, the collector tells the visitor''s recorder to upload every second instead of every ten, so new batches reach `playback` within a few seconds. That is all it changes: the visitor''s page shows nothing and behaves no differently. Needs analytics.sessions.read.'
+      responses:
+        '200':
+          description: The lease
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - watched_until
+                properties:
+                  watched_until:
+                    type: string
+                    format: date-time
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: The recording has ended (`recording_ended`); replay it instead.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/recordings/{recordingId}/chunks/{epoch}/{sequence}:
+    parameters:
+    - $ref: '#/components/parameters/RecordingId'
+    - name: epoch
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+    - name: sequence
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+    get:
+      tags:
+      - Recordings
+      operationId: getChunk
+      summary: Get one batch of events
+      description: 'The batch''s rrweb events as a JSON array, masked in the browser before they were sent. A gzip batch is served with Content-Encoding: gzip. The bytes are checked against the hash recorded when the batch was accepted. Needs analytics.sessions.read.'
+      responses:
+        '200':
+          description: The events
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '503':
+          description: This deployment cannot play recordings yet (`playback_unavailable`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: The next_cursor of the previous page.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    RecordingId:
+      name: recordingId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    NotFound:
+      description: No such object in this organisation (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The credential lacks the permission or scope, names another organisation, or belongs to a partner integration that is not active (`forbidden`, `insufficient_scope`, `integration_inactive`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No credential, an invalid one, an expired partner integration key, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `api_key_expired`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidQuery:
+      description: An unknown, repeated or malformed query parameter (`invalid_query`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    PlaybackChunk:
+      type: object
+      required:
+      - epoch_index
+      - sequence
+      - encoding
+      - compressed_bytes
+      - expanded_bytes
+      - event_count
+      - contains_full_snapshot
+      - monotonic_start_ms
+      - monotonic_end_ms
+      - client_wall_time
+      properties:
+        epoch_index:
+          type: integer
+        sequence:
+          type: integer
+        encoding:
+          type: string
+          enum:
+          - gzip
+          - identity
+        compressed_bytes:
+          type: integer
+        expanded_bytes:
+          type: integer
+        event_count:
+          type: integer
+        contains_full_snapshot:
+          type: boolean
+        monotonic_start_ms:
+          type: number
+        monotonic_end_ms:
+          type: number
+        client_wall_time:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: The browser's clock; for display only.
+    Epoch:
+      type: object
+      required:
+      - id
+      - index
+      - contiguous_through
+      - max_sequence
+      - has_checkpoint
+      - bytes
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        index:
+          type: integer
+          description: A page load or a restart from a fresh checkpoint.
+        contiguous_through:
+          type: integer
+          description: The highest sequence before the first gap; -1 when none.
+        max_sequence:
+          type: integer
+        has_checkpoint:
+          type: boolean
+        bytes:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+    RecordingDetail:
+      allOf:
+      - $ref: '#/components/schemas/RecordingRow'
+      - type: object
+        required:
+        - config_version
+        - sdk_version
+        - rrweb_version
+        - ip_source
+        - user_agent
+        - viewport
+        - screen
+        - pixel_ratio
+        - language
+        - timezone
+        - referrer
+        - epochs
+        properties:
+          config_version:
+            type: integer
+            description: The site configuration the recording was made under.
+          sdk_version:
+            type:
+            - string
+            - 'null'
+          rrweb_version:
+            type:
+            - string
+            - 'null'
+          ip_source:
+            type:
+            - string
+            - 'null'
+            enum:
+            - cloudflare
+            - edge
+            - peer
+            - null
+            description: cloudflare is the visitor's address as Cloudflare reported it; edge and peer are whoever connected, which is the visitor only when nothing sat in between.
+          user_agent:
+            type:
+            - string
+            - 'null'
+            description: The full User-Agent header, at most 512 characters.
+          viewport:
+            oneOf:
+            - $ref: '#/components/schemas/Size'
+            - type: 'null'
+          screen:
+            oneOf:
+            - $ref: '#/components/schemas/Size'
+            - type: 'null'
+          pixel_ratio:
+            type:
+            - number
+            - 'null'
+          language:
+            type:
+            - string
+            - 'null'
+          timezone:
+            type:
+            - string
+            - 'null'
+            description: IANA time zone the browser reported.
+          referrer:
+            type:
+            - string
+            - 'null'
+            description: Origin and path only; the query and fragment are never kept.
+          epochs:
+            type: array
+            items:
+              $ref: '#/components/schemas/Epoch'
+    Size:
+      type: object
+      required:
+      - width
+      - height
+      properties:
+        width:
+          type: integer
+        height:
+          type: integer
+    RecordingRow:
+      type: object
+      required:
+      - id
+      - site_id
+      - site_name
+      - state
+      - end_reason
+      - playable
+      - origin
+      - entry_path
+      - browser
+      - os
+      - device
+      - country
+      - ip
+      - bytes
+      - chunks
+      - events
+      - duration_ms
+      - created_at
+      - first_received_at
+      - last_received_at
+      - ended_at
+      - expires_at
+      - last_seen_at
+      - live
+      - visitor_id
+      - session_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+          format: uuid
+        site_name:
+          type: string
+        session_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: The session the recording belongs to. Null only for a recording made before sessions that has not been placed in one yet.
+        state:
+          type: string
+          enum:
+          - pending
+          - recording
+          - ready
+          - partial
+          - unplayable
+        end_reason:
+          type:
+          - string
+          - 'null'
+          enum:
+          - finished
+          - idle_timeout
+          - duration_cap
+          - byte_cap
+          - site_disabled
+          - null
+        playable:
+          type: boolean
+          description: True once some epoch holds a checkpoint at its start.
+        origin:
+          type: string
+        entry_path:
+          type:
+          - string
+          - 'null'
+        browser:
+          type:
+          - string
+          - 'null'
+          description: Coarse class from the user agent.
+        os:
+          type:
+          - string
+          - 'null'
+        device:
+          type:
+          - string
+          - 'null'
+          enum:
+          - desktop
+          - mobile
+          - tablet
+          - null
+        country:
+          type:
+          - string
+          - 'null'
+          description: From Cloudflare, when the request came through it.
+        ip:
+          type:
+          - string
+          - 'null'
+          description: The visitor's IP address.
+        bytes:
+          type: integer
+          description: Compressed bytes stored.
+        chunks:
+          type: integer
+        events:
+          type: integer
+        duration_ms:
+          type: integer
+          description: 'The recorded activity, in milliseconds: in each page load, from its first batch''s start to its last batch''s end by the browser''s monotonic clock, summed.'
+        created_at:
+          type: string
+          format: date-time
+        first_received_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_received_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+          description: The last batch or heartbeat. An open page sends a heartbeat every 30 seconds.
+        live:
+          type: boolean
+          description: 'Still open and heard from in the last 90 seconds: someone is on the page. Open but quiet means the visitor has most likely gone; the recording closes after 30 minutes without a word, because leaving a page cannot be told apart from moving to the next one.'
+        visitor_id:
+          type:
+          - string
+          - 'null'
+          format: uuid
+          description: 'The browser that made the recording: a random id the recorder (SDK 0.3.0 and later) keeps in the site''s localStorage. The same id on two recordings is the same browser, unless its storage was cleared in between. Null for recordings from older recorders.'
+        ended_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          - docs
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable code.
+            message:
+              type: string
+              description: Human-readable explanation; do not parse.
+            docs:
+              type: string
+              format: uri
+        request_id:
+          type: string
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal. Its scopes are its
+
+        permissions - `analytics:sites:read`, `analytics:sites:write` and the
+
+        other `analytics:` scopes, or `analytics:*` - and it acts only in the
+
+        organisation it was minted for. Keys without the scope a route needs
+
+        are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden,
+
+        which each operation names: sites need `analytics.sites.read` to read
+
+        and `analytics.sites.write` to change; sessions, recordings and
+
+        heatmaps need `analytics.sessions.read`, and deleting a session or a
+
+        recording `analytics.sessions.delete`. A missing permission is 403; a
+
+        permission lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Analytics documentation
+  url: https://ironfang.com/analytics/docs

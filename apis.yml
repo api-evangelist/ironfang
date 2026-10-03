@@ -6,7 +6,10 @@ description: Ironfang Render is the rendering API from Ironfang Ltd, a UK softwa
   33 operations across synchronous rendering, reusable HTML templates, signed render URLs, durable asynchronous jobs, batches of up to 100, and
   webhook or S3-compatible delivery destinations. A remote MCP server at mcp.ironfang.com exposes the same core to AI assistants over OAuth 2.1
   with a per-connection credit budget, and an llms.txt, a TypeScript and Python SDK, a CLI and an n8n node round out the surface. Plans are hard-capped
-  rather than metered into overage, cache hits are free, and failed renders are refunded.
+  rather than metered into overage, cache hits are free, and failed renders are refunded. Ironfang's own apis.json lists five more product APIs
+  on the same account, portal and key format, each with its own published OpenAPI 3.1 contract under api.ironfang.com, for Audit (website evidence),
+  Finance (e-invoice validation and generation, v1 and v2), Rig (disposable integration test environments), Analytics (session replay) and
+  Security (external security checks).
 
 url: https://raw.githubusercontent.com/api-evangelist/ironfang/refs/heads/main/apis.yml
 
@@ -342,6 +345,1467 @@ apis:
     url: json-schema/ironfang-render-template-request-schema.json
   - type: JSONSchema
     url: json-schema/ironfang-template-input-schema.json
+- aid: ironfang:ironfang-audit-artifacts-api
+  name: Ironfang Audit Artifacts API
+  description: Stored screenshots and other captured artifacts.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Artifacts
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-artifacts-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-audits-api
+  name: Ironfang Audit Audits API
+  description: Audit runs, their pages and evidence.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Audits
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-audits-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-events-api
+  name: Ironfang Audit Events API
+  description: The account event stream.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Events
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-events-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-exportdestinations-api
+  name: Ironfang Audit Export Destinations API
+  description: Where exports are delivered.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - ExportDestinations
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-exportdestinations-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-exports-api
+  name: Ironfang Audit Exports API
+  description: Evidence bundle exports.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Exports
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-exports-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-findings-api
+  name: Ironfang Audit Findings API
+  description: Findings raised by audits.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Findings
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-findings-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-monitors-api
+  name: Ironfang Audit Monitors API
+  description: Scheduled re-audits of a site.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Monitors
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-monitors-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-notificationpreferences-api
+  name: Ironfang Audit Notification Preferences API
+  description: How the organisation is notified.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - NotificationPreferences
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-notificationpreferences-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-notifications-api
+  name: Ironfang Audit Notifications API
+  description: Notifications raised for the organisation.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Notifications
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-notifications-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-pageobservations-api
+  name: Ironfang Audit Page Observations API
+  description: Per-page observations and comparisons.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - PageObservations
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-pageobservations-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-pages-api
+  name: Ironfang Audit Pages API
+  description: Pages within an audit.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Pages
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-pages-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-retention-api
+  name: Ironfang Audit Retention API
+  description: Quoted, fixed-price extensions of hosted evidence retention.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Retention
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-retention-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-rulepacks-api
+  name: Ironfang Audit Rule Packs API
+  description: Installable rule packs.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - RulePacks
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-rulepacks-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-rules-api
+  name: Ironfang Audit Rules API
+  description: Rules and their revisions.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Rules
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-rules-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-sites-api
+  name: Ironfang Audit Sites API
+  description: Sites under audit.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Sites
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-sites-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-usage-api
+  name: Ironfang Audit Usage API
+  description: This month's metered use, capacity and hosted evidence.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Usage
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-usage-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-verify-api
+  name: Ironfang Audit Verify API
+  description: Public verification of evidence bundles.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Verify
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-verify-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-audit-webhooks-api
+  name: Ironfang Audit Webhooks API
+  description: Webhook endpoints and deliveries.
+  humanURL: https://ironfang.com/audit/docs
+  baseURL: https://api.ironfang.com/audit
+  tags:
+  - Webhooks
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-audit-webhooks-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/audit/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/audit/docs
+  - type: Authentication
+    url: 'https://ironfang.com/audit/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/audit/docs#usage-api'
+  - type: ChangeLog
+    url: https://ironfang.com/audit/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/audit/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/audit/postman.collection.json
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#audit'
+- aid: ironfang:ironfang-finance-billing-api
+  name: Ironfang Finance E-Invoicing Billing API
+  description: Ironfang Finance usage as the organisation's billing account meters it, beside Finance's own content-free record. Payment, limits and invoices belong to the account at /billing/v1.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - Billing
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-billing-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-deliveries-api
+  name: Ironfang Finance E-Invoicing Deliveries API
+  description: Destinations subscribe to future terminal validation/generation operations in their organisation.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - Deliveries
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-deliveries-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-generation-api
+  name: Ironfang Finance E-Invoicing Generation API
+  description: Deterministic JSON-to-UBL generation, validated before success.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - generation
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-generation-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-jobs-api
+  name: Ironfang Finance E-Invoicing Jobs API
+  description: Authenticated durable validation and generation jobs and ordered batches.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - Jobs
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-jobs-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-rendering-api
+  name: Ironfang Finance E-Invoicing Rendering API
+  description: Safe readable PDFs of retained successfully validated generation results.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - Rendering
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-rendering-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-reports-api
+  name: Ironfang Finance E-Invoicing Reports API
+  description: Signed validation observations and independent report integrity verification.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - Reports
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-reports-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-results-api
+  name: Ironfang Finance E-Invoicing Results API
+  description: Authenticated retained validation and generation results.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - Results
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-results-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-rulesets-api
+  name: Ironfang Finance E-Invoicing Rulesets API
+  description: The immutable ruleset registry validation results are pinned to.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - rulesets
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-rulesets-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-validation-api
+  name: Ironfang Finance E-Invoicing Validation API
+  description: PHIVE validation of UBL Invoice and CreditNote XML with structured findings.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - Validation
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-validation-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-v2-deliveries-api
+  name: Ironfang Finance E-Invoicing V2 Deliveries API
+  description: Webhook and S3 deliveries of V1 and V2 events together.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - Deliveries
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-v2-deliveries-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/v2/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman-v2.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-v2-jobs-api
+  name: Ironfang Finance E-Invoicing V2 Jobs API
+  description: Durable validation jobs and batches, V1 and V2 together.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - Jobs
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-v2-jobs-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/v2/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman-v2.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-v2-reports-api
+  name: Ironfang Finance E-Invoicing V2 Reports API
+  description: Signed reports of retained results, and their verification.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - Reports
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-v2-reports-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/v2/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman-v2.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-v2-results-api
+  name: Ironfang Finance E-Invoicing V2 Results API
+  description: Retained results, V1 and V2 together.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - Results
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-v2-results-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/v2/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman-v2.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-v2-rulesets-api
+  name: Ironfang Finance E-Invoicing V2 Rulesets API
+  description: The immutable releases a validation can name.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - rulesets
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-v2-rulesets-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/v2/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman-v2.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-finance-v2-validation-api
+  name: Ironfang Finance E-Invoicing V2 Validation API
+  description: Validate one invoice, XML or PDF.
+  humanURL: https://ironfang.com/docs/finance
+  baseURL: https://api.ironfang.com/finance
+  tags:
+  - Validation
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-finance-v2-validation-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/finance/v2/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/docs/finance
+  - type: Authentication
+    url: 'https://ironfang.com/docs/finance#api'
+  - type: RateLimits
+    url: 'https://ironfang.com/docs/finance#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/finance/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/finance/.well-known/api-onboarding
+  - type: PostmanCollection
+    url: https://ironfang.com/finance/postman-v2.collection.json
+  - type: ErrorCatalog
+    url: https://ironfang.com/problems
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#finance'
+- aid: ironfang:ironfang-rig-connectors-api
+  name: Ironfang Rig Connectors API
+  description: Outbound connectors that forward a run's callbacks to fixed local routes.
+  humanURL: https://ironfang.com/rig/docs
+  baseURL: https://api.ironfang.com/rig
+  tags:
+  - Connectors
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-rig-connectors-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/rig/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/rig/docs
+  - type: Authentication
+    url: 'https://ironfang.com/rig/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/rig/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/rig/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/rig/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#rig'
+- aid: ironfang:ironfang-rig-events-api
+  name: Ironfang Rig Events API
+  description: The run timeline.
+  humanURL: https://ironfang.com/rig/docs
+  baseURL: https://api.ironfang.com/rig
+  tags:
+  - Events
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-rig-events-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/rig/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/rig/docs
+  - type: Authentication
+    url: 'https://ironfang.com/rig/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/rig/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/rig/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/rig/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#rig'
+- aid: ironfang:ironfang-rig-evidence-api
+  name: Ironfang Rig Evidence API
+  description: Bundles, receipts and the keys they are signed with.
+  humanURL: https://ironfang.com/rig/docs
+  baseURL: https://api.ironfang.com/rig
+  tags:
+  - Evidence
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-rig-evidence-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/rig/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/rig/docs
+  - type: Authentication
+    url: 'https://ironfang.com/rig/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/rig/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/rig/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/rig/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#rig'
+- aid: ironfang:ironfang-rig-faults-api
+  name: Ironfang Rig Faults API
+  description: Deterministic interference armed on a run's resources.
+  humanURL: https://ironfang.com/rig/docs
+  baseURL: https://api.ironfang.com/rig
+  tags:
+  - Faults
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-rig-faults-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/rig/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/rig/docs
+  - type: Authentication
+    url: 'https://ironfang.com/rig/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/rig/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/rig/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/rig/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#rig'
+- aid: ironfang:ironfang-rig-projects-api
+  name: Ironfang Rig Projects API
+  description: Persistent containers for one application or product.
+  humanURL: https://ironfang.com/rig/docs
+  baseURL: https://api.ironfang.com/rig
+  tags:
+  - Projects
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-rig-projects-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/rig/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/rig/docs
+  - type: Authentication
+    url: 'https://ironfang.com/rig/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/rig/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/rig/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/rig/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#rig'
+- aid: ironfang:ironfang-rig-resources-api
+  name: Ironfang Rig Resources API
+  description: The external identities a run receives.
+  humanURL: https://ironfang.com/rig/docs
+  baseURL: https://api.ironfang.com/rig
+  tags:
+  - Resources
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-rig-resources-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/rig/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/rig/docs
+  - type: Authentication
+    url: 'https://ironfang.com/rig/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/rig/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/rig/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/rig/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#rig'
+- aid: ironfang:ironfang-rig-runs-api
+  name: Ironfang Rig Runs API
+  description: Disposable executions of a suite version.
+  humanURL: https://ironfang.com/rig/docs
+  baseURL: https://api.ironfang.com/rig
+  tags:
+  - Runs
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-rig-runs-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/rig/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/rig/docs
+  - type: Authentication
+    url: 'https://ironfang.com/rig/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/rig/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/rig/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/rig/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#rig'
+- aid: ironfang:ironfang-rig-suites-api
+  name: Ironfang Rig Suites API
+  description: Persistent, versioned test definitions.
+  humanURL: https://ironfang.com/rig/docs
+  baseURL: https://api.ironfang.com/rig
+  tags:
+  - Suites
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-rig-suites-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/rig/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/rig/docs
+  - type: Authentication
+    url: 'https://ironfang.com/rig/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/rig/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/rig/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/rig/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#rig'
+- aid: ironfang:ironfang-rig-usage-api
+  name: Ironfang Rig Usage API
+  description: What the organisation has used, and the deployment's fixed facts.
+  humanURL: https://ironfang.com/rig/docs
+  baseURL: https://api.ironfang.com/rig
+  tags:
+  - Usage
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-rig-usage-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/rig/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/rig/docs
+  - type: Authentication
+    url: 'https://ironfang.com/rig/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/rig/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/rig/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/rig/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#rig'
+- aid: ironfang:ironfang-analytics-capabilities-api
+  name: Ironfang Analytics Capabilities API
+  description: What this deployment can do and the limits it applies.
+  humanURL: https://ironfang.com/analytics/docs
+  baseURL: https://api.ironfang.com/analytics
+  tags:
+  - Capabilities
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-analytics-capabilities-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/analytics/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/analytics/docs
+  - type: Authentication
+    url: 'https://ironfang.com/analytics/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/analytics/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/analytics/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/analytics/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#analytics'
+- aid: ironfang:ironfang-analytics-heatmaps-api
+  name: Ironfang Analytics Heatmaps API
+  description: Totals of where visitors click, how far they scroll, how long each part of a page is on screen and where the pointer goes, across the recorded visits to one page. Computed from recordings, so they keep what recordings keep and need analytics.sessions.read. Every figure is per page visit; horizontal positions count from the centre of the viewport.
+  humanURL: https://ironfang.com/analytics/docs
+  baseURL: https://api.ironfang.com/analytics
+  tags:
+  - Heatmaps
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-analytics-heatmaps-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/analytics/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/analytics/docs
+  - type: Authentication
+    url: 'https://ironfang.com/analytics/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/analytics/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/analytics/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/analytics/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#analytics'
+- aid: ironfang:ironfang-analytics-keys-api
+  name: Ironfang Analytics Keys API
+  description: The public collection key a site's install snippet carries.
+  humanURL: https://ironfang.com/analytics/docs
+  baseURL: https://api.ironfang.com/analytics
+  tags:
+  - Keys
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-analytics-keys-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/analytics/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/analytics/docs
+  - type: Authentication
+    url: 'https://ironfang.com/analytics/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/analytics/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/analytics/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/analytics/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#analytics'
+- aid: ironfang:ironfang-analytics-origins-api
+  name: Ironfang Analytics Origins API
+  description: The origins a site's recorder may send from and their DNS verification.
+  humanURL: https://ironfang.com/analytics/docs
+  baseURL: https://api.ironfang.com/analytics
+  tags:
+  - Origins
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-analytics-origins-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/analytics/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/analytics/docs
+  - type: Authentication
+    url: 'https://ironfang.com/analytics/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/analytics/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/analytics/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/analytics/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#analytics'
+- aid: ironfang:ironfang-analytics-recordings-api
+  name: Ironfang Analytics Recordings API
+  description: 'Recordings of one tab within a session: search, what the visitor''s browser reported, the batches to play them back from, live viewing and deletion. Every recording keeps the visitor''s IP address and full user agent until it expires or is deleted; its session then keeps a note that it was there.'
+  humanURL: https://ironfang.com/analytics/docs
+  baseURL: https://api.ironfang.com/analytics
+  tags:
+  - Recordings
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-analytics-recordings-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/analytics/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/analytics/docs
+  - type: Authentication
+    url: 'https://ironfang.com/analytics/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/analytics/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/analytics/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/analytics/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#analytics'
+- aid: ironfang:ironfang-analytics-sessions-api
+  name: Ironfang Analytics Sessions API
+  description: 'One browser''s visit to one site: every tab, from the first page until thirty minutes pass without the visitor doing anything, or twelve hours from its start. A session holds its pages, its events and its recordings, and stays readable when recording is off or its recordings have expired. Sessions keep the visitor''s IP address, user agent and visitor id for the site''s recording retention, then lose them, and the rest for its session retention.'
+  humanURL: https://ironfang.com/analytics/docs
+  baseURL: https://api.ironfang.com/analytics
+  tags:
+  - Sessions
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-analytics-sessions-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/analytics/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/analytics/docs
+  - type: Authentication
+    url: 'https://ironfang.com/analytics/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/analytics/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/analytics/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/analytics/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#analytics'
+- aid: ironfang:ironfang-analytics-sites-api
+  name: Ironfang Analytics Sites API
+  description: Instrumented websites and their capture configuration.
+  humanURL: https://ironfang.com/analytics/docs
+  baseURL: https://api.ironfang.com/analytics
+  tags:
+  - Sites
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-analytics-sites-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/analytics/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/analytics/docs
+  - type: Authentication
+    url: 'https://ironfang.com/analytics/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/analytics/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/analytics/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/analytics/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#analytics'
+- aid: ironfang:ironfang-analytics-usage-api
+  name: Ironfang Analytics Usage API
+  description: This month's recordings as the organisation's billing account counts them, and whether new recordings are being admitted.
+  humanURL: https://ironfang.com/analytics/docs
+  baseURL: https://api.ironfang.com/analytics
+  tags:
+  - Usage
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-analytics-usage-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/analytics/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/analytics/docs
+  - type: Authentication
+    url: 'https://ironfang.com/analytics/docs#api-keys'
+  - type: RateLimits
+    url: 'https://ironfang.com/analytics/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/analytics/changelog
+  - type: GettingStarted
+    url: https://ironfang.com/analytics/.well-known/api-onboarding
+  - type: Pricing
+    url: 'https://ironfang.com/pricing#analytics'
+- aid: ironfang:ironfang-security-activity-api
+  name: Ironfang Security Activity API
+  description: What happened in the organisation's Security account.
+  humanURL: https://ironfang.com/security/docs
+  baseURL: https://api.ironfang.com/security
+  tags:
+  - Activity
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-security-activity-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/security/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/security/docs
+  - type: Authentication
+    url: 'https://ironfang.com/security/docs#authentication'
+  - type: RateLimits
+    url: 'https://ironfang.com/security/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/security/changelog
+  - type: Pricing
+    url: 'https://ironfang.com/security#pricing'
+- aid: ironfang:ironfang-security-domains-api
+  name: Ironfang Security Domains API
+  description: Domains the organisation has added, their ownership verification and authorisation.
+  humanURL: https://ironfang.com/security/docs
+  baseURL: https://api.ironfang.com/security
+  tags:
+  - Domains
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-security-domains-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/security/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/security/docs
+  - type: Authentication
+    url: 'https://ironfang.com/security/docs#authentication'
+  - type: RateLimits
+    url: 'https://ironfang.com/security/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/security/changelog
+  - type: Pricing
+    url: 'https://ironfang.com/security#pricing'
+- aid: ironfang:ironfang-security-findings-api
+  name: Ironfang Security Findings API
+  description: Normalised findings, their evidence, status and rechecks.
+  humanURL: https://ironfang.com/security/docs
+  baseURL: https://api.ironfang.com/security
+  tags:
+  - Findings
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-security-findings-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/security/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/security/docs
+  - type: Authentication
+    url: 'https://ironfang.com/security/docs#authentication'
+  - type: RateLimits
+    url: 'https://ironfang.com/security/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/security/changelog
+  - type: Pricing
+    url: 'https://ironfang.com/security#pricing'
+- aid: ironfang:ironfang-security-scans-api
+  name: Ironfang Security Scans API
+  description: External Security Check runs and their results.
+  humanURL: https://ironfang.com/security/docs
+  baseURL: https://api.ironfang.com/security
+  tags:
+  - Scans
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-security-scans-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/security/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/security/docs
+  - type: Authentication
+    url: 'https://ironfang.com/security/docs#authentication'
+  - type: RateLimits
+    url: 'https://ironfang.com/security/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/security/changelog
+  - type: Pricing
+    url: 'https://ironfang.com/security#pricing'
+- aid: ironfang:ironfang-security-service-api
+  name: Ironfang Security Service API
+  description: Whether Security is available, and the limits that apply.
+  humanURL: https://ironfang.com/security/docs
+  baseURL: https://api.ironfang.com/security
+  tags:
+  - Service
+  properties:
+  - type: OpenAPI
+    url: openapi/ironfang-security-service-api-openapi.yml
+  - type: OpenAPI
+    name: OpenAPI (provider-hosted)
+    url: https://api.ironfang.com/security/openapi.yaml
+  - type: Documentation
+    url: https://ironfang.com/security/docs
+  - type: Authentication
+    url: 'https://ironfang.com/security/docs#authentication'
+  - type: RateLimits
+    url: 'https://ironfang.com/security/docs#limits'
+  - type: ChangeLog
+    url: https://ironfang.com/security/changelog
+  - type: Pricing
+    url: 'https://ironfang.com/security#pricing'
 
 generated:
   by: apis.io/add
@@ -359,6 +1823,13 @@ x-correction-request:
     (OpenAPI 3.1.0, ''Ironfang Render API'', 25 paths; /renderwolf is a deprecated server alias, Deprecation 2026-09-20 with successor /render).
     Rename Renderwolf -> Ironfang Render everywhere except wire identifiers the provider kept (X-Renderwolf-* headers, package names). /changelog
     and /render/changelog are 404 on ironfang.com -- do not point at them.'
+  applied: '2026-10-03'
+  applied_note: 'Applied by hand 2026-10-03. Verified every apis[] baseURL is https://api.ironfang.com/render (fixed in e41a9d6/955319d). From
+    https://ironfang.com/apis.json (modified 2026-10-01), added the other product APIs, each from its live contract (200, OpenAPI 3.1.0) archived
+    verbatim under openapi/_original/ and split by tag and standardized per product, so tags shared between products (Usage, Findings, Events,
+    Sites, Jobs) are not merged: Audit (18 APIs, 55 paths), Finance v1 (9, 22 paths) and v2 (6, 16 paths), Rig (9, 27 paths), Analytics (8, 23
+    paths), and Security (5, 17 paths; listed in apis.json since the request). Every pointer on the new entries was checked live (200; a nonexistent
+    path returns a real 404). The apis.json now lists /render/changelog and per-product changelogs, and these answer 200 today.'
 x-enrichment:
   date: '2026-09-28'
   status: enriched

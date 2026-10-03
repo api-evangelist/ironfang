@@ -1,0 +1,194 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Audit Notifications API
+  version: 1.0.0
+  summary: Website audits with findings and signed, independently timestamped evidence.
+  description: Asynchronous website audits with signed, independently timestamped evidence.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/audit
+  description: Production
+security:
+- bearerAuth: []
+- apiKey: []
+tags:
+- name: Notifications
+  description: Notifications raised for the organisation.
+paths:
+  /v1/notifications:
+    get:
+      operationId: listNotifications
+      description: Returns recent notification-email records for the authenticated organisation and their recorded delivery states.
+      tags:
+      - Notifications
+      summary: Recent notification emails and their delivery state
+      parameters:
+      - $ref: '#/components/parameters/HistoryLimit'
+      - $ref: '#/components/parameters/HistoryCursor'
+      responses:
+        '200':
+          description: Notifications
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NotificationList'
+        '400':
+          $ref: '#/components/responses/Problem'
+          description: Invalid, repeated or unknown collection parameter
+components:
+  schemas:
+    NotificationList:
+      type: object
+      additionalProperties: false
+      required:
+      - notifications
+      properties:
+        notifications:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Notification'
+        next_cursor:
+          type: string
+          maxLength: 256
+          description: Opaque continuation boundary. Absent on the final page; no total is inferred from a page.
+    Notification:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - event_id
+      - event_type
+      - recipient
+      - status
+      - attempt
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        recipient:
+          type: string
+        status:
+          type: string
+          enum:
+          - queued
+          - held
+          - sending
+          - sent
+          - failed
+        attempt:
+          type: integer
+          minimum: 0
+        sent_at:
+          type: string
+          format: date-time
+        last_error:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+  parameters:
+    HistoryCursor:
+      name: cursor
+      in: query
+      description: Opaque next_cursor from the preceding page. Sort order is immutable created_at descending, then ID descending. This is a continuation boundary, not a frozen snapshot; newer inserts do not shift older pages, and removed records disappear.
+      schema:
+        type: string
+        maxLength: 256
+    HistoryLimit:
+      name: limit
+      in: query
+      description: Bounded page size. The existing default of 200 is preserved; the portal requests 50.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 200
+  responses:
+    Problem:
+      description: Problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Stable machine-readable code. Billing refusals use the codes every Ironfang product shares (BillingCode), with the same status and message whichever product answered; everything else is Ironfang Audit's own.
+                  message:
+                    type: string
+                  docs:
+                    type: string
+                    format: uri
+                    description: Where the errors are documented.
+                    example: https://ironfang.com/audit/docs#errors
+                  product:
+                    type: string
+                    description: 'Billing refusals only: the product the refused work belongs to (audit).'
+                  meter:
+                    type: string
+                    description: 'Billing refusals only: the meter that refused, audit.capture or audit.retention_extension.'
+                  reset_at:
+                    type: string
+                    format: date-time
+                    description: 'Billing refusals only: when the free allowance renews (the next month''s start, UTC).'
+              request_id:
+                type: string
+                description: The X-Ironfang-Request-ID of the failed request.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `audit:read`, `audit:run`, `audit:manage`,
+
+        `audit:evidence`, `audit:integrations`, or `audit:*` - and
+
+        it acts only in the organisation it was minted for. Legacy Ironfang Render
+
+        keys carry no Ironfang Audit scopes and are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission
+
+        in the acting tenant, resolved live from Warden: read routes need
+
+        `audit.read`; creating sites and rules `audit.manage`; queueing
+
+        an audit `audit.run`; evidence bundles and raw artifacts
+
+        `audit.evidence`; webhooks, export destinations and manual exports
+
+        `audit.integrations`; billing changes `billing.manage`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Audit documentation
+  url: https://ironfang.com/audit/docs

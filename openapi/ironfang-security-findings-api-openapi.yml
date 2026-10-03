@@ -1,0 +1,803 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Security Findings API
+  version: 0.1.0
+  summary: External Security Check - verify a domain, run a low-impact external assessment, fix and recheck findings.
+  description: 'Ironfang Security helps an organisation understand what it exposes to
+
+    the internet, fix what matters and keep evidence that it did.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/security
+security:
+- bearerAuth: []
+tags:
+- name: Findings
+  description: Normalised findings, their evidence, status and rechecks.
+paths:
+  /v1/findings:
+    get:
+      tags:
+      - Findings
+      operationId: listFindings
+      summary: List findings
+      description: Findings across the organisation, most severe first. By default only findings that still ask something of you (open, acknowledged, needs review) are listed; pass `status` to choose.
+      parameters:
+      - name: domain_id
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: scan_id
+        in: query
+        required: false
+        description: Only findings observed in this scan.
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        required: false
+        description: Comma-separated statuses, or `all`.
+        schema:
+          type: string
+      - name: severity
+        in: query
+        required: false
+        description: Comma-separated severities.
+        schema:
+          type: string
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Findings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                - next_cursor
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/FindingSummary'
+                  next_cursor:
+                    type: string
+        '400':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/findings/{findingId}:
+    parameters:
+    - $ref: '#/components/parameters/FindingId'
+    get:
+      tags:
+      - Findings
+      operationId: getFinding
+      summary: Get a finding
+      description: What was found, why it matters, the evidence, how to fix it and its history.
+      responses:
+        '200':
+          description: The finding.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Finding'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    patch:
+      tags:
+      - Findings
+      operationId: updateFinding
+      summary: Change a finding's status
+      description: Sets open, acknowledged, accepted_risk or false_positive, with an optional note. `fixed` is only ever set by a scan or recheck that observes the fix.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateFindingRequest'
+      responses:
+        '200':
+          description: The finding.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Finding'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/findings/{findingId}/recheck:
+    parameters:
+    - $ref: '#/components/parameters/FindingId'
+    post:
+      tags:
+      - Findings
+      operationId: recheckFinding
+      summary: Recheck a finding
+      description: Repeats the checks behind this finding on its host. If the condition is no longer observed the finding becomes fixed; its evidence and history are kept.
+      responses:
+        '202':
+          description: The recheck scan.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Scan'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  schemas:
+    PassedCheck:
+      type: object
+      required:
+      - check_id
+      - title
+      - category
+      - host
+      - summary
+      - docs_url
+      properties:
+        check_id:
+          type: string
+        title:
+          type: string
+        category:
+          $ref: '#/components/schemas/CheckCategory'
+        host:
+          type: string
+        summary:
+          type: string
+        docs_url:
+          type: string
+          format: uri
+    ScanSummary:
+      type: object
+      required:
+      - id
+      - domain_id
+      - domain
+      - kind
+      - status
+      - requested_at
+      - progress
+      - counts
+      properties:
+        id:
+          type: string
+          format: uuid
+        domain_id:
+          type: string
+          format: uuid
+        domain:
+          type: string
+        kind:
+          $ref: '#/components/schemas/ScanKind'
+        status:
+          $ref: '#/components/schemas/ScanStatus'
+        requested_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+        progress:
+          type: object
+          required:
+          - total
+          - completed
+          properties:
+            total:
+              type: integer
+            completed:
+              type: integer
+        counts:
+          $ref: '#/components/schemas/ScanCounts'
+        changes:
+          $ref: '#/components/schemas/ScanChanges'
+        recheck_finding_id:
+          type: string
+          format: uuid
+        status_reason:
+          type: string
+          description: Why a scan was cancelled, stopped or failed.
+    Evidence:
+      type: object
+      required:
+      - id
+      - kind
+      - summary
+      - data
+      - captured_at
+      - scan_id
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum:
+          - dns_answer
+          - certificate
+          - tls_handshake
+          - http_response
+          - tcp_connect
+          - service_banner
+          - certificate_transparency
+          - note
+        summary:
+          type: string
+        data:
+          type: object
+          additionalProperties: true
+        captured_at:
+          type: string
+          format: date-time
+        scan_id:
+          type: string
+          format: uuid
+    Scan:
+      allOf:
+      - $ref: '#/components/schemas/ScanSummary'
+      - type: object
+        required:
+        - policy_version
+        - categories
+        - findings
+        - passed_checks
+        - observations
+        - errors
+        - limitations
+        - recommended_actions
+        - scanner
+        - disclaimer
+        properties:
+          policy_version:
+            type: string
+          requested_by:
+            $ref: '#/components/schemas/Person'
+          categories:
+            type: array
+            items:
+              $ref: '#/components/schemas/CategoryResult'
+          findings:
+            type: array
+            description: Findings observed in this scan.
+            items:
+              $ref: '#/components/schemas/FindingSummary'
+          passed_checks:
+            type: array
+            items:
+              $ref: '#/components/schemas/PassedCheck'
+          observations:
+            type: array
+            description: Informational results that are neither a pass nor a finding (e.g. detected technologies).
+            items:
+              $ref: '#/components/schemas/CheckNote'
+          errors:
+            type: array
+            description: Checks that could not complete.
+            items:
+              $ref: '#/components/schemas/CheckNote'
+          limitations:
+            type: array
+            items:
+              type: string
+          recommended_actions:
+            type: array
+            items:
+              $ref: '#/components/schemas/RecommendedAction'
+          scanner:
+            $ref: '#/components/schemas/ScannerIdentity'
+          disclaimer:
+            type: string
+    UpdateFindingRequest:
+      type: object
+      required:
+      - status
+      properties:
+        status:
+          type: string
+          enum:
+          - open
+          - acknowledged
+          - accepted_risk
+          - false_positive
+        note:
+          type: string
+          maxLength: 1000
+    FindingStatus:
+      type: string
+      enum:
+      - open
+      - acknowledged
+      - fixed
+      - accepted_risk
+      - false_positive
+      - needs_review
+    ScanChanges:
+      type: object
+      required:
+      - new
+      - fixed
+      - reopened
+      properties:
+        new:
+          type: integer
+        fixed:
+          type: integer
+        reopened:
+          type: integer
+    FindingKind:
+      type: string
+      enum:
+      - issue
+      - hardening
+      - informational
+      - potential_vulnerability
+    CategoryResult:
+      type: object
+      required:
+      - category
+      - title
+      - status
+      - passed
+      - findings
+      - errors
+      properties:
+        category:
+          $ref: '#/components/schemas/CheckCategory'
+        title:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending
+          - running
+          - completed
+          - failed
+          - cancelled
+        passed:
+          type: integer
+        findings:
+          type: integer
+        errors:
+          type: integer
+    FindingEvent:
+      type: object
+      required:
+      - at
+      - kind
+      properties:
+        at:
+          type: string
+          format: date-time
+        kind:
+          type: string
+          enum:
+          - detected
+          - seen
+          - status_changed
+          - recheck_requested
+          - recheck_fixed
+          - recheck_still_present
+          - fixed
+          - reopened
+        from_status:
+          $ref: '#/components/schemas/FindingStatus'
+        to_status:
+          $ref: '#/components/schemas/FindingStatus'
+        actor:
+          $ref: '#/components/schemas/Person'
+        note:
+          type: string
+        scan_id:
+          type: string
+          format: uuid
+    CheckNote:
+      type: object
+      required:
+      - check_id
+      - title
+      - host
+      - message
+      properties:
+        check_id:
+          type: string
+        title:
+          type: string
+        host:
+          type: string
+        message:
+          type: string
+    Severity:
+      type: string
+      enum:
+      - critical
+      - high
+      - medium
+      - low
+      - info
+    CheckCategory:
+      type: string
+      enum:
+      - dns
+      - tls
+      - http
+      - email
+      - exposure
+      - technology
+      - discovery
+    ScanStatus:
+      type: string
+      enum:
+      - queued
+      - running
+      - completed
+      - partial
+      - failed
+      - cancelled
+      - killed
+    Confidence:
+      type: string
+      description: How sure Ironfang is. `low` is presented as "potential".
+      enum:
+      - confirmed
+      - high
+      - medium
+      - low
+    Finding:
+      allOf:
+      - $ref: '#/components/schemas/FindingSummary'
+      - type: object
+        required:
+        - check
+        - summary
+        - why
+        - fix
+        - docs_url
+        - references
+        - evidence
+        - history
+        - recheck
+        properties:
+          check:
+            type: object
+            required:
+            - id
+            - title
+            properties:
+              id:
+                type: string
+              title:
+                type: string
+          summary:
+            type: string
+            description: What we found, in general terms.
+          why:
+            type: string
+            description: Why it matters.
+          fix:
+            type: string
+            description: How to fix it. May contain inline `code`.
+          docs_url:
+            type: string
+            format: uri
+          references:
+            type: array
+            items:
+              type: string
+              format: uri
+          cwe:
+            type: string
+          evidence:
+            type: array
+            items:
+              $ref: '#/components/schemas/Evidence'
+          history:
+            type: array
+            items:
+              $ref: '#/components/schemas/FindingEvent'
+          recheck:
+            $ref: '#/components/schemas/Recheck'
+          note:
+            type: string
+            description: The latest note recorded with a status change.
+    FindingSummary:
+      type: object
+      required:
+      - id
+      - key
+      - title
+      - category
+      - kind
+      - severity
+      - confidence
+      - status
+      - host
+      - domain_id
+      - first_seen_at
+      - last_seen_at
+      - verification
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+          description: Catalogue key, e.g. http.hsts_missing.
+        title:
+          type: string
+        category:
+          $ref: '#/components/schemas/CheckCategory'
+        kind:
+          $ref: '#/components/schemas/FindingKind'
+        severity:
+          $ref: '#/components/schemas/Severity'
+        confidence:
+          $ref: '#/components/schemas/Confidence'
+        status:
+          $ref: '#/components/schemas/FindingStatus'
+        host:
+          type: string
+        domain_id:
+          type: string
+          format: uuid
+        detail:
+          type: string
+          description: What was observed on this host.
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+        verification:
+          type: string
+          description: Whether a scan or recheck has confirmed the current state.
+          enum:
+          - unverified
+          - fixed_verified
+          - still_present
+    Problem:
+      type: object
+      required:
+      - error
+      - request_id
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: 'Stable error code. Among them: `unauthorized`, `forbidden`,
+
+                `not_found`, `validation_failed`, `domain_invalid`,
+
+                `domain_exists`, `domain_limit_reached`,
+
+                `verification_pending_limit`, `verification_required`,
+
+                `already_verified`, `authorisation_required`,
+
+                `policy_outdated`, `scan_in_progress`, `scan_cooldown`,
+
+                `daily_limit_reached`, `domain_rate_limited`, `scan_not_active`,
+
+                `recheck_unavailable`, `recheck_cooldown`, `check_rate_limited`,
+
+                `organisation_suspended`, `scans_paused`, `security_disabled`,
+
+                `verification_expired`, `verification_unavailable`,
+
+                `verification_pending_limit`, `finding_fixed`, `internal`.
+
+                From the Ironfang API in front of the service:
+
+                `api_keys_not_supported`, `permissions_unavailable`,
+
+                `body_too_large`, `invalid_body`, `invalid_tenant`,
+
+                `security_unavailable`, `security_timeout`.
+
+                '
+            message:
+              type: string
+            docs:
+              type: string
+              format: uri
+            retry_after_seconds:
+              type: integer
+              description: Set on cooldowns and rate limits.
+        request_id:
+          type: string
+    Recheck:
+      type: object
+      required:
+      - available
+      properties:
+        available:
+          type: boolean
+        reason:
+          type: string
+          description: Why a recheck cannot start now.
+        available_at:
+          type: string
+          format: date-time
+        scan_id:
+          type: string
+          format: uuid
+          description: The recheck in progress.
+    ScanKind:
+      type: string
+      enum:
+      - full
+      - recheck
+    ScanCounts:
+      type: object
+      required:
+      - critical
+      - high
+      - medium
+      - low
+      - info
+      - passed
+      - confirmed
+      - unverified
+      - errors
+      properties:
+        critical:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+        info:
+          type: integer
+        passed:
+          type: integer
+          description: Checks that observed a control working.
+        confirmed:
+          type: integer
+          description: Findings with confirmed or high confidence.
+        unverified:
+          type: integer
+          description: Findings with medium or low confidence.
+        errors:
+          type: integer
+          description: Checks that could not complete.
+    Person:
+      type: object
+      required:
+      - label
+      properties:
+        label:
+          type: string
+    RecommendedAction:
+      type: object
+      required:
+      - finding_id
+      - title
+      - severity
+      - confidence
+      - host
+      - domain_id
+      - reason
+      properties:
+        finding_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        severity:
+          $ref: '#/components/schemas/Severity'
+        confidence:
+          $ref: '#/components/schemas/Confidence'
+        host:
+          type: string
+        domain_id:
+          type: string
+          format: uuid
+        reason:
+          type: string
+    ScannerIdentity:
+      type: object
+      required:
+      - user_agent
+      - info_url
+      - source_addresses
+      properties:
+        user_agent:
+          type: string
+        info_url:
+          type: string
+          format: uri
+        source_addresses:
+          type: array
+          description: Public addresses scanner traffic comes from, for allowlisting.
+          items:
+            type: string
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: The next_cursor of the previous page.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 25
+    FindingId:
+      name: findingId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Problem:
+      description: An error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+
+        reads need `security.read`; everything that changes state needs
+
+        `security.write`. A missing permission is 403; a permission lookup
+
+        failure is 503. Platform API keys are not accepted yet.
+
+        '
+externalDocs:
+  description: Ironfang Security documentation
+  url: https://ironfang.com/security/docs

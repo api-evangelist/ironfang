@@ -1,0 +1,676 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Security Domains API
+  version: 0.1.0
+  summary: External Security Check - verify a domain, run a low-impact external assessment, fix and recheck findings.
+  description: 'Ironfang Security helps an organisation understand what it exposes to
+
+    the internet, fix what matters and keep evidence that it did.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/security
+security:
+- bearerAuth: []
+tags:
+- name: Domains
+  description: Domains the organisation has added, their ownership verification and authorisation.
+paths:
+  /v1/domains:
+    get:
+      tags:
+      - Domains
+      operationId: listDomains
+      summary: List domains
+      responses:
+        '200':
+          description: The organisation's domains, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DomainSummary'
+        default:
+          $ref: '#/components/responses/Problem'
+    post:
+      tags:
+      - Domains
+      operationId: addDomain
+      summary: Add a domain
+      description: Adds a domain and issues a DNS TXT verification challenge. Accepts what a person would type (a URL or a name with a trailing dot) and normalises it. Refuses IP addresses, public suffixes and reserved names. Adding a domain that was removed earlier restores it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddDomainRequest'
+      responses:
+        '201':
+          description: The domain, with its verification challenge.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/domains/{domainId}:
+    parameters:
+    - $ref: '#/components/parameters/DomainId'
+    get:
+      tags:
+      - Domains
+      operationId: getDomain
+      summary: Get a domain
+      responses:
+        '200':
+          description: The domain.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+    delete:
+      tags:
+      - Domains
+      operationId: removeDomain
+      summary: Remove a domain
+      description: Stops all checks of the domain and removes it from the list. Its scan history, findings and evidence are kept for the audit trail.
+      responses:
+        '204':
+          description: Removed.
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/domains/{domainId}/verification/check:
+    parameters:
+    - $ref: '#/components/parameters/DomainId'
+    post:
+      tags:
+      - Domains
+      operationId: checkVerification
+      summary: Check the verification record now
+      description: Looks up the TXT record immediately rather than waiting for the automatic recheck. Limited to one check every few seconds per domain.
+      responses:
+        '200':
+          description: The domain after the check.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '429':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/domains/{domainId}/verification/renew:
+    parameters:
+    - $ref: '#/components/parameters/DomainId'
+    post:
+      tags:
+      - Domains
+      operationId: renewVerification
+      summary: Issue a new verification token
+      description: Replaces an expired or failed challenge with a new token. Refused while the domain is verified.
+      responses:
+        '200':
+          description: The domain with its new challenge.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/domains/{domainId}/authorisation:
+    parameters:
+    - $ref: '#/components/parameters/DomainId'
+    post:
+      tags:
+      - Domains
+      operationId: authoriseDomain
+      summary: Confirm authorisation to assess
+      description: Records that the acting user confirmed the current scan policy's statement for this verified domain. The record is immutable and names the policy and statement versions. A new policy version requires a new confirmation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthoriseRequest'
+      responses:
+        '201':
+          description: The domain with its authorisation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+  /v1/domains/{domainId}/discoveries:
+    parameters:
+    - $ref: '#/components/parameters/DomainId'
+    get:
+      tags:
+      - Domains
+      operationId: listDiscoveries
+      summary: Names discovered for a domain
+      description: Names found in certificate transparency logs. They are listed for review only and are not scanned.
+      responses:
+        '200':
+          description: Discoveries, alphabetically.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - items
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Discovery'
+        '404':
+          $ref: '#/components/responses/Problem'
+        default:
+          $ref: '#/components/responses/Problem'
+components:
+  schemas:
+    ScanSummary:
+      type: object
+      required:
+      - id
+      - domain_id
+      - domain
+      - kind
+      - status
+      - requested_at
+      - progress
+      - counts
+      properties:
+        id:
+          type: string
+          format: uuid
+        domain_id:
+          type: string
+          format: uuid
+        domain:
+          type: string
+        kind:
+          $ref: '#/components/schemas/ScanKind'
+        status:
+          $ref: '#/components/schemas/ScanStatus'
+        requested_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+        progress:
+          type: object
+          required:
+          - total
+          - completed
+          properties:
+            total:
+              type: integer
+            completed:
+              type: integer
+        counts:
+          $ref: '#/components/schemas/ScanCounts'
+        changes:
+          $ref: '#/components/schemas/ScanChanges'
+        recheck_finding_id:
+          type: string
+          format: uuid
+        status_reason:
+          type: string
+          description: Why a scan was cancelled, stopped or failed.
+    Verification:
+      type: object
+      required:
+      - status
+      - method
+      - record
+      - checks
+      properties:
+        status:
+          $ref: '#/components/schemas/VerificationStatus'
+        method:
+          type: string
+          enum:
+          - dns_txt
+        record:
+          $ref: '#/components/schemas/VerificationRecord'
+        expires_at:
+          type: string
+          format: date-time
+        last_checked_at:
+          type: string
+          format: date-time
+        next_check_at:
+          type: string
+          format: date-time
+        manual_check_available_at:
+          type: string
+          format: date-time
+        verified_at:
+          type: string
+          format: date-time
+        checks:
+          type: integer
+          description: How many times the record has been looked up.
+        failure_reason:
+          type: string
+        observed_values:
+          type: array
+          description: TXT values seen at the record name on the last lookup, to help troubleshooting.
+          items:
+            type: string
+        dns_provider:
+          $ref: '#/components/schemas/DnsProvider'
+    SeverityCounts:
+      type: object
+      required:
+      - critical
+      - high
+      - medium
+      - low
+      - info
+      properties:
+        critical:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+        info:
+          type: integer
+    DnsProvider:
+      type: object
+      required:
+      - id
+      - name
+      properties:
+        id:
+          type: string
+          description: e.g. cloudflare, route53, godaddy, namecheap, azure, google, other
+        name:
+          type: string
+        help_url:
+          type: string
+          format: uri
+    Discovery:
+      type: object
+      required:
+      - id
+      - name
+      - source
+      - first_seen_at
+      - last_seen_at
+      - in_scope
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        source:
+          type: string
+          enum:
+          - certificate_transparency
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        in_scope:
+          type: boolean
+          description: Always false in V1; discoveries are never scanned automatically.
+    ScanChanges:
+      type: object
+      required:
+      - new
+      - fixed
+      - reopened
+      properties:
+        new:
+          type: integer
+        fixed:
+          type: integer
+        reopened:
+          type: integer
+    AuthoriseRequest:
+      type: object
+      required:
+      - policy_version
+      - statement_version
+      - confirm
+      properties:
+        policy_version:
+          type: string
+        statement_version:
+          type: string
+        confirm:
+          type: boolean
+          const: true
+    ScanBlockedReason:
+      type: string
+      description: Why a scan cannot start now.
+      enum:
+      - verification_required
+      - authorisation_required
+      - policy_outdated
+      - scan_in_progress
+      - scan_cooldown
+      - daily_limit_reached
+      - organisation_suspended
+      - scans_paused
+      - security_disabled
+    AddDomainRequest:
+      type: object
+      required:
+      - domain
+      properties:
+        domain:
+          type: string
+          maxLength: 300
+          examples:
+          - example.co.uk
+    VerificationRecord:
+      type: object
+      required:
+      - type
+      - name
+      - host_label
+      - value
+      properties:
+        type:
+          type: string
+          enum:
+          - TXT
+        name:
+          type: string
+          description: Fully qualified record name.
+        host_label:
+          type: string
+          description: The name relative to the domain, for providers that append the domain.
+        value:
+          type: string
+    Domain:
+      allOf:
+      - $ref: '#/components/schemas/DomainSummary'
+      - type: object
+        required:
+        - verification
+        - discoveries
+        properties:
+          verification:
+            $ref: '#/components/schemas/Verification'
+          authorisation:
+            $ref: '#/components/schemas/Authorisation'
+          discoveries:
+            type: integer
+            description: Number of discovered names.
+    VerificationStatus:
+      type: string
+      enum:
+      - waiting
+      - checking
+      - verified
+      - failed
+      - expired
+      - lapsed
+    ScanStatus:
+      type: string
+      enum:
+      - queued
+      - running
+      - completed
+      - partial
+      - failed
+      - cancelled
+      - killed
+    Problem:
+      type: object
+      required:
+      - error
+      - request_id
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: 'Stable error code. Among them: `unauthorized`, `forbidden`,
+
+                `not_found`, `validation_failed`, `domain_invalid`,
+
+                `domain_exists`, `domain_limit_reached`,
+
+                `verification_pending_limit`, `verification_required`,
+
+                `already_verified`, `authorisation_required`,
+
+                `policy_outdated`, `scan_in_progress`, `scan_cooldown`,
+
+                `daily_limit_reached`, `domain_rate_limited`, `scan_not_active`,
+
+                `recheck_unavailable`, `recheck_cooldown`, `check_rate_limited`,
+
+                `organisation_suspended`, `scans_paused`, `security_disabled`,
+
+                `verification_expired`, `verification_unavailable`,
+
+                `verification_pending_limit`, `finding_fixed`, `internal`.
+
+                From the Ironfang API in front of the service:
+
+                `api_keys_not_supported`, `permissions_unavailable`,
+
+                `body_too_large`, `invalid_body`, `invalid_tenant`,
+
+                `security_unavailable`, `security_timeout`.
+
+                '
+            message:
+              type: string
+            docs:
+              type: string
+              format: uri
+            retry_after_seconds:
+              type: integer
+              description: Set on cooldowns and rate limits.
+        request_id:
+          type: string
+    DomainSummary:
+      type: object
+      required:
+      - id
+      - name
+      - display_name
+      - verification_status
+      - authorised
+      - can_scan
+      - open_findings
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          description: ASCII (punycode) name.
+        display_name:
+          type: string
+        verification_status:
+          $ref: '#/components/schemas/VerificationStatus'
+        authorised:
+          type: boolean
+        can_scan:
+          type: boolean
+        scan_blocked_reason:
+          $ref: '#/components/schemas/ScanBlockedReason'
+        next_scan_at:
+          type: string
+          format: date-time
+          description: When the cooldown ends.
+        latest_scan:
+          $ref: '#/components/schemas/ScanSummary'
+        open_findings:
+          $ref: '#/components/schemas/SeverityCounts'
+        created_at:
+          type: string
+          format: date-time
+    ScanKind:
+      type: string
+      enum:
+      - full
+      - recheck
+    ScanCounts:
+      type: object
+      required:
+      - critical
+      - high
+      - medium
+      - low
+      - info
+      - passed
+      - confirmed
+      - unverified
+      - errors
+      properties:
+        critical:
+          type: integer
+        high:
+          type: integer
+        medium:
+          type: integer
+        low:
+          type: integer
+        info:
+          type: integer
+        passed:
+          type: integer
+          description: Checks that observed a control working.
+        confirmed:
+          type: integer
+          description: Findings with confirmed or high confidence.
+        unverified:
+          type: integer
+          description: Findings with medium or low confidence.
+        errors:
+          type: integer
+          description: Checks that could not complete.
+    Authorisation:
+      type: object
+      required:
+      - id
+      - policy_version
+      - statement
+      - statement_version
+      - accepted_at
+      - accepted_by
+      - current
+      properties:
+        id:
+          type: string
+          format: uuid
+        policy_version:
+          type: string
+        statement:
+          type: string
+        statement_version:
+          type: string
+        accepted_at:
+          type: string
+          format: date-time
+        accepted_by:
+          $ref: '#/components/schemas/Person'
+        current:
+          type: boolean
+          description: False when the policy has changed and must be confirmed again.
+    Person:
+      type: object
+      required:
+      - label
+      properties:
+        label:
+          type: string
+  responses:
+    Problem:
+      description: An error.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Problem'
+  parameters:
+    DomainId:
+      name: domainId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+
+        reads need `security.read`; everything that changes state needs
+
+        `security.write`. A missing permission is 403; a permission lookup
+
+        failure is 503. Platform API keys are not accepted yet.
+
+        '
+externalDocs:
+  description: Ironfang Security documentation
+  url: https://ironfang.com/security/docs

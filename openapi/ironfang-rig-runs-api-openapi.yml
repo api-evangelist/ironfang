@@ -1,0 +1,631 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Rig Runs API
+  version: 0.1.0
+  summary: Disposable inboxes, callback URLs, mock endpoints and connector routes for integration tests.
+  description: 'Ironfang Rig gives an application under test a disposable external
+
+    world: temporary inbox addresses, public callback URLs, mock HTTP
+
+    endpoints and connector routes, allocated fresh for every run, with an
+
+    append-only, sequenced timeline of everything Ironfang observed.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/rig
+security:
+- apiKey: []
+- bearerAuth: []
+tags:
+- name: Runs
+  description: Disposable executions of a suite version.
+paths:
+  /v1/suites/{suiteId}/runs:
+    parameters:
+    - $ref: '#/components/parameters/SuiteId'
+    post:
+      tags:
+      - Runs
+      operationId: createRun
+      summary: Start a run
+      description: 'Starts a run of the suite''s current version and allocates every resource the definition declares: a fresh inbox address, callback URL, mock URL or route label each, unguessable and unique to this run. The run is active until it is finished, cancelled or its TTL passes, after which its resources stop accepting activity and its timeline is read-only. Send an Idempotency-Key to make a retry return the run it already started (200 rather than 201). An organisation may have at most 50 active runs at once (a run is active until it is finished, cancelled or its TTL passes); the next start is refused with 429 `active_run_limit` until one ends. The limit is capacity, the same on every account. Needs rig.run. Public effect: the allocated addresses and URLs are reachable from the Internet for the life of the run.'
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                ttl:
+                  type: string
+                  description: Run lifetime as a duration ("30m", "2h"), 1m to 24h; defaults to the suite's defaults.run_ttl.
+                  example: 30m
+                external_id:
+                  type: string
+                  maxLength: 120
+                  description: Your own reference, such as a CI run id.
+                reason:
+                  type: string
+                  maxLength: 200
+      responses:
+        '201':
+          description: Run started and resources allocated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunWithResources'
+        '200':
+          description: The run this Idempotency-Key already started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RunWithResources'
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '429':
+          description: The organisation already has its limit of 50 active runs (`active_run_limit`); finish or cancel one to start another
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/runs:
+    get:
+      tags:
+      - Runs
+      operationId: listRuns
+      summary: List runs
+      description: Returns the organisation's runs, newest first, with optional filters. Read-only.
+      parameters:
+      - name: project
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: suite
+        in: query
+        required: false
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        required: false
+        schema:
+          type: string
+          enum:
+          - active
+          - finished
+          - cancelled
+          - expired
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of runs
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - runs
+                properties:
+                  runs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Run'
+                  next_cursor:
+                    type: string
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+  /v1/runs/{runId}:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    get:
+      tags:
+      - Runs
+      operationId: getRun
+      summary: Get a run
+      description: Returns one run's state, lifetime and outcome.
+      responses:
+        '200':
+          description: The run
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - run
+                properties:
+                  run:
+                    $ref: '#/components/schemas/Run'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/runs/{runId}/finish:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    post:
+      tags:
+      - Runs
+      operationId: finishRun
+      summary: Finish a run
+      description: 'Ends an active run with the outcome you report (pass, fail, or none when you make no claim) and writes run.completed to its timeline. Exactly once: a run that has already ended answers 409. Needs rig.run.'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                outcome:
+                  type: string
+                  enum:
+                  - pass
+                  - fail
+                  - none
+                  default: none
+                reason:
+                  type: string
+                  maxLength: 200
+      responses:
+        '200':
+          description: The finished run
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - run
+                - expectations
+                properties:
+                  run:
+                    $ref: '#/components/schemas/Run'
+                  expectations:
+                    type: array
+                    description: The verdict on each of the suite's expectations, in the order declared.
+                    items:
+                      $ref: '#/components/schemas/ExpectationResult'
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/RunNotActive'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+  /v1/runs/{runId}/cancel:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    post:
+      tags:
+      - Runs
+      operationId: cancelRun
+      summary: Cancel a run
+      description: Ends an active run without an outcome and writes run.cancelled. A run that has already ended answers 409. Needs rig.run.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                reason:
+                  type: string
+                  maxLength: 200
+      responses:
+        '200':
+          description: The cancelled run
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - run
+                properties:
+                  run:
+                    $ref: '#/components/schemas/Run'
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/RunNotActive'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+  /v1/runs/{runId}/hold:
+    put:
+      tags:
+      - Runs
+      operationId: holdRun
+      summary: Keep the run from retention until a date
+      description: Retention leaves the run, its events and its payloads alone until the date, at most a year ahead. Holding again replaces the date. Recorded as retention.held on the run's timeline. Needs rig.run.
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - until
+              additionalProperties: false
+              properties:
+                until:
+                  type: string
+                  format: date-time
+      responses:
+        '200':
+          description: The run with its hold.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - run
+                properties:
+                  run:
+                    $ref: '#/components/schemas/Run'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+    delete:
+      tags:
+      - Runs
+      operationId: releaseRun
+      summary: Lift a retention hold
+      description: Recorded as retention.released. A run that was not held is returned as it is. Needs rig.run.
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: The run without its hold.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - run
+                properties:
+                  run:
+                    $ref: '#/components/schemas/Run'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  schemas:
+    RunWithResources:
+      type: object
+      required:
+      - run
+      - resources
+      properties:
+        run:
+          $ref: '#/components/schemas/Run'
+        resources:
+          type: array
+          items:
+            $ref: '#/components/schemas/Resource'
+    ExpectationResult:
+      type: object
+      required:
+      - id
+      - resource
+      - event
+      - passed
+      properties:
+        id:
+          type: string
+        resource:
+          type: string
+        event:
+          type: string
+        passed:
+          type: boolean
+        event_id:
+          type: string
+          format: uuid
+          description: The first event that satisfied the expectation.
+        sequence:
+          type: integer
+        reason:
+          type: string
+          description: Why it failed.
+    Run:
+      type: object
+      required:
+      - id
+      - organisation_id
+      - project_id
+      - suite_id
+      - suite_version_id
+      - status
+      - ttl_seconds
+      - started_at
+      - expires_at
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        suite_id:
+          type: string
+          format: uuid
+        suite_version_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum:
+          - active
+          - finished
+          - cancelled
+          - expired
+        outcome:
+          type: string
+          enum:
+          - pass
+          - fail
+          - none
+          description: Present once finished.
+        reason:
+          type: string
+        ttl_seconds:
+          type: integer
+        started_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+        finished_at:
+          type: string
+          format: date-time
+        external_id:
+          type: string
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    Resource:
+      type: object
+      required:
+      - id
+      - organisation_id
+      - run_id
+      - name
+      - type
+      - scope
+      - expires_at
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        type:
+          type: string
+          enum:
+          - email
+          - callback
+          - mock_http
+          - connector_route
+        scope:
+          type: string
+          enum:
+          - run
+        email_address:
+          type: string
+          description: For email resources - the inbox that receives for this run.
+        public_url:
+          type: string
+          format: uri
+          description: For callback and mock resources - the unguessable URL to configure elsewhere.
+        route_label:
+          type: string
+          description: For connector routes, and callbacks forwarded through one.
+        config:
+          type: object
+          additionalProperties: true
+        expires_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            docs:
+              type: string
+              format: uri
+              description: Where the API and its error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request.
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: The next_cursor of the previous page.
+      schema:
+        type: string
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Makes starting a run safe to retry. Any string up to 200 characters; surrounding whitespace is ignored and a longer key is a 422 `invalid_request`. The same key in this organisation returns the run it first started, with its resources and 200 rather than 201, for as long as that run is kept. The request is not compared with the first, so there is no conflict response.
+      schema:
+        type: string
+        maxLength: 200
+    SuiteId:
+      name: suiteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    InvalidJSON:
+      description: The body is not one strict JSON value of the documented shape (`invalid_json`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such object in this organisation (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: A name is already taken, or the target is archived (`conflict`, `archived`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidRequest:
+      description: A field is invalid; the message names it (`invalid_request`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The credential lacks the permission or scope, or names another organisation (`forbidden`, `insufficient_scope`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No credential, an invalid one, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidQuery:
+      description: An unknown, repeated or malformed query parameter (`invalid_query`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RunNotActive:
+      description: The run has already ended (`run_not_active`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `rig:read`, `rig:write`, `rig:run`,
+
+        `rig:connector`, or `rig:*` - and it acts only in the organisation
+
+        it was minted for. Keys without Rig scopes are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+
+        reads need `rig.read`; creating and revising projects and suites
+
+        `rig.write`; starting, finishing and cancelling runs and allocating
+
+        resources `rig.run`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Rig documentation
+  url: https://ironfang.com/rig/docs

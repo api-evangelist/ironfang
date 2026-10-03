@@ -1,0 +1,449 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Audit Webhooks API
+  version: 1.0.0
+  summary: Website audits with findings and signed, independently timestamped evidence.
+  description: Asynchronous website audits with signed, independently timestamped evidence.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/audit
+  description: Production
+security:
+- bearerAuth: []
+- apiKey: []
+tags:
+- name: Webhooks
+  description: Webhook endpoints and deliveries.
+paths:
+  /v1/webhooks:
+    get:
+      operationId: listWebhooks
+      description: Returns the authenticated organisation's webhook endpoint configurations. Signing secrets are not included in the listing.
+      tags:
+      - Webhooks
+      summary: List lifecycle webhook endpoints
+      responses:
+        '200':
+          description: Webhook endpoints; secrets are never returned
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation
+    post:
+      operationId: createWebhooks
+      description: Registers an event delivery endpoint for the authenticated organisation and returns its new signing secret. Store the secret when creating the endpoint; subsequent listings do not disclose it.
+      tags:
+      - Webhooks
+      summary: Create a signed webhook endpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - url
+              properties:
+                url:
+                  type: string
+                  format: uri
+                events:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                    - audit.completed
+      responses:
+        '201':
+          description: Endpoint and one-time signing secret
+        '400':
+          $ref: '#/components/responses/Problem'
+          description: 'invalid_json: the body is not one JSON value of the documented shape'
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation
+        '422':
+          $ref: '#/components/responses/Problem'
+          description: invalid_webhook_url or unsupported_event
+  /v1/webhooks/{endpointId}/test:
+    post:
+      operationId: testWebhooksByEndpointId
+      description: Sends a signed endpoint.test event to the organisation's webhook endpoint and reports whether the destination accepted it.
+      tags:
+      - Webhooks
+      summary: Send a signed endpoint.test event
+      parameters:
+      - $ref: '#/components/parameters/EndpointId'
+      responses:
+        '200':
+          description: Test accepted
+        '422':
+          $ref: '#/components/responses/Problem'
+  /v1/webhooks/{endpointId}/rotate-secret:
+    post:
+      operationId: rotateWebhooksByEndpointIdSecret
+      tags:
+      - Webhooks
+      summary: Replace the endpoint's signing secret
+      description: Mints a new signing secret and returns it once; deliveries signed from now on use it, so update the receiver first if it verifies strictly.
+      parameters:
+      - $ref: '#/components/parameters/EndpointId'
+      responses:
+        '200':
+          description: The new signing secret, shown only in this response.
+        '404':
+          $ref: '#/components/responses/Problem'
+  /v1/webhook-deliveries:
+    get:
+      operationId: listWebhookDeliveries
+      tags:
+      - Webhooks
+      summary: Page organisation webhook deliveries
+      description: Requires audit.integrations. Includes history for retired endpoints. Ordered by immutable delivery ID descending (generated UUIDv7 IDs reflect dispatch order); retrying cannot move a cursor boundary. Creation timestamps and full attempt histories were not retained and are not inferred from next_attempt_at. Lists omit payloads; use the direct detail read for the retained body and latest response.
+      parameters:
+      - $ref: '#/components/parameters/DeliveryCursor'
+      - $ref: '#/components/parameters/DeliveryLimit'
+      - $ref: '#/components/parameters/DeliveryStatus'
+      - name: destination
+        in: query
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Owned delivery page, Cache-Control no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDeliveryList'
+        '400':
+          description: Invalid, repeated or unknown query parameter.
+        '401':
+          description: Authentication required.
+        '403':
+          description: Integration permission required.
+  /v1/webhook-deliveries/{deliveryId}:
+    get:
+      operationId: getWebhookDelivery
+      tags:
+      - Webhooks
+      summary: Read one organisation-owned delivery
+      description: Returns retained payload and latest response without a history scan. Requires audit.integrations.
+      parameters:
+      - name: deliveryId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+      responses:
+        '200':
+          description: Owned delivery, Cache-Control no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDelivery'
+        '400':
+          description: Detail accepts no query parameters.
+        '401':
+          description: Authentication required.
+        '403':
+          description: Integration permission required.
+        '404':
+          description: Unknown, malformed or foreign delivery.
+  /v1/webhooks/{endpointId}/deliveries:
+    get:
+      operationId: listWebhooksByEndpointIdDeliveries
+      description: Without query parameters preserves the legacy 200 records ordered by next_attempt_at, including payloads. Include limit or cursor for stable descending delivery-ID pagination; paginated lists omit payloads. Default endpoint page limit is 200. Filters run before paging.
+      tags:
+      - Webhooks
+      summary: List endpoint deliveries
+      parameters:
+      - $ref: '#/components/parameters/EndpointId'
+      - $ref: '#/components/parameters/DeliveryCursor'
+      - $ref: '#/components/parameters/DeliveryLimit'
+      - $ref: '#/components/parameters/DeliveryStatus'
+      responses:
+        '200':
+          description: Owned delivery records, Cache-Control no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDeliveryList'
+        '400':
+          description: Invalid query parameter.
+  /v1/webhooks/{endpointId}:
+    parameters:
+    - $ref: '#/components/parameters/EndpointId'
+    patch:
+      operationId: updateWebhooksByEndpointId
+      tags:
+      - Webhooks
+      summary: Enable or disable an endpoint, or change its subscribed events
+      description: Enabling clears the consecutive-failure count. An endpoint is disabled automatically after 20 consecutive failed delivery attempts; the reason is on the endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled:
+                  type: boolean
+                events:
+                  type: array
+                  items:
+                    type: string
+                    enum:
+                    - audit.completed
+      responses:
+        '200':
+          description: Endpoint
+        '400':
+          $ref: '#/components/responses/Problem'
+          description: 'invalid_json: the body is not one JSON value of the documented shape'
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation
+        '404':
+          $ref: '#/components/responses/Problem'
+          description: No such webhook in this organisation
+        '422':
+          $ref: '#/components/responses/Problem'
+          description: unknown_event
+    delete:
+      operationId: deleteWebhooksByEndpointId
+      description: Retires the organisation's webhook endpoint from future event delivery while preserving its existing delivery history.
+      tags:
+      - Webhooks
+      summary: Retire an endpoint (soft; its delivery history is kept)
+      responses:
+        '204':
+          description: Retired
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation
+        '404':
+          $ref: '#/components/responses/Problem'
+          description: No such webhook in this organisation
+  /v1/webhooks/{endpointId}/deliveries/{deliveryId}/retry:
+    parameters:
+    - $ref: '#/components/parameters/EndpointId'
+    - name: deliveryId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    post:
+      operationId: retryWebhooksByEndpointIdDeliveriesByDeliveryId
+      description: Requests another attempt for a failed delivery belonging to the organisation's webhook endpoint. The response acknowledges that the retry was queued, not that delivery succeeded.
+      tags:
+      - Webhooks
+      summary: Re-queue a failed delivery
+      responses:
+        '202':
+          description: Queued
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.integrations, or the request names another organisation
+        '404':
+          $ref: '#/components/responses/Problem'
+          description: No such delivery on this webhook, or it is not retryable
+components:
+  schemas:
+    WebhookDelivery:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - endpoint_id
+      - event_id
+      - event_type
+      - status
+      - attempt
+      - next_attempt_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        endpoint_id:
+          type: string
+          format: uuid
+        event_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        status:
+          type: string
+          enum:
+          - queued
+          - retrying
+          - delivering
+          - delivered
+          - failed
+        attempt:
+          type: integer
+          minimum: 0
+        next_attempt_at:
+          type: string
+          format: date-time
+        delivered_at:
+          type: string
+          format: date-time
+        response_status:
+          type: integer
+        response_excerpt:
+          type: string
+        last_error:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+    WebhookDeliveryList:
+      type: object
+      additionalProperties: false
+      required:
+      - deliveries
+      properties:
+        deliveries:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/WebhookDelivery'
+        next_cursor:
+          type: string
+          format: uuid
+  parameters:
+    EndpointId:
+      name: endpointId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    DeliveryStatus:
+      name: status
+      in: query
+      schema:
+        type: string
+        enum:
+        - pending
+        - queued
+        - retrying
+        - delivering
+        - delivered
+        - failed
+      description: Pending selects queued with no attempts; retrying includes queued after an attempt; queued selects all queued records.
+    DeliveryCursor:
+      name: cursor
+      in: query
+      schema:
+        type: string
+        maxLength: 36
+      description: Last delivery ID from the preceding page, exclusive. Omit on page one.
+    DeliveryLimit:
+      name: limit
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+      description: Global default 50; endpoint default 200.
+  responses:
+    Problem:
+      description: Problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Stable machine-readable code. Billing refusals use the codes every Ironfang product shares (BillingCode), with the same status and message whichever product answered; everything else is Ironfang Audit's own.
+                  message:
+                    type: string
+                  docs:
+                    type: string
+                    format: uri
+                    description: Where the errors are documented.
+                    example: https://ironfang.com/audit/docs#errors
+                  product:
+                    type: string
+                    description: 'Billing refusals only: the product the refused work belongs to (audit).'
+                  meter:
+                    type: string
+                    description: 'Billing refusals only: the meter that refused, audit.capture or audit.retention_extension.'
+                  reset_at:
+                    type: string
+                    format: date-time
+                    description: 'Billing refusals only: when the free allowance renews (the next month''s start, UTC).'
+              request_id:
+                type: string
+                description: The X-Ironfang-Request-ID of the failed request.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `audit:read`, `audit:run`, `audit:manage`,
+
+        `audit:evidence`, `audit:integrations`, or `audit:*` - and
+
+        it acts only in the organisation it was minted for. Legacy Ironfang Render
+
+        keys carry no Ironfang Audit scopes and are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission
+
+        in the acting tenant, resolved live from Warden: read routes need
+
+        `audit.read`; creating sites and rules `audit.manage`; queueing
+
+        an audit `audit.run`; evidence bundles and raw artifacts
+
+        `audit.evidence`; webhooks, export destinations and manual exports
+
+        `audit.integrations`; billing changes `billing.manage`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Audit documentation
+  url: https://ironfang.com/audit/docs

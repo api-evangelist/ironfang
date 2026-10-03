@@ -1,0 +1,955 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Finance E-Invoicing Billing API
+  version: 1.4.0
+  summary: Generate UBL invoices and validate Invoice or CreditNote XML with PHIVE.
+  description: 'Ironfang Finance validates UBL e-invoices against the exact EN 16931 and Peppol
+
+    BIS Billing rule releases published by the standards bodies, and returns a
+
+    result that names the immutable ruleset it used so the outcome can be
+
+    reproduced later.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/finance
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Ironfang-Proprietary
+servers:
+- url: https://api.ironfang.com/finance
+  description: Production. Paths below are relative to this product prefix.
+security:
+- {}
+- platformKey: []
+tags:
+- name: Billing
+  description: Ironfang Finance usage as the organisation's billing account meters it, beside Finance's own content-free record. Payment, limits and invoices belong to the account at /billing/v1.
+paths:
+  /v1/einvoices/usage:
+    get:
+      operationId: getEinvoiceUsage
+      summary: Read Ironfang Finance usage for a month
+      description: 'Requires finance:billing:manage. The month''s `finance.validation` and `finance.generation` meters as the organisation''s billing account holds them - free allowance, used, reserved by unfinished work and the charge so far before tax - and Finance''s own record of the same month beside them (`operations`), whose charged operations and usage events always agree. `metered` is false where unified billing is off: nothing is charged there and `meters` is empty. Work belongs to the month it was admitted in, whenever it completes.'
+      tags:
+      - Billing
+      security:
+      - platformKey: []
+      x-ironfang-scopes:
+      - finance:billing:manage
+      responses:
+        '200':
+          description: 'Private usage metadata. Cache-Control: no-store.'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageReport'
+        '400':
+          $ref: '#/components/responses/MalformedRequest'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/InsufficientScope'
+        '429':
+          $ref: '#/components/responses/ReadRateLimited'
+        '500':
+          $ref: '#/components/responses/ReadInternalError'
+      parameters:
+      - in: query
+        name: period
+        required: false
+        description: A past or current UTC calendar month as YYYY-MM; the current month when omitted.
+        schema:
+          type: string
+          pattern: ^[0-9]{4}-(0[1-9]|1[0-2])$
+components:
+  headers:
+    XIronfangRequestID:
+      description: Ironfang's internal request id, minted at the edge for every request and carried in every Problem body as `request_id`. Quote it in support requests.
+      schema:
+        $ref: '#/components/schemas/RequestID'
+    XRequestIDEcho:
+      description: 'Your own correlation id, echoed back when the request carried a well-formed `X-Request-ID`: visible ASCII only (bytes 0x21 to 0x7E, so no spaces or control characters), 1 to 128 bytes. Anything else is ignored, not echoed. Never used as Ironfang''s identifier for the request.'
+      required: false
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 128
+        pattern: ^[\x21-\x7E]{1,128}$
+    RetryAfter:
+      description: Seconds to wait before retrying. Mirrors `retry_after_seconds` in the body.
+      schema:
+        type: integer
+        minimum: 1
+  schemas:
+    BillingRefusal:
+      type: object
+      description: 'On a billing refusal only: the product and meter the billing account refused, and when the free allowance renews (the start of the next UTC month) where that is the reason.'
+      additionalProperties: false
+      properties:
+        product:
+          type: string
+          enum:
+          - finance
+        meter:
+          type: string
+          enum:
+          - finance.validation
+          - finance.generation
+        reset_at:
+          type: string
+          format: date-time
+    RequestID:
+      type: string
+      pattern: ^[A-Za-z0-9_-]{8,64}$
+    OpaqueID:
+      type: string
+      description: An opaque Ironfang identifier.
+      minLength: 1
+      maxLength: 64
+      pattern: ^[A-Za-z0-9_-]+$
+    UsageReport:
+      type: object
+      additionalProperties: false
+      required:
+      - product
+      - metered
+      - period_start
+      - period_end
+      - catalogue_version
+      - mode
+      - paid_eligible
+      - currency
+      - meters
+      - billing
+      - operations
+      properties:
+        product:
+          const: finance
+        metered:
+          type: boolean
+          description: False where unified billing is off; nothing is charged and `meters` is empty.
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: string
+          format: date-time
+        catalogue_version:
+          type: string
+          description: The billing catalogue that prices the month; empty when unmetered.
+        mode:
+          type: string
+          description: The billing account's mode; empty when unmetered.
+          enum:
+          - ''
+          - free
+          - setup_pending
+          - enabled
+          - paused
+          - closed
+        paid_eligible:
+          type: boolean
+          description: Whether the organisation's business is approved for paid Finance usage.
+        currency:
+          const: GBP
+        meters:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required:
+            - meter
+            - operation
+            - unit
+            - free_allowance
+            - used
+            - free_used
+            - billable
+            - reserved
+            - remaining_free
+            - charge
+            - exempt
+            properties:
+              meter:
+                type: string
+                enum:
+                - finance.validation
+                - finance.generation
+              operation:
+                type: string
+                enum:
+                - validate
+                - generate
+              unit:
+                type: string
+              free_allowance:
+                type: integer
+                minimum: 0
+              used:
+                type: integer
+                minimum: 0
+              free_used:
+                type: integer
+                minimum: 0
+              billable:
+                type: integer
+                minimum: 0
+              reserved:
+                type: integer
+                minimum: 0
+              remaining_free:
+                type: integer
+                minimum: 0
+              charge:
+                type: string
+                description: The month's charge so far in pounds, before tax.
+                pattern: ^[0-9]+[.][0-9]{2,8}$
+              exempt:
+                type: boolean
+        billing:
+          type: string
+          const: /billing/v1
+          description: Where the account's usage, limits, payment and invoices are managed.
+        operations:
+          type: object
+          additionalProperties: false
+          required:
+          - period_start
+          - period_end
+          - charged_operations
+          - usage_events
+          - in_progress_operations
+          - mismatches
+          - groups
+          properties:
+            period_start:
+              type: string
+              format: date-time
+            period_end:
+              type: string
+              format: date-time
+            charged_operations:
+              type: integer
+              minimum: 0
+            usage_events:
+              type: integer
+              minimum: 0
+            in_progress_operations:
+              type: integer
+              minimum: 0
+            mismatches:
+              type: integer
+              minimum: 0
+            groups:
+              type: array
+              items:
+                type: object
+                additionalProperties: false
+                required:
+                - admission
+                - source
+                - event_type
+                - quantity
+                properties:
+                  admission:
+                    type: string
+                    description: '`usage` for operations the billing account admitted; the retired plan key for older ones.'
+                  source:
+                    type: string
+                  event_type:
+                    enum:
+                    - einvoice.validation
+                    - einvoice.generation
+                  quantity:
+                    type: integer
+                    minimum: 0
+    Problem:
+      type: object
+      description: An RFC 9457 problem. `code` is the stable, machine-readable Ironfang identifier; `type` is its URL and `status` its one HTTP status, both fixed per code below. `detail` is safe to show and never carries parser output, invoice content or stack traces. Validation findings are never Problems.
+      additionalProperties: false
+      required:
+      - type
+      - title
+      - status
+      - detail
+      - code
+      - request_id
+      properties:
+        type:
+          type: string
+          format: uri
+          pattern: ^https://ironfang\.com/problems/[a-z_]+$
+        title:
+          type: string
+          minLength: 1
+          maxLength: 128
+        status:
+          type: integer
+          minimum: 400
+          maximum: 599
+        detail:
+          type: string
+          minLength: 1
+          maxLength: 512
+        instance:
+          type: string
+          format: uri-reference
+          maxLength: 256
+        code:
+          type: string
+          description: The stable Ironfang problem code.
+          enum:
+          - malformed_request
+          - unauthenticated
+          - insufficient_scope
+          - idempotency_conflict
+          - payload_too_large
+          - unsupported_content_type
+          - unknown_ruleset
+          - ruleset_disabled
+          - result_gone
+          - unsupported_profile
+          - profile_undetected
+          - unsupported_document_type
+          - not_found
+          - rate_limited
+          - quota_exhausted
+          - billing_moved
+          - free_allowance_exhausted
+          - account_budget_exhausted
+          - product_budget_exhausted
+          - exemption_limit_reached
+          - paid_usage_paused
+          - payment_required
+          - payment_action_required
+          - account_restricted
+          - account_closed
+          - product_not_eligible
+          - billing_temporarily_unavailable
+          - validation_timeout
+          - validator_unavailable
+          - jobs_unavailable
+          - delivery_unavailable
+          - generation_failed
+          - report_unavailable
+          - report_incomplete
+          - render_unavailable
+          - render_timeout
+          - internal_error
+        request_id:
+          $ref: '#/components/schemas/RequestID'
+        errors:
+          type: array
+          description: Field-level errors, on `malformed_request` only. Bounded; empty is omitted.
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/FieldError'
+        operation_id:
+          $ref: '#/components/schemas/OpaqueID'
+          description: On an indeterminate validation problem only, the operation record that was opened, if any.
+        outcome:
+          type: string
+          const: indeterminate
+        usage_charged:
+          type: boolean
+          const: false
+        retry_after_seconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+          description: Only on problems that invite a retry (`rate_limited`, `quota_exhausted`, `validator_unavailable`, `billing_temporarily_unavailable`).
+        billing:
+          $ref: '#/components/schemas/BillingRefusal'
+      allOf:
+      - if:
+          properties:
+            code:
+              const: malformed_request
+        then:
+          properties:
+            status:
+              const: 400
+            type:
+              const: https://ironfang.com/problems/malformed_request
+      - if:
+          properties:
+            code:
+              const: unauthenticated
+        then:
+          properties:
+            status:
+              const: 401
+            type:
+              const: https://ironfang.com/problems/unauthenticated
+      - if:
+          properties:
+            code:
+              const: insufficient_scope
+        then:
+          properties:
+            status:
+              const: 403
+            type:
+              const: https://ironfang.com/problems/insufficient_scope
+      - if:
+          properties:
+            code:
+              const: not_found
+        then:
+          properties:
+            status:
+              const: 404
+            type:
+              const: https://ironfang.com/problems/not_found
+      - if:
+          properties:
+            code:
+              const: idempotency_conflict
+        then:
+          properties:
+            status:
+              const: 409
+            type:
+              const: https://ironfang.com/problems/idempotency_conflict
+      - if:
+          properties:
+            code:
+              const: result_gone
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/result_gone
+      - if:
+          properties:
+            code:
+              const: ruleset_disabled
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/ruleset_disabled
+      - if:
+          properties:
+            code:
+              const: payload_too_large
+        then:
+          properties:
+            status:
+              const: 413
+            type:
+              const: https://ironfang.com/problems/payload_too_large
+      - if:
+          properties:
+            code:
+              const: unsupported_content_type
+        then:
+          properties:
+            status:
+              const: 415
+            type:
+              const: https://ironfang.com/problems/unsupported_content_type
+      - if:
+          properties:
+            code:
+              const: unknown_ruleset
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/unknown_ruleset
+      - if:
+          properties:
+            code:
+              const: unsupported_profile
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/unsupported_profile
+      - if:
+          properties:
+            code:
+              const: profile_undetected
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/profile_undetected
+      - if:
+          properties:
+            code:
+              const: unsupported_document_type
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/unsupported_document_type
+      - if:
+          properties:
+            code:
+              const: rate_limited
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/rate_limited
+      - if:
+          properties:
+            code:
+              const: billing_moved
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/billing_moved
+      - if:
+          properties:
+            code:
+              const: free_allowance_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/free_allowance_exhausted
+      - if:
+          properties:
+            code:
+              const: account_budget_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/account_budget_exhausted
+      - if:
+          properties:
+            code:
+              const: product_budget_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/product_budget_exhausted
+      - if:
+          properties:
+            code:
+              const: exemption_limit_reached
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/exemption_limit_reached
+      - if:
+          properties:
+            code:
+              const: paid_usage_paused
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/paid_usage_paused
+      - if:
+          properties:
+            code:
+              const: payment_required
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/payment_required
+      - if:
+          properties:
+            code:
+              const: payment_action_required
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/payment_action_required
+      - if:
+          properties:
+            code:
+              const: account_restricted
+        then:
+          properties:
+            status:
+              const: 402
+            type:
+              const: https://ironfang.com/problems/account_restricted
+      - if:
+          properties:
+            code:
+              const: account_closed
+        then:
+          properties:
+            status:
+              const: 410
+            type:
+              const: https://ironfang.com/problems/account_closed
+      - if:
+          properties:
+            code:
+              const: product_not_eligible
+        then:
+          properties:
+            status:
+              const: 403
+            type:
+              const: https://ironfang.com/problems/product_not_eligible
+      - if:
+          properties:
+            code:
+              const: billing_temporarily_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/billing_temporarily_unavailable
+      - if:
+          properties:
+            code:
+              const: quota_exhausted
+        then:
+          properties:
+            status:
+              const: 429
+            type:
+              const: https://ironfang.com/problems/quota_exhausted
+      - if:
+          properties:
+            code:
+              const: report_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/report_unavailable
+      - if:
+          properties:
+            code:
+              const: report_incomplete
+        then:
+          properties:
+            status:
+              const: 422
+            type:
+              const: https://ironfang.com/problems/report_incomplete
+      - if:
+          properties:
+            code:
+              const: render_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/render_unavailable
+      - if:
+          properties:
+            code:
+              const: render_timeout
+        then:
+          properties:
+            status:
+              const: 504
+            type:
+              const: https://ironfang.com/problems/render_timeout
+      - if:
+          properties:
+            code:
+              const: generation_failed
+        then:
+          required:
+          - outcome
+          - usage_charged
+          properties:
+            status:
+              const: 500
+            type:
+              const: https://ironfang.com/problems/generation_failed
+      - if:
+          properties:
+            code:
+              const: internal_error
+        then:
+          properties:
+            status:
+              const: 500
+            type:
+              const: https://ironfang.com/problems/internal_error
+      - if:
+          properties:
+            code:
+              const: delivery_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/delivery_unavailable
+      - if:
+          properties:
+            code:
+              const: jobs_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/jobs_unavailable
+      - if:
+          properties:
+            code:
+              const: validator_unavailable
+        then:
+          properties:
+            status:
+              const: 503
+            type:
+              const: https://ironfang.com/problems/validator_unavailable
+      - if:
+          properties:
+            code:
+              const: validation_timeout
+        then:
+          properties:
+            status:
+              const: 504
+            type:
+              const: https://ironfang.com/problems/validation_timeout
+      - if:
+          properties:
+            code:
+              enum:
+              - validation_timeout
+              - validator_unavailable
+        then:
+          required:
+          - outcome
+          - usage_charged
+      - if:
+          not:
+            properties:
+              code:
+                enum:
+                - validation_timeout
+                - validator_unavailable
+                - internal_error
+                - generation_failed
+        then:
+          not:
+            anyOf:
+            - required:
+              - outcome
+            - required:
+              - usage_charged
+            - required:
+              - operation_id
+      - if:
+          anyOf:
+          - required:
+            - outcome
+          - required:
+            - usage_charged
+          - required:
+            - operation_id
+        then:
+          required:
+          - outcome
+          - usage_charged
+      - if:
+          required:
+          - errors
+        then:
+          properties:
+            code:
+              const: malformed_request
+      - if:
+          required:
+          - retry_after_seconds
+        then:
+          properties:
+            code:
+              enum:
+              - rate_limited
+              - quota_exhausted
+              - validator_unavailable
+              - jobs_unavailable
+              - delivery_unavailable
+              - billing_temporarily_unavailable
+      - if:
+          required:
+          - billing
+        then:
+          properties:
+            code:
+              enum:
+              - free_allowance_exhausted
+              - account_budget_exhausted
+              - product_budget_exhausted
+              - exemption_limit_reached
+              - paid_usage_paused
+              - payment_required
+              - payment_action_required
+              - account_restricted
+              - account_closed
+              - product_not_eligible
+              - billing_temporarily_unavailable
+    FieldError:
+      type: object
+      additionalProperties: false
+      required:
+      - field
+      - code
+      - message
+      properties:
+        field:
+          type: string
+          description: The option or parameter at fault, e.g. `ruleset`, `options.document_type`.
+          minLength: 1
+          maxLength: 128
+        code:
+          type: string
+          enum:
+          - required
+          - invalid_value
+          - unknown_field
+          - too_long
+        message:
+          type: string
+          minLength: 1
+          maxLength: 256
+  responses:
+    ReadRateLimited:
+      description: Per-address or per-key rate limit. Ruleset reads are not metered, so no quota problem is possible here.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - rate_limited
+                status:
+                  const: 429
+    ReadInternalError:
+      description: 'Ironfang Finance failed while reading the registry. Not a validation verdict: the body carries no outcome or usage fields.'
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - internal_error
+                status:
+                  const: 500
+              not:
+                anyOf:
+                - required:
+                  - outcome
+                - required:
+                  - usage_charged
+                - required:
+                  - operation_id
+    MalformedRequest:
+      description: The request itself is wrong - not the document being validated.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - malformed_request
+                status:
+                  const: 400
+          examples:
+            field-errors:
+              summary: Bad option values
+              externalValue: https://api.ironfang.com/finance/examples/v1-problem-field-errors.json
+    Unauthenticated:
+      description: A credential was presented and could not be verified. Anonymous access, where permitted, sends no credential at all.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - unauthenticated
+                status:
+                  const: 401
+    InsufficientScope:
+      description: The key is valid but does not carry the scope this operation needs.
+      headers:
+        X-Ironfang-Request-ID:
+          $ref: '#/components/headers/XIronfangRequestID'
+        X-Request-ID:
+          $ref: '#/components/headers/XRequestIDEcho'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+            - $ref: '#/components/schemas/Problem'
+            - properties:
+                code:
+                  enum:
+                  - insufficient_scope
+                status:
+                  const: 403
+  securitySchemes:
+    platformKey:
+      type: http
+      scheme: bearer
+      description: An Ironfang platform API key minted in the portal. Scopes listed on an operation are the ones the key must carry. Keys are the only credential this boundary accepts in V1.
+externalDocs:
+  description: Ironfang Finance documentation
+  url: https://ironfang.com/docs/finance

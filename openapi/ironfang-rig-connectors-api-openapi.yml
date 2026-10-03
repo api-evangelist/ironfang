@@ -1,0 +1,321 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Rig Connectors API
+  version: 0.1.0
+  summary: Disposable inboxes, callback URLs, mock endpoints and connector routes for integration tests.
+  description: 'Ironfang Rig gives an application under test a disposable external
+
+    world: temporary inbox addresses, public callback URLs, mock HTTP
+
+    endpoints and connector routes, allocated fresh for every run, with an
+
+    append-only, sequenced timeline of everything Ironfang observed.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/rig
+security:
+- apiKey: []
+- bearerAuth: []
+tags:
+- name: Connectors
+  description: Outbound connectors that forward a run's callbacks to fixed local routes.
+paths:
+  /v1/runs/{runId}/connectors:
+    parameters:
+    - $ref: '#/components/parameters/RunId'
+    get:
+      tags:
+      - Connectors
+      operationId: listConnectors
+      summary: List a run's connectors
+      description: Returns every connector minted for the run with its state (pending, online, offline), the routes it is bound to and when it was last seen, plus how many deliveries are still waiting for a connector. Neither credential is ever returned here. Read-only.
+      responses:
+        '200':
+          description: The connectors
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - connectors
+                - online
+                - pending_deliveries
+                properties:
+                  connectors:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Connector'
+                  online:
+                    type: integer
+                    description: How many connectors hold a session now.
+                  pending_deliveries:
+                    type: integer
+                    description: Callbacks queued for a route that no session has answered yet.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags:
+      - Connectors
+      operationId: createConnector
+      summary: Mint a connector and its bootstrap token
+      description: Mints a connector on an active run and returns its bootstrap token once. The token is single-use, expires after ten minutes, and is bound to this organisation, this run and the route labels named (every label the run declares when none are given). Start `ironfang-connect` with it and a local target for each label; the connector exchanges it at the gateway for a session credential that lives no longer than the run. The platform only ever names a route label; what a label points at is decided on the connector's command line and never leaves the machine. Needs rig.connector. A run may have at most 16 connectors.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  maxLength: 64
+                  description: A label for this connector in the timeline, such as the machine it runs on.
+                routes:
+                  type: array
+                  maxItems: 32
+                  description: Route labels to bind the credential to; a subset of what the run declares. Default all of them.
+                  items:
+                    type: string
+                    pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+      responses:
+        '201':
+          description: Connector minted; the bootstrap token appears here and nowhere else
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - connector
+                - bootstrap_token
+                - bootstrap_expires_at
+                - gateway_url
+                - routes
+                - command
+                properties:
+                  connector:
+                    $ref: '#/components/schemas/Connector'
+                  bootstrap_token:
+                    type: string
+                    description: The single-use credential, prefixed `ift_boot_`. Pass it to ironfang-connect in `IRONFANG_CONNECT_TOKEN`.
+                  bootstrap_expires_at:
+                    type: string
+                    format: date-time
+                  gateway_url:
+                    type: string
+                    format: uri
+                    description: The WebSocket endpoint the connector dials.
+                  routes:
+                    type: array
+                    items:
+                      type: string
+                  command:
+                    type: string
+                    description: The command line to complete with local targets.
+                  release:
+                    type: object
+                    description: The ironfang-connect build to run, when the API knows it.
+                    required:
+                    - version
+                    - checksums_url
+                    properties:
+                      version:
+                        type: string
+                      checksums_url:
+                        type: string
+                        format: uri
+                        description: SHA-256 sums of every binary of that version.
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/RunNotActive'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+        '429':
+          description: The run has its limit of connectors
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+components:
+  responses:
+    InvalidJSON:
+      description: The body is not one strict JSON value of the documented shape (`invalid_json`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such object in this organisation (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidRequest:
+      description: A field is invalid; the message names it (`invalid_request`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The credential lacks the permission or scope, or names another organisation (`forbidden`, `insufficient_scope`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No credential, an invalid one, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    RunNotActive:
+      description: The run has already ended (`run_not_active`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  parameters:
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            docs:
+              type: string
+              format: uri
+              description: Where the API and its error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request.
+    Connector:
+      type: object
+      description: 'One connector to a run. Its credentials never appear here: the bootstrap token is returned once at creation, the session credential once at the gateway.'
+      required:
+      - id
+      - organisation_id
+      - run_id
+      - routes
+      - status
+      - bootstrap_expires_at
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        run_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        routes:
+          type: array
+          items:
+            type: string
+          description: The route labels the credential is bound to.
+        status:
+          type: string
+          enum:
+          - pending
+          - online
+          - offline
+        client:
+          type: object
+          additionalProperties: true
+          description: What the connector said about itself at hello (version, os, arch).
+        bootstrap_expires_at:
+          type: string
+          format: date-time
+        bootstrap_used_at:
+          type: string
+          format: date-time
+        session_expires_at:
+          type: string
+          format: date-time
+          description: Never later than the run's expiry.
+        connected_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        disconnected_at:
+          type: string
+          format: date-time
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `rig:read`, `rig:write`, `rig:run`,
+
+        `rig:connector`, or `rig:*` - and it acts only in the organisation
+
+        it was minted for. Keys without Rig scopes are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+
+        reads need `rig.read`; creating and revising projects and suites
+
+        `rig.write`; starting, finishing and cancelling runs and allocating
+
+        resources `rig.run`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Rig documentation
+  url: https://ironfang.com/rig/docs

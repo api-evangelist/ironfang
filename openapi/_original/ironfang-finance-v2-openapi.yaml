@@ -1,0 +1,2460 @@
+# x-archived-from: ironfang-finance-v2-openapi.yaml (https://api.ironfang.com/finance/v2/openapi.yaml, fetched 2026-10-03)
+# x-archived-on: 2026-10-03
+openapi: 3.1.0
+# Ironfang Finance E-Invoicing public contract, V2: several invoice families.
+#
+# V1 (../httpapi/openapi.yaml) stays exactly as published: Peppol BIS
+# Billing 3 in UBL 2.1, five fixed layers. V2 is the contract for more than
+# one family - XRechnung, ZUGFeRD / Factur-X and Peppol - where the layers a
+# result reports are the ones the selected pipeline runs, and a PDF with
+# embedded invoice XML is an input.
+#
+# This document precedes its handlers on purpose. Nothing here is served
+# until the handlers exist; a family, variant or scope appears in a
+# successful response only when a pinned ruleset for it is active.
+#
+# Conventions: bodies are a versioned result document or an RFC 9457 Problem.
+# Validation findings are never Problems: an invoice that fails a standard is
+# a completed validation. Arrays are always present and never null. Hashes
+# are lowercase hex. Times are RFC 3339 UTC.
+#
+# Serving obligation: this document is served at GET /v2/openapi.yaml under
+# the product prefix, and every example it references by externalValue at
+# GET /v2/examples/{name}, from the embedded filesystem (ContractFS).
+info:
+  title: Ironfang Finance E-Invoicing API
+  version: 2.0.0
+  summary: Validate XRechnung, ZUGFeRD / Factur-X and Peppol invoices, as XML or as a PDF with embedded XML.
+  description: |
+    V2 validates an e-invoice against the exact, immutable ruleset of its
+    family and reports precisely what was checked. It exists beside V1,
+    which is unchanged: V1 clients keep their Peppol-only shapes, and a V2
+    result is never returned through a V1 route.
+
+    **Families.** `xrechnung` (the German CIUS of EN 16931, in UBL or
+    UN/CEFACT CII), `zugferd-facturx` (the shared ZUGFeRD / Factur-X
+    implementation, as CII XML or embedded in a PDF/A-3) and
+    `peppol-bis-billing-3`. ZUGFeRD and Factur-X are corresponding release
+    names of one standard, validated once. `GET /v2/einvoices/rulesets` lists
+    exactly which family, variant, syntax, document type and scope each
+    active release covers; nothing else is supported.
+
+    **Scope.** An XML body is checked at `xml` scope: the invoice XML
+    against its schema and rules. A PDF body is checked at `hybrid_pdf`
+    scope: PDF/A-3 conformance, the invoice attachment and its metadata,
+    and the embedded invoice XML, each reported separately. A PDF is never
+    silently checked as XML only, and XML success never reads as a complete
+    hybrid check. `coverage` lists what was not checked: a PDF that was not
+    supplied, the visual PDF content against the XML (never compared), and
+    digital signatures (never verified).
+
+    **Reduced profiles.** ZUGFeRD / Factur-X MINIMUM and BASIC WL are not
+    full EN 16931 invoices. A pass against them is a pass against that
+    profile's rules, and `coverage` says the EN 16931 semantic model was not
+    established.
+
+    **What a result is not.** Validation does not transmit invoices,
+    certify legal or tax compliance, or guarantee acceptance by a recipient
+    or a submission portal. Documents are never corrected.
+
+    **Authentication, anonymous use, idempotency and retention** follow V1:
+    Ironfang platform API keys (`Authorization: Bearer`), anonymous
+    validation with nothing stored and tighter rate limits, optional
+    `Idempotency-Key` on authenticated requests, 30-day retained results.
+    Uploaded XML or PDF bytes are not stored by synchronous validation.
+
+    **Durable jobs.** `POST /v2/einvoices/jobs` queues one validation and
+    `POST /v2/einvoices/batches` 1 to 100 together, each document base64 in
+    JSON. Everything synchronous validation decides before it validates is
+    decided when a job is accepted, so a document it would refuse is
+    refused then, and nothing is queued or charged. An accepted job's
+    document is held encrypted until it finishes, at most 24 hours. Its
+    result, usage and webhook or S3 event are exactly a synchronous
+    validation's.
+
+    **Problems.** Every error is an RFC 9457 Problem
+    (`application/problem+json`); branch on `code`:
+
+    | code | status | meaning |
+    | --- | --- | --- |
+    | `malformed_request` | 400 | The request is malformed: an unknown or repeated parameter or part, an invalid value, or a body that is not one document. |
+    | `unauthenticated` | 401 | The credential is missing, malformed, unknown or revoked. |
+    | `paid_usage_paused` | 402 | Paid usage is paused for the billing account and the free allowance is used up. |
+    | `payment_required` | 402 | Paid usage needs a working payment method. |
+    | `payment_action_required` | 402 | A payment needs the account holder's confirmation before paid usage continues. |
+    | `account_restricted` | 402 | Paid usage is restricted on the billing account. |
+    | `product_not_eligible` | 403 | Paid Ironfang Finance usage needs an approved business; the free allowance is used up. |
+    | `insufficient_scope` | 403 | The key lacks the scope this operation needs. |
+    | `not_found` | 404 | No such resource is visible to the caller. |
+    | `idempotency_conflict` | 409 | The Idempotency-Key was used for a different request. |
+    | `ruleset_disabled` | 410 | The ruleset was withdrawn from every use. |
+    | `account_closed` | 410 | The billing account is closed. |
+    | `result_gone` | 410 | The original result behind this Idempotency-Key has expired or was deleted; nothing was run again. |
+    | `payload_too_large` | 413 | The body is over the published limit for its media type. |
+    | `unsupported_content_type` | 415 | The body's media type, encoding or content is not one this operation accepts. |
+    | `unknown_ruleset` | 422 | The ruleset id names no release that can be validated against, or no current release exists for the selection. |
+    | `selection_conflict` | 422 | The selectors disagree with each other or with the named ruleset. |
+    | `family_undetected` | 422 | The document declares no family Ironfang recognises; name a family or an exact ruleset. |
+    | `family_mismatch` | 422 | The document declares a different family from the one requested. |
+    | `unsupported_variant` | 422 | The document declares a variant or profile Ironfang recognises but does not validate yet. |
+    | `unsupported_document_type` | 422 | The document type is not one the selected ruleset validates, or it contradicts the document. |
+    | `scope_unavailable` | 422 | The requested scope cannot be checked with this input, such as hybrid scope for an XML body or XML scope for a PDF. |
+    | `no_embedded_invoice` | 422 | The PDF carries no embedded invoice XML Ironfang could identify. |
+    | `ambiguous_embedded_invoice` | 422 | The PDF carries more than one plausible invoice XML; none was chosen. |
+    | `encrypted_pdf` | 422 | The PDF is encrypted or password-protected. |
+    | `processing_limit` | 422 | The document is over a published processing limit (pages, attachments, decoded size); this is not a verdict on the invoice. |
+    | `rate_limited` | 429 | Too many requests from this caller. |
+    | `free_allowance_exhausted` | 429 | This month's free allowance is used up and paid usage is not enabled. |
+    | `account_budget_exhausted` | 429 | The billing account's monthly usage limit is reached. |
+    | `product_budget_exhausted` | 429 | The monthly usage limit for Ironfang Finance is reached. |
+    | `exemption_limit_reached` | 429 | The account's agreed monthly limit is reached. |
+    | `quota_exhausted` | 429 | The organisation's queue of unfinished jobs is full (job and batch submission). |
+    | `internal_error` | 500 | Ironfang Finance failed while processing the request. |
+    | `validator_unavailable` | 503 | The validator for the selected ruleset is not available. |
+    | `delivery_unavailable` | 503 | Destination delivery is not configured (delivery retry). |
+    | `jobs_unavailable` | 503 | Durable jobs are not configured on this deployment (job and batch submission). |
+    | `billing_temporarily_unavailable` | 503 | Billing is briefly unavailable; retry shortly. |
+    | `report_incomplete` | 422 | The retained result's findings were truncated, so no complete signed report can be issued. |
+    | `report_unavailable` | 503 | Signed report issuance is not configured, or a readable PDF was asked for a result that has none. |
+    | `validation_timeout` | 504 | Validation did not finish within the deadline. |
+
+    `validator_unavailable`, `validation_timeout` and, on validation,
+    `internal_error` are indeterminate: they carry `outcome: indeterminate`
+    and `usage_charged: false`, and nothing is billed.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/finance
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary
+    identifier: LicenseRef-Ironfang-Proprietary
+
+servers:
+  - url: https://api.ironfang.com/finance
+    description: Production. Paths below are relative to this product prefix.
+
+externalDocs:
+  description: Ironfang Finance documentation
+  url: https://ironfang.com/docs/finance
+
+tags:
+  - name: validation
+    description: Validate one invoice, XML or PDF.
+  - name: rulesets
+    description: The immutable releases a validation can name.
+  - name: results
+    description: Retained results, V1 and V2 together.
+  - name: deliveries
+    description: Webhook and S3 deliveries of V1 and V2 events together.
+  - name: jobs
+    description: Durable validation jobs and batches, V1 and V2 together.
+  - name: reports
+    description: Signed reports of retained results, and their verification.
+
+paths:
+  /v2/einvoices/validate:
+    post:
+      tags: [validation]
+      operationId: validateEInvoiceV2
+      summary: Validate one invoice, as XML or as a PDF with embedded invoice XML
+      description: |
+        **Body.** Send the document itself with `Content-Type`
+        `application/xml`, `text/xml` or `application/pdf`, choosing with the
+        query parameters. Or send `multipart/form-data` with one `document`
+        part (one of those media types) and an optional `options` part
+        holding a JSON `ValidationOptions` object; query parameters are not
+        read for multipart requests. The media type is a hint: the content
+        is inspected, and an XML part holding a PDF (or the reverse) is
+        `415 unsupported_content_type`. Archives and compressed bodies are
+        refused the same way.
+
+        **Limits.** XML at most 5 MiB (5,242,880 bytes), 64 levels deep,
+        250,000 elements. PDF at most 20 MiB, 200 pages and 20 embedded
+        files; the embedded invoice XML at most 5 MiB; 25 MiB of decoded
+        attachment data in total; 256 MiB of compressed (Flate) content
+        decoded across the whole PDF. Over a byte limit is `413`; over any other
+        processing limit is `422 processing_limit`, which is not a verdict on
+        the invoice. The XML deadline is 10 seconds and the hybrid deadline
+        30 seconds; exceeding it is indeterminate (`504`).
+
+        **Selection.** `ruleset` is `latest` (default) or an exact ruleset
+        id.
+
+        - With an exact id, the release supplies family, variant, syntax,
+          document type and scope. Any selector also sent must equal the
+          release's value, or the request is `422 selection_conflict`; the
+          document must fit the release (`422 unsupported_document_type`,
+          `422 family_mismatch`).
+        - With `latest`, the family is the one requested or, without
+          `family`, the one the document declares
+          (`selection_method: detected`); an undeclared or unknown family is
+          `422 family_undetected`. A requested family the document
+          contradicts is `422 family_mismatch`, and the Problem's
+          `detected` says what the document declares, so a client can offer
+          the right tool; the document is never validated under the wrong
+          family. The variant is the one the document declares; a variant
+          Ironfang recognises but does not validate is
+          `422 unsupported_variant`, never a fallback to a weaker profile.
+        - `scope` defaults to `xml` for XML and `hybrid_pdf` for a PDF.
+          Any other combination is `422 scope_unavailable`. To inspect only
+          the XML inside a PDF, extract it explicitly
+          (`POST /tools/v2/invoice/extract`) and validate that XML.
+
+        **PDF inputs.** An encrypted PDF is `422 encrypted_pdf`. A PDF with
+        no identifiable embedded invoice XML is `422 no_embedded_invoice`,
+        and one with more than one plausible invoice XML is
+        `422 ambiguous_embedded_invoice`: no attachment is ever chosen
+        arbitrarily. These three are uncharged. Everything wrong with an
+        identified embedded invoice - its name, relationship, media type,
+        metadata, PDF/A conformance, or the XML itself - is a finding in a
+        completed validation.
+
+        **Outcome.** `200` is always a verdict: `status: completed`,
+        `outcome` `valid` or `invalid`, and every check that ran completed.
+        A deterministic defect makes the outcome `invalid`, and checks it
+        prevented are `skipped` with a reason. A timeout, an unavailable
+        validator or an internal failure is a Problem with
+        `outcome: indeterminate`; known findings are never presented as a
+        verdict.
+
+        **Usage.** One completed validation is one operation, whatever the
+        scope; the checks inside it are not billed separately. As in V1, a
+        completed validation is charged once its schema check (`xsd`)
+        reached a verdict, passed or failed; a document that is not
+        well-formed XML ends before it and is not charged. Rejected
+        requests and indeterminate outcomes are not charged. An
+        authenticated verdict carries `operation_id` and `usage`, and is
+        retained for 30 days as V1 results are; it is served only through
+        V2, never through a V1 result, list or report.
+
+        **Idempotency.** As V1, with the request identified by the input
+        bytes (for a PDF, the PDF's own bytes), the selectors and the scope.
+        A replay returns the original operation and its result, even if
+        `latest` has since moved.
+
+        **Findings.** At most 1,000 inline, ordered by the pipeline's layer
+        order, then severity (`fatal`, `warning`, `information`), then
+        `rule_id`, then location, then message. `findings_summary` states
+        the totals and whether truncation happened.
+      security:
+        - {}
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - name: ruleset
+          in: query
+          required: false
+          description: "`latest` (default) or an exact ruleset id. Raw bodies only."
+          schema:
+            $ref: '#/components/schemas/RulesetSelector'
+        - name: family
+          in: query
+          required: false
+          description: "The family to resolve `latest` within. Omit to use the family the document declares. Raw bodies only."
+          schema:
+            $ref: '#/components/schemas/Family'
+        - name: variant
+          in: query
+          required: false
+          description: "The variant or profile expected. It must match what the document declares. Raw bodies only."
+          schema:
+            $ref: '#/components/schemas/Variant'
+        - name: document_type
+          in: query
+          required: false
+          description: "Expected document type, or `auto` (default). Raw bodies only."
+          schema:
+            $ref: '#/components/schemas/DocumentTypeSelector'
+        - name: scope
+          in: query
+          required: false
+          description: "Expected scope. Defaults from the body: `xml` for XML, `hybrid_pdf` for a PDF. Raw bodies only."
+          schema:
+            $ref: '#/components/schemas/Scope'
+      requestBody:
+        required: true
+        content:
+          application/xml:
+            schema:
+              $ref: '#/components/schemas/XMLDocument'
+          text/xml:
+            schema:
+              $ref: '#/components/schemas/XMLDocument'
+          application/pdf:
+            schema:
+              $ref: '#/components/schemas/PDFDocument'
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [document]
+              properties:
+                document:
+                  description: The XML or PDF document.
+                  type: string
+                  contentMediaType: application/octet-stream
+                options:
+                  $ref: '#/components/schemas/ValidationOptions'
+            encoding:
+              document:
+                contentType: application/xml, text/xml, application/pdf
+              options:
+                contentType: application/json
+      responses:
+        '200':
+          description: A verdict within the reported scope.
+          headers:
+            X-Ironfang-Request-ID:
+              $ref: '#/components/headers/XIronfangRequestID'
+            X-Request-ID:
+              $ref: '#/components/headers/XRequestIDEcho'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationVerdict'
+              examples:
+                xrechnung-ubl-valid:
+                  summary: A valid XRechnung UBL invoice, family detected; information findings do not fail it
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-validation-xrechnung-ubl-valid.json
+                xrechnung-cii-invalid:
+                  summary: An XRechnung CII invoice without a buyer reference, family requested
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-validation-xrechnung-cii-invalid.json
+                peppol-valid:
+                  summary: A Peppol BIS Billing 3 invoice, detected and run on the Peppol validator its release is pinned to
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-validation-peppol-valid.json
+                zugferd-minimum-xml:
+                  summary: A ZUGFeRD MINIMUM XML passes its reduced profile; no PDF was supplied
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-validation-zugferd-minimum-xml-valid.json
+                zugferd-hybrid-container-failed:
+                  summary: Invoice XML passed; the PDF container checks failed
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-validation-zugferd-hybrid-container-failed.json
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '403': { $ref: '#/components/responses/ScopeOrEligibility' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
+        '410':
+          description: A withdrawn ruleset, a replayed result that has expired or was deleted, or a closed billing account.
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Problem'
+                  - properties:
+                      code: { enum: [ruleset_disabled, result_gone, account_closed] }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedContentType' }
+        '422':
+          description: The selection cannot be made for this document, or the PDF cannot be processed. Uncharged.
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Problem'
+                  - properties:
+                      code:
+                        enum: [unknown_ruleset, selection_conflict, family_undetected, family_mismatch, unsupported_variant,
+                               unsupported_document_type, scope_unavailable, no_embedded_invoice, ambiguous_embedded_invoice,
+                               encrypted_pdf, processing_limit]
+              examples:
+                family-mismatch:
+                  summary: A Peppol invoice sent to the XRechnung validator
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-problem-family-mismatch.json
+                no-embedded-invoice:
+                  summary: An ordinary PDF with no invoice XML inside
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-problem-no-embedded-invoice.json
+        '429':
+          description: Rate limited, or the billing account can admit no more of this work this month.
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Problem'
+                  - properties:
+                      code: { enum: [rate_limited, free_allowance_exhausted, account_budget_exhausted, product_budget_exhausted, exemption_limit_reached] }
+              examples:
+                free-allowance-exhausted:
+                  summary: The month's free validations are used up
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-problem-free-allowance-exhausted.json
+        '500': { $ref: '#/components/responses/ValidationInternalError' }
+        '503':
+          description: >-
+            The validator for the selected ruleset is not available
+            (indeterminate and uncharged), or billing is briefly unavailable
+            (nothing was accepted).
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Problem'
+                  - properties:
+                      code: { enum: [validator_unavailable, billing_temporarily_unavailable] }
+                  - if: { properties: { code: { const: validator_unavailable } } }
+                    then: { required: [outcome, usage_charged] }
+        '504':
+          description: Validation did not finish within the deadline. Indeterminate and uncharged.
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Problem'
+                  - properties:
+                      code: { const: validation_timeout }
+                    required: [outcome, usage_charged]
+              examples:
+                timeout:
+                  summary: A hybrid validation that did not finish
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-problem-validation-timeout.json
+
+  /v2/einvoices/rulesets:
+    get:
+      tags: [rulesets]
+      operationId: listEInvoiceRulesetsV2
+      summary: List the releases a V2 validation can name
+      description: |
+        The `scheduled`, `sendable` and `historical` releases of every
+        family. Exactly one `sendable` release per capability (family,
+        variant, syntax, document type and scope) carries `latest: true`: the
+        one `ruleset=latest` resolves to now. A release of a family in this
+        list is the only evidence that the family is supported.
+      security:
+        - {}
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:rulesets:read]
+      parameters:
+        - { name: family, in: query, required: false, schema: { $ref: '#/components/schemas/Family' } }
+        - { name: variant, in: query, required: false, schema: { $ref: '#/components/schemas/Variant' } }
+        - { name: document_type, in: query, required: false, schema: { $ref: '#/components/schemas/DocumentType' } }
+        - { name: scope, in: query, required: false, schema: { $ref: '#/components/schemas/Scope' } }
+        - { name: operation, in: query, required: false, schema: { $ref: '#/components/schemas/RulesetOperation' } }
+        - { name: state, in: query, required: false, schema: { $ref: '#/components/schemas/RulesetState' } }
+      responses:
+        '200':
+          description: The matching releases, newest effective date first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RulesetList'
+              examples:
+                xrechnung:
+                  summary: The XRechnung releases
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-ruleset-list-xrechnung.json
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v2/einvoices/rulesets/{id}:
+    get:
+      tags: [rulesets]
+      operationId: getEInvoiceRulesetV2
+      summary: One immutable release and its pipeline
+      description: >-
+        One release by id, in any public state (scheduled, sendable or
+        historical), with its pipeline, layers and pinned engine. A release
+        never changes once published; results name the release that produced
+        them, so this is how to see exactly what checked a document.
+      security:
+        - {}
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:rulesets:read]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            $ref: '#/components/schemas/RulesetID'
+      responses:
+        '200':
+          description: The release.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Ruleset'
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/RulesetDisabled' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v2/einvoices/results:
+    get:
+      tags: [results]
+      operationId: listEInvoiceResultsV2
+      summary: List retained results, V1 and V2 together
+      description: |
+        A page of the organisation's retained results, newest first:
+        validations and generations made through V1 and validations made
+        through V2, each saying which API made it (`api_version`), the
+        schema of its retained document (`result_schema`) and its family.
+        `total` counts every matching record, expired and deleted ones
+        included; names are hidden after expiry or deletion and cannot
+        match `q`. Pass `next_cursor` as `cursor` for the next page.
+
+        V1's own result list shows only V1 results: a V2 result is not a
+        document its schema describes.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:read]
+      parameters:
+        - { name: cursor, in: query, required: false, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: kind, in: query, required: false, schema: { type: string, enum: [validate, generate] } }
+        - { name: outcome, in: query, required: false, schema: { type: string, enum: [valid, invalid] } }
+        - { name: family, in: query, required: false, schema: { $ref: '#/components/schemas/Family' } }
+        - { name: api_version, in: query, required: false, schema: { $ref: '#/components/schemas/APIVersion' } }
+        - { name: ruleset, in: query, required: false, schema: { $ref: '#/components/schemas/RulesetID' } }
+        - name: q
+          in: query
+          required: false
+          description: Case-insensitive literal substring of the operation id or an available document name.
+          schema: { type: string, minLength: 1, maxLength: 255 }
+        - { name: operation_id, in: query, required: false, schema: { $ref: '#/components/schemas/OpaqueID' } }
+      responses:
+        '200':
+          description: The page. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetainedResultList'
+              examples:
+                union:
+                  summary: A V2 XRechnung validation beside a V1 Peppol one
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-result-list.json
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v2/einvoices/results/{id}:
+    get:
+      tags: [results]
+      operationId: getEInvoiceResultV2
+      summary: One retained result, in the schema it was made under
+      description: |
+        The exact retained document, byte for byte as it was first
+        returned: a V2 validation's `ironfang/finance/einvoice/validation-result/v2`,
+        or, for an operation made through V1, V1's
+        `financewolf/einvoice/validation-result/v1` or
+        `financewolf/einvoice/generation-result/v1`, which the V1 contract
+        documents. Branch on `schema`. Reading a result never validates or
+        charges again.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:read]
+      parameters:
+        - { name: id, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueID' } }
+      responses:
+        '200':
+          description: The retained document. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetainedDocument'
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/ResultGone' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+    delete:
+      tags: [results]
+      operationId: deleteEInvoiceResultV2
+      summary: Erase one retained result now
+      description: |
+        Erases the retained document and its name, V1 or V2, before its
+        30 days are up. Deleting an already erased or expired result
+        answers `204` again. The operation record stays, so a replay under
+        its Idempotency-Key answers `410 result_gone` and never runs or
+        charges again.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:write]
+      parameters:
+        - { name: id, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueID' } }
+      responses:
+        '204':
+          description: Erased.
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v2/einvoices/deliveries:
+    get:
+      tags: [deliveries]
+      operationId: listEInvoiceDeliveriesV2
+      summary: List webhook and S3 deliveries, V1 and V2 events together
+      description: |
+        A page of the organisation's deliveries, newest first. A finished
+        operation queues one event, and the event one delivery per enabled
+        destination (webhook or S3). An operation made through V1 carries
+        the `financewolf/einvoice/event/v1` event; one made through V2 the
+        `ironfang/finance/einvoice/event/v2` event, whose `result_url` is
+        under `/finance/v2`. Each delivery says which (`api_version`); branch
+        on the event's `schema`. Pass `next_cursor` as `cursor` for the next
+        page. Deliveries and events are kept for 30 days.
+
+        V1's own delivery list shows deliveries of V1 events only.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:read]
+      parameters:
+        - { name: cursor, in: query, required: false, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: destination, in: query, required: false, schema: { $ref: '#/components/schemas/OpaqueID' } }
+        - { name: operation_id, in: query, required: false, schema: { $ref: '#/components/schemas/OpaqueID' } }
+        - name: status
+          in: query
+          required: false
+          description: '`retrying` is a pending delivery with at least one attempt behind it; `pending` one with none.'
+          schema: { type: string, enum: [pending, retrying, delivering, delivered, failed] }
+        - { name: api_version, in: query, required: false, schema: { $ref: '#/components/schemas/APIVersion' } }
+      responses:
+        '200':
+          description: The page. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryList'
+              examples:
+                union:
+                  summary: A V2 validation's delivery beside a V1 one
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-delivery-list.json
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v2/einvoices/deliveries/{id}:
+    get:
+      tags: [deliveries]
+      operationId: getEInvoiceDeliveryV2
+      summary: One delivery and every attempt made
+      description: |
+        One delivery of a V1 or a V2 event, with its event as queued and
+        the history of every attempt: when it started and finished, the
+        HTTP status the destination answered and why it failed, if it did.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:read]
+      parameters:
+        - { name: id, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueID' } }
+      responses:
+        '200':
+          description: The delivery. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryDetail'
+              examples:
+                v2:
+                  summary: A delivered V2 event
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-delivery.json
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v2/einvoices/deliveries/{id}/retry:
+    post:
+      tags: [deliveries]
+      operationId: retryEInvoiceDeliveryV2
+      summary: Retry a failed delivery
+      description: |
+        Grants a failed delivery a fresh ladder of up to eight attempts
+        (32 in all), keeping every earlier attempt in its history. Only a
+        failed delivery to an enabled destination, whose event has not
+        expired, can be retried; anything else is `400 malformed_request`.
+        The body is empty.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:destinations:manage]
+      parameters:
+        - { name: id, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueID' } }
+      responses:
+        '200':
+          description: The delivery, pending again. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryDetail'
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/DeliveryUnavailable' }
+
+  /v2/einvoices/jobs:
+    post:
+      tags: [jobs]
+      operationId: submitEInvoiceJobV2
+      summary: Queue one validation
+      description: |
+        Queues one validation: `document_base64` holds the document's
+        bytes, `media_type` says what they are (the content must agree, as
+        in synchronous validation) and `options` are the synchronous
+        options. XML at most 5 MiB, a PDF at most 20 MiB; the envelope at
+        most 28 MiB.
+
+        **Acceptance.** Every decision synchronous validation makes before
+        it validates is made now: the document's content and size, the
+        scope, a PDF's inspection and its embedded invoice, and the release
+        `latest` or the ruleset id resolves to. A document it would refuse is
+        refused here with the same Problem, and nothing is queued or
+        charged. An accepted job is pinned to that release and its engines,
+        and one validation is reserved on the billing account until the job
+        finishes: charged if it reaches a verdict, returned otherwise. A
+        batch is admitted whole or not at all.
+
+        **Running.** The job runs through the same validation as
+        `POST /v2/einvoices/validate`. Its result is a V2 validation result,
+        read at `result_url` once the job is `completed`; its usage and its
+        webhook or S3 event (`ironfang/finance/einvoice/event/v2`, naming
+        `job_id`) are a synchronous validation's. An unavailable engine or a
+        timeout is retried, up to 3 attempts; then the job is `failed`,
+        indeterminate and uncharged. The document is held encrypted until
+        the job finishes, at most 24 hours (`expires_at`), then erased.
+
+        **Queue.** An organisation holds at most 100 unfinished jobs and
+        25 MiB of their documents; more is `429 quota_exhausted`.
+
+        **Idempotency.** As synchronous validation, with the request
+        identified by the document's bytes, the options and the scope. Keys
+        are V2's own, apart from V1 jobs and from synchronous validation.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/JobRequest'
+      responses:
+        '200':
+          description: The job this Idempotency-Key already names, unchanged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '202':
+          description: Accepted and queued. Location names the job. Cache-Control is no-store.
+          headers:
+            Location:
+              description: /finance/v2/einvoices/jobs/{id}
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+              examples:
+                queued:
+                  summary: A ZUGFeRD PDF queued
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-job.json
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '403': { $ref: '#/components/responses/ScopeOrEligibility' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
+        '410': { $ref: '#/components/responses/AdmissionGone' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedContentType' }
+        '422': { $ref: '#/components/responses/AdmissionRefused' }
+        '429':
+          description: >-
+            Rate limited, the queue full, or the billing account can admit no
+            more of this work this month. Nothing was queued.
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Problem'
+                  - properties:
+                      code: { enum: [rate_limited, quota_exhausted, free_allowance_exhausted, account_budget_exhausted, product_budget_exhausted, exemption_limit_reached] }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503':
+          description: The release's engine is not available, durable jobs are not configured, or billing is briefly unavailable. Nothing was queued.
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Problem'
+                  - properties:
+                      code: { enum: [validator_unavailable, jobs_unavailable, billing_temporarily_unavailable] }
+        '504':
+          description: A PDF could not be inspected within the admission deadline. Nothing was queued.
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Problem'
+                  - properties:
+                      code: { const: validation_timeout }
+    get:
+      tags: [jobs]
+      operationId: listEInvoiceJobsV2
+      summary: List jobs, V1 and V2 together
+      description: |
+        A page of the organisation's jobs, newest first, made through V1
+        or V2 (`api_version`). Pass `next_cursor` as `cursor` for the next
+        page. V1's own list shows V1 jobs only.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:read]
+      parameters:
+        - { name: cursor, in: query, required: false, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: status, in: query, required: false, schema: { $ref: '#/components/schemas/JobStatus' } }
+        - { name: api_version, in: query, required: false, schema: { $ref: '#/components/schemas/APIVersion' } }
+      responses:
+        '200':
+          description: The page. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobList'
+              examples:
+                union:
+                  summary: A V2 job beside a V1 one
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-job-list.json
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v2/einvoices/jobs/{id}:
+    get:
+      tags: [jobs]
+      operationId: getEInvoiceJobV2
+      summary: One job
+      description: |
+        One job, V1's or V2's: its status, attempts, pinned release and
+        engine, and once it has finished its outcome, usage and result.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:read]
+      parameters:
+        - { name: id, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueID' } }
+      responses:
+        '200':
+          description: The job. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v2/einvoices/jobs/{id}/cancel:
+    post:
+      tags: [jobs]
+      operationId: cancelEInvoiceJobV2
+      summary: Cancel a job
+      description: |
+        Cancels an unfinished job: its operation ends indeterminate and
+        uncharged, and its document is erased. A job that has finished is
+        returned unchanged. The body is empty.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:write]
+      parameters:
+        - { name: id, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueID' } }
+      responses:
+        '200':
+          description: The job after cancellation. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Job'
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v2/einvoices/batches:
+    post:
+      tags: [jobs]
+      operationId: submitEInvoiceBatchV2
+      summary: Queue 1 to 100 validations as one batch
+      description: |
+        Accepts 1 to 100 jobs together, all or none: a job that would be
+        refused refuses the batch, and the Problem's `detail` names it by
+        position (`Job 3: ...`), as `errors[].field` does (`jobs[3].options`).
+        The documents together are at most 25 MiB (26,214,400 bytes) and the
+        envelope at most 36 MiB. PDFs are inspected on acceptance, within the
+        30-second hybrid deadline for the whole batch; a batch that cannot
+        be is `504 validation_timeout` and nothing is queued, so send fewer
+        PDFs at once. Each job then runs, is charged and is retained on its
+        own.
+
+        **Idempotency.** An `Idempotency-Key` names the whole batch: the
+        same key and envelope return the original batch (`200`), a
+        different envelope `409 idempotency_conflict`. Keys are V2's own,
+        apart from V1 batches and from synchronous validation.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:write]
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BatchRequest'
+      responses:
+        '200':
+          description: The batch this Idempotency-Key already names, unchanged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Batch'
+        '202':
+          description: Accepted and queued. Location names the batch. Cache-Control is no-store.
+          headers:
+            Location:
+              description: /finance/v2/einvoices/batches/{id}
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Batch'
+              examples:
+                accepted:
+                  summary: A ZUGFeRD PDF and an XRechnung XML, queued together
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-batch.json
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '402': { $ref: '#/components/responses/PaymentRequired' }
+        '403': { $ref: '#/components/responses/ScopeOrEligibility' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
+        '410': { $ref: '#/components/responses/AdmissionGone' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedContentType' }
+        '422': { $ref: '#/components/responses/AdmissionRefused' }
+        '429':
+          description: >-
+            Rate limited, the queue full, or the billing account can admit no
+            more of this work this month. Nothing was queued.
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Problem'
+                  - properties:
+                      code: { enum: [rate_limited, quota_exhausted, free_allowance_exhausted, account_budget_exhausted, product_budget_exhausted, exemption_limit_reached] }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503':
+          description: The release's engine is not available, durable jobs are not configured, or billing is briefly unavailable. Nothing was queued.
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfter'
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Problem'
+                  - properties:
+                      code: { enum: [validator_unavailable, jobs_unavailable, billing_temporarily_unavailable] }
+        '504':
+          description: A PDF could not be inspected within the admission deadline. Nothing was queued.
+          content:
+            application/problem+json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/Problem'
+                  - properties:
+                      code: { const: validation_timeout }
+    get:
+      tags: [jobs]
+      operationId: listEInvoiceBatchesV2
+      summary: List batches, V1 and V2 together
+      description: |
+        A page of the organisation's batches, newest first, made through V1
+        or V2 (`api_version`). Pass `next_cursor` as `cursor` for the next
+        page. V1's own list shows V1 batches only.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:read]
+      parameters:
+        - { name: cursor, in: query, required: false, schema: { type: string, minLength: 1, maxLength: 256 } }
+        - { name: limit, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+        - { name: api_version, in: query, required: false, schema: { $ref: '#/components/schemas/APIVersion' } }
+      responses:
+        '200':
+          description: The page. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchList'
+              examples:
+                union:
+                  summary: A V2 batch beside a V1 one
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-batch-list.json
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v2/einvoices/batches/{id}:
+    get:
+      tags: [jobs]
+      operationId: getEInvoiceBatchV2
+      summary: One batch
+      description: |
+        One batch, V1's or V2's, with every job in position order and the
+        counts by status. `partial` means every job finished, not all the
+        same way.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:read]
+      parameters:
+        - { name: id, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueID' } }
+      responses:
+        '200':
+          description: The batch. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Batch'
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v2/einvoices/batches/{id}/cancel:
+    post:
+      tags: [jobs]
+      operationId: cancelEInvoiceBatchV2
+      summary: Cancel a batch
+      description: |
+        Cancels every unfinished job in the batch, as cancelling each
+        would; finished jobs keep their results. The body is empty.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:write]
+      parameters:
+        - { name: id, in: path, required: true, schema: { $ref: '#/components/schemas/OpaqueID' } }
+      responses:
+        '200':
+          description: The batch after cancellation. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Batch'
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+  /v2/einvoices/reports:
+    post:
+      tags: [reports]
+      operationId: createEInvoiceReportV2
+      summary: Download a signed report of a retained result
+      description: |
+        A ZIP binding the exact retained result, its complete findings and
+        the facts it records to an Ed25519 signature by Ironfang Finance.
+        The report is in its result's version. A V2 validation, XML or
+        hybrid PDF, gets the V2 manifest
+        (`ironfang/finance/einvoice/report-manifest/v2`): the input and, for
+        a PDF, its embedded XML by hash; the ruleset release with its
+        family, variant, syntax, scope and manifest checksum (see the
+        ruleset's `manifest_sha256`); for
+        a hybrid release the PDF engine, PDF/A profiles and binding table it
+        pins; both engines by image digest; every check group and layer;
+        what was not checked; and the release's rule artefacts by hash. A
+        result made through V1 gets exactly the bundle
+        `POST /finance/v1/einvoices/reports` issues, V1 manifest and all.
+
+        The ZIP holds `manifest.json` (canonical), `signature.json`,
+        `result.json` (the retained bytes), `findings.json` and a readable
+        `report.html` derived from the manifest; with RFC 3161 timestamps
+        configured, `timestamp.tsq` and `timestamp.tsr` too. V2 reports
+        sign under their own domain and envelope schema, so a V1 signature
+        can never be read as V2 or the reverse. Both are signed by the keys
+        at `GET /finance/v1/einvoices/reports/keys`.
+
+        Send `operation_id` (and, for a V1 generation only, `include_pdf`)
+        in a JSON body of at most 1024 bytes. A V2 result has no readable
+        PDF: `include_pdf` on one is `503 report_unavailable`. Truncated
+        findings are `422 report_incomplete`. Nothing is validated or
+        charged again and nothing is stored; issuance time and signature may
+        differ between downloads of one result, its facts never do. Expiry
+        and deletion are checked again before the bundle is released.
+        A signature does not certify compliance.
+      security:
+        - platformKey: []
+      x-ironfang-scopes: [finance:einvoices:read]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReportRequest'
+      responses:
+        '200':
+          description: The signed report ZIP as an attachment. Cache-Control is no-store.
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/InsufficientScope' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '410': { $ref: '#/components/responses/ResultGone' }
+        '415': { $ref: '#/components/responses/UnsupportedContentType' }
+        '422': { $ref: '#/components/responses/ReportIncomplete' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+        '503': { $ref: '#/components/responses/ReportUnavailable' }
+
+  /v2/einvoices/reports/verify:
+    post:
+      tags: [reports]
+      operationId: verifyEInvoiceReportV2
+      summary: Verify a signed report of either version, without an account
+      description: |
+        Send the ZIP as `application/zip`. Ironfang Finance reads which
+        manifest it carries (V1's or V2's) and checks the canonical
+        manifest, the domain-separated signature against its own published
+        keys, every bound member's hash and length, the readable page and,
+        where the report requires one, its RFC 3161 timestamp. It performs
+        no network access, no validation and no retention. HTTP 200 answers
+        `verified` true or false; verified means the report is intact and
+        issued by a trusted key, not that the invoice is valid: read
+        `invoice_outcome`. `report_schema` names the manifest; `family` and
+        `scope` are the release's (a V1 report is Peppol BIS Billing 3 at
+        XML scope). Unknown or revoked keys, tampering and unknown schemas
+        fail. For a completely local check, `ironfang finance verify` does
+        the same with keys you obtain independently.
+
+        Bounded to 48 MiB compressed and expanded, nine members, two checks
+        at a time per API process and 15 seconds. No query, compression or
+        Idempotency-Key. Per-address anonymous limits apply.
+      security:
+        - {}
+      requestBody:
+        required: true
+        content:
+          application/zip:
+            schema: { type: string, format: binary }
+      responses:
+        '200':
+          description: The integrity check. Cache-Control is no-store.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReportVerification'
+              examples:
+                verified:
+                  summary: A verified V2 report of a hybrid ZUGFeRD PDF
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-report-verification.json
+                tampered:
+                  summary: A report whose findings were changed after signing
+                  externalValue: https://api.ironfang.com/finance/v2/examples/v2-report-verification-failed.json
+        '400': { $ref: '#/components/responses/MalformedRequest' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+        '415': { $ref: '#/components/responses/UnsupportedContentType' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '500': { $ref: '#/components/responses/InternalError' }
+
+components:
+  securitySchemes:
+    platformKey:
+      type: http
+      scheme: bearer
+      description: An Ironfang platform API key minted in the portal, carrying the scopes an operation lists.
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >-
+        Optional on authenticated requests; scoped to the organisation and
+        this endpoint. The same key with a different request (different
+        bytes, selectors or scope) is `409 idempotency_conflict`.
+      schema:
+        type: string
+        minLength: 8
+        maxLength: 128
+        pattern: '^[A-Za-z0-9_-]+$'
+
+  headers:
+    XIronfangRequestID:
+      description: Ironfang's id for the request, repeated in every Problem as `request_id`.
+      schema:
+        $ref: '#/components/schemas/RequestID'
+    XRequestIDEcho:
+      description: Your own well-formed `X-Request-ID` (visible ASCII, 1 to 128 bytes), echoed back.
+      required: false
+      schema:
+        type: string
+        pattern: '^[\x21-\x7E]{1,128}$'
+    RetryAfter:
+      description: Seconds to wait before retrying. Mirrors `retry_after_seconds`.
+      schema:
+        type: integer
+        minimum: 1
+
+  responses:
+    MalformedRequest:
+      description: The request is malformed.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: malformed_request } }
+    Unauthenticated:
+      description: The credential is missing or not accepted.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: unauthenticated } }
+    PaymentRequired:
+      description: >-
+        The free allowance is used up and paid usage cannot continue until
+        the billing account is put right: paused, no working payment method,
+        a payment awaiting confirmation, or restricted. Nothing was accepted.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { enum: [paid_usage_paused, payment_required, payment_action_required, account_restricted] } }
+    ScopeOrEligibility:
+      description: >-
+        The key lacks the scope this operation needs, or paid Ironfang
+        Finance usage needs an approved business and the free allowance is
+        used up. Nothing was accepted.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { enum: [insufficient_scope, product_not_eligible] } }
+    AdmissionGone:
+      description: The release was withdrawn from every use, or the billing account is closed. Nothing was queued.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { enum: [ruleset_disabled, account_closed] } }
+    InsufficientScope:
+      description: The key lacks the scope this operation needs.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: insufficient_scope } }
+    IdempotencyConflict:
+      description: The Idempotency-Key was used for a different request.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: idempotency_conflict } }
+    NotFound:
+      description: No such release or result is visible.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: not_found } }
+    RulesetDisabled:
+      description: The release was withdrawn from every use.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: ruleset_disabled } }
+    ResultGone:
+      description: The result expired or was erased. Its operation record remains.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: result_gone } }
+    PayloadTooLarge:
+      description: The body is over the limit for its media type.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: payload_too_large } }
+    UnsupportedContentType:
+      description: The media type, encoding or content is not accepted.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: unsupported_content_type } }
+    RateLimited:
+      description: Too many requests.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: rate_limited } }
+    InternalError:
+      description: Ironfang Finance failed. Not a verdict on anything.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: internal_error } }
+    ValidationInternalError:
+      description: Ironfang Finance failed while validating. Indeterminate and uncharged.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: internal_error } }
+                required: [outcome, usage_charged]
+    ReportIncomplete:
+      description: The retained findings are truncated; no complete signed report can be issued.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: report_incomplete } }
+    ReportUnavailable:
+      description: Signed reports are not configured, or a readable PDF was asked for a result that has none. The result is unchanged.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: report_unavailable } }
+    DeliveryUnavailable:
+      description: Destination delivery is not configured on this deployment.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: delivery_unavailable } }
+
+    AdmissionRefused:
+      description: The job cannot be validated as asked, for the reasons synchronous validation would refuse it. Nothing was queued or charged.
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties:
+                  code:
+                    enum: [unknown_ruleset, selection_conflict, family_undetected, family_mismatch, unsupported_variant,
+                           unsupported_document_type, scope_unavailable, no_embedded_invoice, ambiguous_embedded_invoice,
+                           encrypted_pdf, processing_limit]
+
+    ValidatorUnavailable:
+      description: The validator for the selected ruleset is not available. Indeterminate and uncharged.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            allOf:
+              - $ref: '#/components/schemas/Problem'
+              - properties: { code: { const: validator_unavailable } }
+                required: [outcome, usage_charged]
+
+  schemas:
+    ReportRequest:
+      type: object
+      additionalProperties: false
+      required: [operation_id]
+      properties:
+        operation_id: { $ref: '#/components/schemas/OpaqueID' }
+        include_pdf:
+          type: boolean
+          description: A readable PDF of a retained V1 generation. A V2 result has none.
+
+    ReportVerification:
+      type: object
+      additionalProperties: false
+      description: |
+        The integrity check of a signed report of either version. A
+        verified report passed every stage and says what it records; an
+        unverified one gives at least one reason in `errors` and records
+        nothing.
+      required: [schema, verified, signature, artifact_hashes, timestamp, errors, claim]
+      properties:
+        schema: { type: string, const: ironfang/finance/einvoice/report-verification/v2 }
+        verified: { type: boolean }
+        report_schema:
+          type: string
+          enum: [financewolf/einvoice/report-manifest/v1, ironfang/finance/einvoice/report-manifest/v2]
+        signature: { type: string, enum: [not_verified, verified, invalid, untrusted] }
+        artifact_hashes: { type: string, enum: [not_verified, verified, invalid] }
+        timestamp: { type: string, enum: [not_present, not_verified, verified, invalid] }
+        manifest_sha256: { $ref: '#/components/schemas/SHA256' }
+        operation_id: { $ref: '#/components/schemas/OpaqueID' }
+        invoice_outcome: { type: string, enum: [valid, invalid] }
+        ruleset_id: { $ref: '#/components/schemas/RulesetID' }
+        family: { $ref: '#/components/schemas/Family' }
+        scope: { $ref: '#/components/schemas/Scope' }
+        key_id: { type: string, pattern: '^fw_ed25519_[0-9a-f]{64}$' }
+        errors:
+          type: array
+          maxItems: 8
+          items: { type: string, maxLength: 256 }
+        claim: { type: string, maxLength: 1024 }
+
+    JobRequest:
+      type: object
+      additionalProperties: false
+      required: [document_base64, media_type]
+      properties:
+        document_base64:
+          type: string
+          contentEncoding: base64
+          minLength: 4
+          description: The document's bytes, standard padded base64 without line breaks. XML at most 5 MiB, a PDF at most 20 MiB decoded.
+        media_type:
+          type: string
+          enum: [application/xml, text/xml, application/pdf]
+          description: What the document is. The content must agree, or the job is `415 unsupported_content_type`.
+        options:
+          $ref: '#/components/schemas/ValidationOptions'
+
+    BatchRequest:
+      type: object
+      additionalProperties: false
+      required: [jobs]
+      properties:
+        jobs:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: '#/components/schemas/JobRequest' }
+
+    JobStatus:
+      type: string
+      enum: [queued, running, completed, failed, cancelled]
+
+    Job:
+      type: object
+      additionalProperties: false
+      description: |
+        One durable job, V1's or V2's: metadata only, never its document.
+        `outcome` appears once the job has finished: `valid` or `invalid`
+        when completed, `indeterminate` when failed or cancelled, with
+        `failure_code`. A queued job being retried keeps the last attempt's
+        `failure_code`. `result_url` appears while the result can be read.
+      required: [schema, id, operation_id, position, api_version, operation, status, attempts, ruleset_id,
+                 engine_image_digest, usage_charged, result_available, created_at, expires_at]
+      properties:
+        schema: { type: string, const: ironfang/finance/einvoice/job/v2 }
+        id: { $ref: '#/components/schemas/OpaqueID' }
+        operation_id: { $ref: '#/components/schemas/OpaqueID' }
+        batch_id: { $ref: '#/components/schemas/OpaqueID' }
+        position: { type: integer, minimum: 0, maximum: 99, description: The job's place in its batch; 0 outside one. }
+        api_version: { $ref: '#/components/schemas/APIVersion' }
+        operation:
+          type: string
+          enum: [validate, generate]
+          description: V2 jobs validate; a V1 job may generate.
+        status: { $ref: '#/components/schemas/JobStatus' }
+        outcome: { type: string, enum: [valid, invalid, indeterminate] }
+        failure_code:
+          type: string
+          enum: [validation_timeout, validator_unavailable, internal_error, generation_failed, job_cancelled, job_expired]
+        attempts: { type: integer, minimum: 0, maximum: 3 }
+        ruleset_id: { $ref: '#/components/schemas/RulesetID' }
+        engine_image_digest:
+          $ref: '#/components/schemas/ImageDigest'
+          description: The engine the job is pinned to (for V2, the XML worker, or for Peppol BIS Billing 3 the Peppol validator).
+        usage_charged: { type: boolean }
+        result_available: { type: boolean }
+        result_url:
+          type: string
+          pattern: '^/finance/v2/einvoices/results/[0-9a-f-]{36}$'
+        created_at: { type: string, format: date-time }
+        expires_at:
+          type: string
+          format: date-time
+          description: When an unfinished job is failed as job_expired and its document erased.
+        finished_at: { type: string, format: date-time }
+
+    JobList:
+      type: object
+      additionalProperties: false
+      required: [schema, jobs]
+      properties:
+        schema: { type: string, const: ironfang/finance/einvoice/job-list/v2 }
+        jobs:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/Job' }
+        next_cursor: { type: string, minLength: 1, maxLength: 256 }
+
+    JobCounts:
+      type: object
+      additionalProperties: false
+      required: [queued, running, completed, failed, cancelled]
+      properties:
+        queued: { type: integer, minimum: 0 }
+        running: { type: integer, minimum: 0 }
+        completed: { type: integer, minimum: 0 }
+        failed: { type: integer, minimum: 0 }
+        cancelled: { type: integer, minimum: 0 }
+
+    BatchStatus:
+      type: string
+      description: queued until a job starts; running while any is unfinished; then the one status every job shares, or partial.
+      enum: [queued, running, completed, failed, cancelled, partial]
+
+    Batch:
+      type: object
+      additionalProperties: false
+      required: [schema, id, api_version, status, created_at, counts, jobs]
+      properties:
+        schema: { type: string, const: ironfang/finance/einvoice/batch/v2 }
+        id: { $ref: '#/components/schemas/OpaqueID' }
+        api_version: { $ref: '#/components/schemas/APIVersion' }
+        status: { $ref: '#/components/schemas/BatchStatus' }
+        created_at: { type: string, format: date-time }
+        counts: { $ref: '#/components/schemas/JobCounts' }
+        jobs:
+          type: array
+          minItems: 1
+          maxItems: 100
+          items: { $ref: '#/components/schemas/Job' }
+
+    BatchSummary:
+      type: object
+      additionalProperties: false
+      required: [id, api_version, status, created_at, counts, job_count]
+      properties:
+        id: { $ref: '#/components/schemas/OpaqueID' }
+        api_version: { $ref: '#/components/schemas/APIVersion' }
+        status: { $ref: '#/components/schemas/BatchStatus' }
+        created_at: { type: string, format: date-time }
+        counts: { $ref: '#/components/schemas/JobCounts' }
+        job_count: { type: integer, minimum: 1, maximum: 100 }
+
+    BatchList:
+      type: object
+      additionalProperties: false
+      required: [schema, batches]
+      properties:
+        schema: { type: string, const: ironfang/finance/einvoice/batch-list/v2 }
+        batches:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/BatchSummary' }
+        next_cursor: { type: string, minLength: 1, maxLength: 256 }
+
+    DeliveryList:
+      type: object
+      additionalProperties: false
+      required: [schema, deliveries]
+      properties:
+        schema: { type: string, const: ironfang/finance/einvoice/delivery-list/v2 }
+        deliveries:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/Delivery' }
+        next_cursor: { type: string, minLength: 1, maxLength: 256 }
+
+    DeliveryDetail:
+      type: object
+      additionalProperties: false
+      required: [schema, delivery, history]
+      properties:
+        schema: { type: string, const: ironfang/finance/einvoice/delivery/v2 }
+        delivery: { $ref: '#/components/schemas/Delivery' }
+        history:
+          type: array
+          maxItems: 32
+          items: { $ref: '#/components/schemas/DeliveryAttempt' }
+
+    Delivery:
+      type: object
+      additionalProperties: false
+      required: [id, event_id, operation_id, destination_id, api_version, status, attempts, max_attempts, created_at, expires_at, next_attempt_at, event]
+      properties:
+        id: { $ref: '#/components/schemas/OpaqueID' }
+        event_id: { $ref: '#/components/schemas/OpaqueID' }
+        operation_id: { $ref: '#/components/schemas/OpaqueID' }
+        destination_id: { $ref: '#/components/schemas/OpaqueID' }
+        api_version: { $ref: '#/components/schemas/APIVersion' }
+        status: { type: string, enum: [pending, delivering, delivered, failed] }
+        attempts: { type: integer, minimum: 0, maximum: 32 }
+        max_attempts: { type: integer, minimum: 1, maximum: 32 }
+        failure_code:
+          type: string
+          enum: [destination_unavailable, credentials_unavailable, network_error, http_rejected, storage_rejected, object_conflict, result_unavailable, internal_error, lease_expired, event_expired]
+        http_status: { type: integer, minimum: 1, maximum: 599 }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        next_attempt_at:
+          type: string
+          format: date-time
+          description: Scheduled time for pending work; ignore for terminal deliveries.
+        event:
+          description: The event as queued. Its schema matches api_version.
+          oneOf:
+            - $ref: '#/components/schemas/EventV1'
+            - $ref: '#/components/schemas/EventV2'
+
+    DeliveryAttempt:
+      type: object
+      additionalProperties: false
+      required: [attempt, started_at]
+      properties:
+        attempt: { type: integer, minimum: 1, maximum: 32 }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        http_status: { type: integer, minimum: 1, maximum: 599 }
+        failure_code: { type: string, maxLength: 64 }
+
+    DeliveryArtifact:
+      type: object
+      additionalProperties: false
+      required: [name, content_type, sha256, bytes]
+      properties:
+        name: { type: string, enum: [result.json, document.xml] }
+        content_type: { type: string, enum: [application/json, application/xml] }
+        sha256: { $ref: '#/components/schemas/SHA256' }
+        bytes: { type: integer, minimum: 1 }
+
+    EventV2:
+      type: object
+      additionalProperties: false
+      description: |
+        The event of an operation made through V2, as a webhook body, an S3
+        manifest.json and here. Signed and delivered exactly as V1's event.
+      required: [schema, id, type, created_at, state_version, data]
+      properties:
+        schema: { type: string, const: ironfang/finance/einvoice/event/v2 }
+        id: { $ref: '#/components/schemas/OpaqueID' }
+        type: { type: string, enum: [einvoice.validation.completed, einvoice.operation.failed] }
+        created_at: { type: string, format: date-time }
+        state_version: { type: integer, const: 1 }
+        data:
+          type: object
+          additionalProperties: false
+          required: [operation_id, operation, status, outcome, input_sha256, usage_charged, artifacts]
+          properties:
+            operation_id: { $ref: '#/components/schemas/OpaqueID' }
+            operation: { type: string, const: validate }
+            status: { type: string, enum: [completed, error] }
+            outcome: { type: string, enum: [valid, invalid, indeterminate] }
+            failure_code: { type: string, maxLength: 64 }
+            ruleset_id: { $ref: '#/components/schemas/RulesetID' }
+            family:
+              description: The family the result was made under; for a failure, as requested, which may be detect.
+              type: string
+              enum: [detect, peppol-bis-billing-3, xrechnung, zugferd-facturx]
+            variant:
+              description: The variant the result was made under; for a failure, as requested, which may be detect.
+              type: string
+              enum: [detect, core, extension, cvd, minimum, basic-wl, basic, en16931, extended, xrechnung]
+            scope:
+              description: What was checked, xml or hybrid_pdf; for a failure, as requested.
+              type: string
+              enum: [xml, hybrid_pdf]
+            input_sha256: { $ref: '#/components/schemas/SHA256' }
+            usage_charged: { type: boolean }
+            job_id: { $ref: '#/components/schemas/OpaqueID' }
+            batch_id: { $ref: '#/components/schemas/OpaqueID' }
+            result_url:
+              type: string
+              pattern: '^/finance/v2/einvoices/results/[0-9a-f-]{36}$'
+            artifacts:
+              type: array
+              maxItems: 1
+              items: { $ref: '#/components/schemas/DeliveryArtifact' }
+
+    EventV1:
+      type: object
+      description: |
+        The event of an operation made through V1 (financewolf/einvoice/event/v1),
+        described in full by the V1 contract at
+        https://api.ironfang.com/finance/openapi.yaml (DeliveryEvent).
+      required: [schema, id, type, created_at, state_version, data]
+      properties:
+        schema: { type: string, const: financewolf/einvoice/event/v1 }
+        id: { $ref: '#/components/schemas/OpaqueID' }
+        type: { type: string, enum: [einvoice.validation.completed, einvoice.generation.completed, einvoice.operation.failed] }
+        created_at: { type: string, format: date-time }
+        state_version: { type: integer, const: 1 }
+        data: { type: object }
+
+    Problem:
+      type: object
+      description: >-
+        An RFC 9457 problem. `code` is the stable identifier and fixes
+        `status` and `type`. `detail` is safe to show: it never carries
+        parser output, invoice content or stack traces.
+      additionalProperties: false
+      required: [type, title, status, detail, code, request_id]
+      properties:
+        type:
+          type: string
+          format: uri
+          pattern: '^https://ironfang\.com/problems/[a-z_]+$'
+        title: { type: string, minLength: 1, maxLength: 128 }
+        status: { type: integer, minimum: 400, maximum: 599 }
+        detail: { type: string, minLength: 1, maxLength: 512 }
+        instance: { type: string, format: uri-reference, maxLength: 256 }
+        code:
+          type: string
+          enum:
+            - malformed_request
+            - unauthenticated
+            - insufficient_scope
+            - not_found
+            - idempotency_conflict
+            - ruleset_disabled
+            - result_gone
+            - payload_too_large
+            - unsupported_content_type
+            - unknown_ruleset
+            - selection_conflict
+            - family_undetected
+            - family_mismatch
+            - unsupported_variant
+            - unsupported_document_type
+            - scope_unavailable
+            - no_embedded_invoice
+            - ambiguous_embedded_invoice
+            - encrypted_pdf
+            - processing_limit
+            - rate_limited
+            - quota_exhausted
+            - internal_error
+            - validator_unavailable
+            - validation_timeout
+            - delivery_unavailable
+            - jobs_unavailable
+            - report_incomplete
+            - report_unavailable
+            - free_allowance_exhausted
+            - account_budget_exhausted
+            - product_budget_exhausted
+            - exemption_limit_reached
+            - paid_usage_paused
+            - payment_required
+            - payment_action_required
+            - account_restricted
+            - account_closed
+            - product_not_eligible
+            - billing_temporarily_unavailable
+        request_id:
+          $ref: '#/components/schemas/RequestID'
+        errors:
+          type: array
+          description: Field-level errors, on `malformed_request` only.
+          minItems: 1
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/FieldError'
+        detected:
+          $ref: '#/components/schemas/Declared'
+          description: >-
+            On `family_mismatch`, `family_undetected` and
+            `unsupported_variant` only: what the document declares, so a
+            client can point to the right tool. Identifiers only, never
+            invoice content.
+        operation_id:
+          $ref: '#/components/schemas/OpaqueID'
+          description: On an indeterminate validation only, the operation that was opened.
+        outcome: { type: string, const: indeterminate }
+        usage_charged: { type: boolean, const: false }
+        retry_after_seconds:
+          type: integer
+          minimum: 1
+          maximum: 3600
+        billing:
+          $ref: '#/components/schemas/BillingRefusal'
+      allOf:
+        - if: { properties: { code: { const: malformed_request } } }
+          then: { properties: { status: { const: 400 }, type: { const: 'https://ironfang.com/problems/malformed_request' } } }
+        - if: { properties: { code: { const: unauthenticated } } }
+          then: { properties: { status: { const: 401 }, type: { const: 'https://ironfang.com/problems/unauthenticated' } } }
+        - if: { properties: { code: { const: insufficient_scope } } }
+          then: { properties: { status: { const: 403 }, type: { const: 'https://ironfang.com/problems/insufficient_scope' } } }
+        - if: { properties: { code: { const: not_found } } }
+          then: { properties: { status: { const: 404 }, type: { const: 'https://ironfang.com/problems/not_found' } } }
+        - if: { properties: { code: { const: idempotency_conflict } } }
+          then: { properties: { status: { const: 409 }, type: { const: 'https://ironfang.com/problems/idempotency_conflict' } } }
+        - if: { properties: { code: { const: ruleset_disabled } } }
+          then: { properties: { status: { const: 410 }, type: { const: 'https://ironfang.com/problems/ruleset_disabled' } } }
+        - if: { properties: { code: { const: result_gone } } }
+          then: { properties: { status: { const: 410 }, type: { const: 'https://ironfang.com/problems/result_gone' } } }
+        - if: { properties: { code: { const: payload_too_large } } }
+          then: { properties: { status: { const: 413 }, type: { const: 'https://ironfang.com/problems/payload_too_large' } } }
+        - if: { properties: { code: { const: unsupported_content_type } } }
+          then: { properties: { status: { const: 415 }, type: { const: 'https://ironfang.com/problems/unsupported_content_type' } } }
+        - if: { properties: { code: { const: unknown_ruleset } } }
+          then: { properties: { status: { const: 422 }, type: { const: 'https://ironfang.com/problems/unknown_ruleset' } } }
+        - if: { properties: { code: { const: selection_conflict } } }
+          then: { properties: { status: { const: 422 }, type: { const: 'https://ironfang.com/problems/selection_conflict' } } }
+        - if: { properties: { code: { const: family_undetected } } }
+          then: { properties: { status: { const: 422 }, type: { const: 'https://ironfang.com/problems/family_undetected' } } }
+        - if: { properties: { code: { const: family_mismatch } } }
+          then: { properties: { status: { const: 422 }, type: { const: 'https://ironfang.com/problems/family_mismatch' } } }
+        - if: { properties: { code: { const: unsupported_variant } } }
+          then: { properties: { status: { const: 422 }, type: { const: 'https://ironfang.com/problems/unsupported_variant' } } }
+        - if: { properties: { code: { const: unsupported_document_type } } }
+          then: { properties: { status: { const: 422 }, type: { const: 'https://ironfang.com/problems/unsupported_document_type' } } }
+        - if: { properties: { code: { const: scope_unavailable } } }
+          then: { properties: { status: { const: 422 }, type: { const: 'https://ironfang.com/problems/scope_unavailable' } } }
+        - if: { properties: { code: { const: no_embedded_invoice } } }
+          then: { properties: { status: { const: 422 }, type: { const: 'https://ironfang.com/problems/no_embedded_invoice' } } }
+        - if: { properties: { code: { const: ambiguous_embedded_invoice } } }
+          then: { properties: { status: { const: 422 }, type: { const: 'https://ironfang.com/problems/ambiguous_embedded_invoice' } } }
+        - if: { properties: { code: { const: encrypted_pdf } } }
+          then: { properties: { status: { const: 422 }, type: { const: 'https://ironfang.com/problems/encrypted_pdf' } } }
+        - if: { properties: { code: { const: processing_limit } } }
+          then: { properties: { status: { const: 422 }, type: { const: 'https://ironfang.com/problems/processing_limit' } } }
+        - if: { properties: { code: { const: rate_limited } } }
+          then: { properties: { status: { const: 429 }, type: { const: 'https://ironfang.com/problems/rate_limited' } } }
+        - if: { properties: { code: { const: quota_exhausted } } }
+          then: { properties: { status: { const: 429 }, type: { const: 'https://ironfang.com/problems/quota_exhausted' } } }
+        - if: { properties: { code: { const: internal_error } } }
+          then: { properties: { status: { const: 500 }, type: { const: 'https://ironfang.com/problems/internal_error' } } }
+        - if: { properties: { code: { const: validator_unavailable } } }
+          then: { properties: { status: { const: 503 }, type: { const: 'https://ironfang.com/problems/validator_unavailable' } } }
+        - if: { properties: { code: { const: delivery_unavailable } } }
+          then: { properties: { status: { const: 503 }, type: { const: 'https://ironfang.com/problems/delivery_unavailable' } } }
+        - if: { properties: { code: { const: jobs_unavailable } } }
+          then: { properties: { status: { const: 503 }, type: { const: 'https://ironfang.com/problems/jobs_unavailable' } } }
+        - if: { properties: { code: { const: report_incomplete } } }
+          then: { properties: { status: { const: 422 }, type: { const: 'https://ironfang.com/problems/report_incomplete' } } }
+        - if: { properties: { code: { const: report_unavailable } } }
+          then: { properties: { status: { const: 503 }, type: { const: 'https://ironfang.com/problems/report_unavailable' } } }
+        - if: { properties: { code: { const: validation_timeout } } }
+          then: { properties: { status: { const: 504 }, type: { const: 'https://ironfang.com/problems/validation_timeout' } } }
+        - if: { properties: { code: { const: free_allowance_exhausted } } }
+          then: { properties: { status: { const: 429 }, type: { const: 'https://ironfang.com/problems/free_allowance_exhausted' } } }
+        - if: { properties: { code: { const: account_budget_exhausted } } }
+          then: { properties: { status: { const: 429 }, type: { const: 'https://ironfang.com/problems/account_budget_exhausted' } } }
+        - if: { properties: { code: { const: product_budget_exhausted } } }
+          then: { properties: { status: { const: 429 }, type: { const: 'https://ironfang.com/problems/product_budget_exhausted' } } }
+        - if: { properties: { code: { const: exemption_limit_reached } } }
+          then: { properties: { status: { const: 429 }, type: { const: 'https://ironfang.com/problems/exemption_limit_reached' } } }
+        - if: { properties: { code: { const: paid_usage_paused } } }
+          then: { properties: { status: { const: 402 }, type: { const: 'https://ironfang.com/problems/paid_usage_paused' } } }
+        - if: { properties: { code: { const: payment_required } } }
+          then: { properties: { status: { const: 402 }, type: { const: 'https://ironfang.com/problems/payment_required' } } }
+        - if: { properties: { code: { const: payment_action_required } } }
+          then: { properties: { status: { const: 402 }, type: { const: 'https://ironfang.com/problems/payment_action_required' } } }
+        - if: { properties: { code: { const: account_restricted } } }
+          then: { properties: { status: { const: 402 }, type: { const: 'https://ironfang.com/problems/account_restricted' } } }
+        - if: { properties: { code: { const: account_closed } } }
+          then: { properties: { status: { const: 410 }, type: { const: 'https://ironfang.com/problems/account_closed' } } }
+        - if: { properties: { code: { const: product_not_eligible } } }
+          then: { properties: { status: { const: 403 }, type: { const: 'https://ironfang.com/problems/product_not_eligible' } } }
+        - if: { properties: { code: { const: billing_temporarily_unavailable } } }
+          then: { properties: { status: { const: 503 }, type: { const: 'https://ironfang.com/problems/billing_temporarily_unavailable' } } }
+
+    BillingRefusal:
+      type: object
+      description: >-
+        On a billing refusal only: the product and meter the unified billing
+        account refused, and when the free allowance renews (the start of
+        the next UTC month) where that is the reason.
+      additionalProperties: false
+      properties:
+        product: { type: string, enum: [finance] }
+        meter: { type: string, enum: [finance.validation, finance.generation] }
+        reset_at: { type: string, format: date-time }
+
+    FieldError:
+      type: object
+      additionalProperties: false
+      required: [field, code, message]
+      properties:
+        field: { type: string, minLength: 1, maxLength: 64 }
+        code: { type: string, enum: [unknown_field, repeated, invalid_value, missing] }
+        message: { type: string, minLength: 1, maxLength: 256 }
+
+    RequestID:
+      type: string
+      pattern: '^[A-Za-z0-9_-]{8,64}$'
+    OpaqueID:
+      type: string
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+    SHA256:
+      type: string
+      pattern: '^[0-9a-f]{64}$'
+    ImageDigest:
+      type: string
+      pattern: '^sha256:[0-9a-f]{64}$'
+    RulesetID:
+      type: string
+      pattern: '^fwrs_[a-z0-9_]{1,80}$'
+    RulesetSelector:
+      type: string
+      pattern: '^(latest|fwrs_[a-z0-9_]{1,80})$'
+    XMLDocument:
+      type: string
+      contentMediaType: application/xml
+      maxLength: 5242880
+    PDFDocument:
+      type: string
+      contentMediaType: application/pdf
+      contentEncoding: binary
+      description: At most 20 MiB (20,971,520 bytes).
+
+    Family:
+      type: string
+      description: >-
+        An invoice family. `zugferd-facturx` is one family: ZUGFeRD and
+        Factur-X are corresponding release names of the same standard.
+      enum: [peppol-bis-billing-3, xrechnung, zugferd-facturx]
+    Variant:
+      type: string
+      description: >-
+        A variant or profile within a family. XRechnung: `core`,
+        `extension`, `cvd`. ZUGFeRD / Factur-X: `minimum`, `basic-wl`,
+        `basic`, `en16931`, `extended`, `xrechnung` (the ZUGFeRD XRECHNUNG
+        reference profile). Peppol BIS Billing 3 has none. Recognition is
+        not support: the ruleset list is the only statement of what is
+        validated.
+      enum: [core, extension, cvd, minimum, basic-wl, basic, en16931, extended, xrechnung]
+    Syntax:
+      type: string
+      description: The syntax and schema edition a pipeline validates against, taken from the pinned release, never inferred from a namespace.
+      enum: [ubl-2.1, cii-d16b, cii-d22b]
+    Scope:
+      type: string
+      enum: [xml, hybrid_pdf]
+    DocumentType:
+      type: string
+      enum: [invoice, credit_note]
+    DocumentTypeSelector:
+      type: string
+      enum: [invoice, credit_note, auto]
+    RulesetState:
+      type: string
+      enum: [scheduled, sendable, historical]
+    RulesetOperation:
+      type: string
+      enum: [validate, generate]
+    Layer:
+      type: string
+      description: >-
+        A validation stage. A result reports the stages its pipeline runs,
+        in the pipeline's order; no pipeline runs them all.
+      enum: [input, pdfa, hybrid_binding, xml, xsd, en16931, peppol, xrechnung, zugferd_profile]
+    Severity:
+      type: string
+      description: >-
+        `fatal` fails the document; `warning` and `information` never do.
+      enum: [fatal, warning, information]
+
+    ValidationOptions:
+      type: object
+      description: The multipart `options` part. The same names as the query parameters. Unknown or repeated keys are `400`.
+      additionalProperties: false
+      properties:
+        ruleset: { $ref: '#/components/schemas/RulesetSelector' }
+        family: { $ref: '#/components/schemas/Family' }
+        variant: { $ref: '#/components/schemas/Variant' }
+        document_type: { $ref: '#/components/schemas/DocumentTypeSelector' }
+        scope: { $ref: '#/components/schemas/Scope' }
+
+    Declared:
+      type: object
+      description: >-
+        What the document itself declares, copied from its source
+        identifiers. A declaration, not a verdict: validation decides
+        whether it is true.
+      additionalProperties: false
+      required: [syntax]
+      properties:
+        syntax:
+          type: string
+          description: The syntax the root element names.
+          enum: [ubl, cii, other]
+        root:
+          type: string
+          description: The root element's local name.
+          maxLength: 64
+        specification_id:
+          type: string
+          description: UBL CustomizationID, or CII GuidelineSpecifiedDocumentContextParameter/ID.
+          maxLength: 256
+        business_process_id:
+          type: string
+          description: UBL ProfileID, or CII BusinessProcessSpecifiedDocumentContextParameter/ID.
+          maxLength: 256
+        type_code:
+          type: string
+          description: The invoice type code, which decides invoice or credit note in CII.
+          maxLength: 8
+        family: { $ref: '#/components/schemas/Family' }
+        variant: { $ref: '#/components/schemas/Variant' }
+        pdf:
+          type: object
+          description: For a PDF, the invoice declarations in its XMP metadata.
+          additionalProperties: false
+          properties:
+            conformance_level: { type: string, maxLength: 32 }
+            document_file_name: { type: string, maxLength: 128 }
+            document_type: { type: string, maxLength: 32 }
+            version: { type: string, maxLength: 16 }
+            pdfa_part: { type: string, maxLength: 4 }
+            pdfa_conformance: { type: string, maxLength: 4 }
+
+    ValidationInput:
+      type: object
+      additionalProperties: false
+      required: [media_type, bytes, sha256, document_type]
+      properties:
+        media_type: { type: string, enum: [application/xml, application/pdf] }
+        bytes: { type: integer, minimum: 0, maximum: 20971520 }
+        sha256: { $ref: '#/components/schemas/SHA256' }
+        document_type: { type: string, enum: [invoice, credit_note, unknown] }
+        embedded_xml:
+          type: object
+          description: For a PDF, the invoice XML exactly as extracted - original bytes, never re-serialised.
+          additionalProperties: false
+          required: [bytes, sha256]
+          properties:
+            bytes: { type: integer, minimum: 0, maximum: 5242880 }
+            sha256: { $ref: '#/components/schemas/SHA256' }
+            file_name: { type: string, maxLength: 128, description: The attachment's name as declared in the PDF, for display only. }
+
+    RulesetSelection:
+      type: object
+      additionalProperties: false
+      required: [requested, id, selection_method, state, family, syntax, scope, official_release]
+      properties:
+        requested: { $ref: '#/components/schemas/RulesetSelector' }
+        id: { $ref: '#/components/schemas/RulesetID' }
+        selection_method: { type: string, enum: [exact, latest, detected] }
+        state: { $ref: '#/components/schemas/RulesetState' }
+        family: { $ref: '#/components/schemas/Family' }
+        variant: { $ref: '#/components/schemas/Variant' }
+        syntax: { $ref: '#/components/schemas/Syntax' }
+        scope: { $ref: '#/components/schemas/Scope' }
+        official_release: { type: string, minLength: 1, maxLength: 128, description: The specification release, e.g. 3.0.2. }
+        technical_release: { type: string, maxLength: 64, description: The technical bundle, e.g. 2026-08-31, where the family publishes one separately. }
+
+    Coverage:
+      type: object
+      description: >-
+        What the result covers. `checked` is the layers that ran to
+        completion; `not_checked` names every aspect the result does not
+        establish, and why.
+      additionalProperties: false
+      required: [scope, checked, not_checked]
+      properties:
+        scope: { $ref: '#/components/schemas/Scope' }
+        checked:
+          type: array
+          items: { $ref: '#/components/schemas/Layer' }
+          uniqueItems: true
+        not_checked:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [aspect, reason]
+            properties:
+              aspect:
+                type: string
+                enum: [pdf_container, visual_consistency, digital_signature, en16931_semantics]
+              reason:
+                type: string
+                enum: [no_pdf_supplied, not_implemented, outside_scope, reduced_profile]
+
+    CheckGroup:
+      type: object
+      description: >-
+        One of the groups a person reads a result in. `invoice_xml` is always
+        present; `pdfa` and `attachment_metadata` only at `hybrid_pdf`
+        scope. The status is the worst of its layers.
+      additionalProperties: false
+      required: [group, status, layers]
+      properties:
+        group: { type: string, enum: [pdfa, attachment_metadata, invoice_xml] }
+        status: { type: string, enum: [passed, failed, skipped] }
+        layers:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/Layer' }
+
+    LayerResult:
+      type: object
+      additionalProperties: false
+      required: [layer, status, fatal, warning, information]
+      properties:
+        layer: { $ref: '#/components/schemas/Layer' }
+        status: { type: string, enum: [passed, failed, skipped, error] }
+        reason: { type: string, enum: [skipped_after_failure, engine_error, deadline_exceeded] }
+        fatal: { type: integer, minimum: 0 }
+        warning: { type: integer, minimum: 0 }
+        information: { type: integer, minimum: 0 }
+
+    Location:
+      type: object
+      description: >-
+        Where a finding applies, in the source it came from: an XPath or a
+        line and column in the invoice XML, or a PDF object or structure
+        path. A PDF finding never carries an XML location.
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind: { type: string, enum: [none, xpath, line-column, pdf] }
+        value: { type: string, minLength: 1, maxLength: 256 }
+
+    Finding:
+      type: object
+      additionalProperties: false
+      required: [severity, rule_flag, layer, rule_id, rule_source, message, location]
+      properties:
+        severity:
+          $ref: '#/components/schemas/Severity'
+          description: The level the ruleset applies, which decides the outcome.
+        rule_flag:
+          $ref: '#/components/schemas/Severity'
+          description: >-
+            The rule's own flag. It differs from `severity` where the
+            family's official configuration sets another level for the rule
+            (XRechnung's per-scenario levels).
+        layer: { $ref: '#/components/schemas/Layer' }
+        rule_id:
+          type: string
+          pattern: '^[A-Za-z0-9._:-]{1,64}$'
+          description: >-
+            The official rule identifier, unchanged. Ironfang's own checks use
+            the `FW-` namespace (`rule_source: ironfang`).
+        rule_source: { type: string, enum: [official, ironfang] }
+        message:
+          type: string
+          minLength: 1
+          maxLength: 256
+          description: A fixed, safe message for the rule or layer. Official rule texts are not repeated, because they can carry invoice values.
+        location: { $ref: '#/components/schemas/Location' }
+        hint_code: { type: string, maxLength: 64 }
+        source_url: { type: string, format: uri, maxLength: 256 }
+
+    FindingsSummary:
+      type: object
+      additionalProperties: false
+      required: [returned, total, cap, truncated]
+      properties:
+        returned: { type: integer, minimum: 0, maximum: 1000 }
+        total: { type: integer, minimum: 0 }
+        cap: { type: integer, const: 1000 }
+        truncated: { type: boolean }
+
+    SeverityCounts:
+      type: object
+      additionalProperties: false
+      required: [fatal, warning, information]
+      properties:
+        fatal: { type: integer, minimum: 0 }
+        warning: { type: integer, minimum: 0 }
+        information: { type: integer, minimum: 0 }
+
+    Engine:
+      type: object
+      additionalProperties: false
+      required: [role, name, image_digest]
+      properties:
+        role: { type: string, enum: [xml, pdf] }
+        name: { type: string, minLength: 1, maxLength: 128 }
+        image_digest: { $ref: '#/components/schemas/ImageDigest' }
+
+    Timing:
+      type: object
+      additionalProperties: false
+      required: [started_at, completed_at, duration_ms]
+      properties:
+        started_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time }
+        duration_ms: { type: integer, minimum: 0, maximum: 30000 }
+
+    Usage:
+      type: object
+      additionalProperties: false
+      required: [charged, credits]
+      properties:
+        charged: { type: boolean }
+        credits: { type: integer, minimum: 0, maximum: 1 }
+        remaining:
+          type: integer
+          minimum: 0
+          description: Only on results recorded before usage billing, returned as they were recorded.
+        period_ends_at:
+          type: string
+          format: date-time
+          description: Only on results recorded before usage billing, returned as they were recorded.
+
+    ValidationVerdict:
+      type: object
+      description: >-
+        The result of one completed validation. `outcome` is decided by the
+        fatal findings of the checks that ran, within `coverage`.
+      additionalProperties: false
+      required: [schema, status, outcome, input, declared, ruleset, coverage, groups, layers, counts,
+                 findings, findings_summary, timing, engines, next_actions]
+      properties:
+        schema: { type: string, const: ironfang/finance/einvoice/validation-result/v2 }
+        operation_id: { $ref: '#/components/schemas/OpaqueID' }
+        status: { type: string, const: completed }
+        outcome: { type: string, enum: [valid, invalid] }
+        input: { $ref: '#/components/schemas/ValidationInput' }
+        declared: { $ref: '#/components/schemas/Declared' }
+        ruleset: { $ref: '#/components/schemas/RulesetSelection' }
+        coverage: { $ref: '#/components/schemas/Coverage' }
+        groups:
+          type: array
+          minItems: 1
+          maxItems: 3
+          items: { $ref: '#/components/schemas/CheckGroup' }
+        layers:
+          type: array
+          minItems: 3
+          maxItems: 9
+          items: { $ref: '#/components/schemas/LayerResult' }
+        counts:
+          type: object
+          additionalProperties: false
+          required: [by_severity]
+          properties:
+            by_severity: { $ref: '#/components/schemas/SeverityCounts' }
+        findings:
+          type: array
+          maxItems: 1000
+          items: { $ref: '#/components/schemas/Finding' }
+        findings_summary: { $ref: '#/components/schemas/FindingsSummary' }
+        timing: { $ref: '#/components/schemas/Timing' }
+        engines:
+          type: array
+          minItems: 1
+          maxItems: 2
+          items: { $ref: '#/components/schemas/Engine' }
+        next_actions:
+          type: array
+          description: >-
+            What this input supports next, from the capability registry: open
+            the readable view, or extract the embedded XML. Never guessed by
+            a client.
+          uniqueItems: true
+          items: { type: string, enum: [view, extract_xml] }
+        usage: { $ref: '#/components/schemas/Usage' }
+
+    APIVersion:
+      type: string
+      description: The API a result was made through.
+      enum: [v1, v2]
+
+    ResultSchema:
+      type: string
+      description: The schema of a retained document.
+      enum:
+        - ironfang/finance/einvoice/validation-result/v2
+        - financewolf/einvoice/validation-result/v1
+        - financewolf/einvoice/generation-result/v1
+
+    RetainedResult:
+      type: object
+      additionalProperties: false
+      required: [operation_id, kind, api_version, result_schema, family, outcome, ruleset_id, created_at, expires_at, available]
+      properties:
+        operation_id: { $ref: '#/components/schemas/OpaqueID' }
+        kind: { type: string, enum: [validate, generate] }
+        api_version: { $ref: '#/components/schemas/APIVersion' }
+        result_schema: { $ref: '#/components/schemas/ResultSchema' }
+        family: { $ref: '#/components/schemas/Family' }
+        outcome: { type: string, enum: [valid, invalid] }
+        ruleset_id: { $ref: '#/components/schemas/RulesetID' }
+        created_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
+        deleted_at: { type: string, format: date-time }
+        available:
+          type: boolean
+          description: The document can still be read; false once expired or erased.
+        display_name:
+          type: string
+          maxLength: 255
+          description: The name given when the document was validated in the portal, while the result is available.
+
+    RetainedResultList:
+      type: object
+      additionalProperties: false
+      required: [schema, results, total, retention_days]
+      properties:
+        schema: { type: string, const: ironfang/finance/einvoice/result-list/v2 }
+        results:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/RetainedResult' }
+        next_cursor: { type: string, minLength: 1, maxLength: 256 }
+        total: { type: integer, minimum: 0 }
+        retention_days: { type: integer, const: 30 }
+
+    RetainedDocument:
+      description: >-
+        A retained document in the schema it was made under. A V1 document
+        is described by the V1 contract (/finance/v1/openapi.yaml); here it
+        is only named by its `schema`.
+      oneOf:
+        - $ref: '#/components/schemas/ValidationVerdict'
+        - type: object
+          required: [schema]
+          properties:
+            schema:
+              type: string
+              enum: [financewolf/einvoice/validation-result/v1, financewolf/einvoice/generation-result/v1]
+
+    RulesetList:
+      type: object
+      additionalProperties: false
+      required: [schema, rulesets]
+      properties:
+        schema: { type: string, const: ironfang/finance/einvoice/ruleset-list/v2 }
+        rulesets:
+          type: array
+          items: { $ref: '#/components/schemas/Ruleset' }
+
+    RulesetArtifact:
+      type: object
+      additionalProperties: false
+      required: [layer, role, sha256, licence, licence_status, source_url]
+      properties:
+        layer: { $ref: '#/components/schemas/Layer' }
+        role: { type: string, enum: [entry, dependency] }
+        sha256: { $ref: '#/components/schemas/SHA256' }
+        licence: { type: string, minLength: 1, maxLength: 64 }
+        licence_status: { type: string, enum: [permissive, notice-required, no-raw-redistribution] }
+        source_url: { type: string, format: uri, maxLength: 256 }
+
+    Ruleset:
+      type: object
+      description: >-
+        One immutable release: the exact pipeline a validation that names it
+        runs, every artefact by checksum, and the engine image it is pinned
+        to. Nothing about a release changes after activation except its
+        lifecycle state.
+      additionalProperties: false
+      required: [schema, id, state, latest, family, syntax, document_type, scope, operations, official_release,
+                 layers, artifacts, manifest_sha256, engine, valid_from, sources]
+      properties:
+        schema: { type: string, const: ironfang/finance/einvoice/ruleset/v2 }
+        id: { $ref: '#/components/schemas/RulesetID' }
+        state: { $ref: '#/components/schemas/RulesetState' }
+        latest: { type: boolean }
+        family: { $ref: '#/components/schemas/Family' }
+        variant: { $ref: '#/components/schemas/Variant' }
+        syntax: { $ref: '#/components/schemas/Syntax' }
+        document_type: { $ref: '#/components/schemas/DocumentType' }
+        scope: { $ref: '#/components/schemas/Scope' }
+        operations:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/RulesetOperation' }
+        official_release: { type: string, minLength: 1, maxLength: 128 }
+        technical_release: { type: string, maxLength: 64 }
+        en16931_release: { type: string, maxLength: 32 }
+        bis_release: { type: string, maxLength: 32 }
+        layers:
+          type: array
+          minItems: 3
+          maxItems: 9
+          uniqueItems: true
+          items: { $ref: '#/components/schemas/Layer' }
+        artifacts:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/RulesetArtifact' }
+        manifest_sha256:
+          $ref: '#/components/schemas/SHA256'
+          description: |
+            The SHA-256 of the release's pipeline manifest, which names every
+            artefact, engine module and configuration it runs. A Peppol BIS
+            Billing 3 release runs on the Peppol validator, not a pipeline:
+            its checksum is over its release identity document
+            (`ironfang/finance/einvoice/peppol-release/v1`: id, VESID,
+            document type, syntax, official, EN 16931 and BIS releases,
+            engine and image digest), and its three rule artefacts are listed
+            in `artifacts`.
+        engine:
+          type: object
+          additionalProperties: false
+          required: [name, image_digest]
+          properties:
+            name: { type: string, minLength: 1, maxLength: 128 }
+            image_digest: { $ref: '#/components/schemas/ImageDigest' }
+        valid_from: { type: string, format: date-time }
+        valid_until: { type: string, format: date-time }
+        published_on: { type: string, format: date }
+        retired_at: { type: string, format: date-time }
+        replaced_by: { $ref: '#/components/schemas/RulesetID' }
+        sources:
+          type: array
+          minItems: 1
+          items: { type: string, format: uri, maxLength: 256 }

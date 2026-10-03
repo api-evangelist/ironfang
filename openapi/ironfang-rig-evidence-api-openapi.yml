@@ -1,0 +1,289 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Rig Evidence API
+  version: 0.1.0
+  summary: Disposable inboxes, callback URLs, mock endpoints and connector routes for integration tests.
+  description: 'Ironfang Rig gives an application under test a disposable external
+
+    world: temporary inbox addresses, public callback URLs, mock HTTP
+
+    endpoints and connector routes, allocated fresh for every run, with an
+
+    append-only, sequenced timeline of everything Ironfang observed.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/rig
+security:
+- apiKey: []
+- bearerAuth: []
+tags:
+- name: Evidence
+  description: Bundles, receipts and the keys they are signed with.
+paths:
+  /v1/runs/{runId}/receipt:
+    post:
+      tags:
+      - Evidence
+      operationId: createRunReceipt
+      summary: A signed receipt for the run
+      description: 'A signed statement of what the run was and how it ended: project, suite and version, status and outcome, every verdict, the event count and the head of the event hash chain. Signed with the platform''s Ed25519 key when it has one; the signature carries the key, and /v1/evidence/keys publishes it, so the receipt verifies anywhere. A run whose chain does not recompute gets no receipt (409). Needs rig.read.'
+      parameters:
+      - $ref: '#/components/parameters/RunId'
+      responses:
+        '200':
+          description: The receipt and its signature.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignedReceipt'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/evidence/keys:
+    get:
+      tags:
+      - Evidence
+      operationId: listEvidenceKeys
+      summary: The keys evidence is signed with
+      description: The public keys bundles and receipts are signed with, by key id, so a verifier can trust a signature by key rather than by the key it carries. Empty on a platform that signs nothing. Needs rig.read.
+      responses:
+        '200':
+          description: The keys.
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - keys
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PublicKey'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  responses:
+    NotFound:
+      description: No such object in this organisation (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: A name is already taken, or the target is archived (`conflict`, `archived`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The credential lacks the permission or scope, or names another organisation (`forbidden`, `insufficient_scope`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No credential, an invalid one, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Receipt:
+      type: object
+      required:
+      - receipt_version
+      - generated_at
+      - run
+      - events
+      properties:
+        receipt_version:
+          type: integer
+        generated_at:
+          type: string
+          format: date-time
+        run:
+          type: object
+          required:
+          - id
+          - organisation_id
+          - project
+          - suite
+          - suite_version
+          - status
+          - outcome
+          - started_at
+          properties:
+            id:
+              type: string
+              format: uuid
+            organisation_id:
+              type: string
+              format: uuid
+            project:
+              type: string
+            suite:
+              type: string
+            suite_version:
+              type: integer
+            status:
+              type: string
+            outcome:
+              type: string
+            started_at:
+              type: string
+              format: date-time
+            finished_at:
+              type: string
+              format: date-time
+            external_id:
+              type: string
+        events:
+          type: integer
+        chain_head:
+          type: string
+        hashed_from:
+          type: integer
+          format: int64
+        verdicts:
+          type: object
+          additionalProperties:
+            type: string
+            enum:
+            - passed
+            - failed
+            - unjudged
+    PublicKey:
+      type: object
+      required:
+      - key_id
+      - algorithm
+      - public_key
+      properties:
+        key_id:
+          type: string
+          description: The first 16 hex characters of the key's SHA-256.
+        algorithm:
+          type: string
+          enum:
+          - ed25519
+        public_key:
+          type: string
+          description: Base64.
+    Signature:
+      type: object
+      description: A detached Ed25519 signature over named bytes, carrying the key it was made with.
+      required:
+      - algorithm
+      - key_id
+      - public_key
+      - signed
+      - sha256
+      - signed_at
+      - signature
+      properties:
+        algorithm:
+          type: string
+          enum:
+          - ed25519
+        key_id:
+          type: string
+        public_key:
+          type: string
+          description: Base64.
+        signed:
+          type: string
+          description: 'What was signed: manifest.json, or receipt.'
+        sha256:
+          type: string
+          description: SHA-256 of the signed bytes.
+        signed_at:
+          type: string
+          format: date-time
+        signature:
+          type: string
+          description: Base64.
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            docs:
+              type: string
+              format: uri
+              description: Where the API and its error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request.
+    SignedReceipt:
+      type: object
+      required:
+      - receipt
+      description: The receipt and, on a platform with a signing key, its signature over the receipt's canonical JSON (objects with keys in byte order, no whitespace, numbers as written).
+      properties:
+        receipt:
+          $ref: '#/components/schemas/Receipt'
+        signature:
+          $ref: '#/components/schemas/Signature'
+  parameters:
+    RunId:
+      name: runId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `rig:read`, `rig:write`, `rig:run`,
+
+        `rig:connector`, or `rig:*` - and it acts only in the organisation
+
+        it was minted for. Keys without Rig scopes are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+
+        reads need `rig.read`; creating and revising projects and suites
+
+        `rig.write`; starting, finishing and cancelling runs and allocating
+
+        resources `rig.run`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Rig documentation
+  url: https://ironfang.com/rig/docs

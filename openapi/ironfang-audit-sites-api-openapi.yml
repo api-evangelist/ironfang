@@ -1,0 +1,815 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Audit Sites API
+  version: 1.0.0
+  summary: Website audits with findings and signed, independently timestamped evidence.
+  description: Asynchronous website audits with signed, independently timestamped evidence.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/audit
+  description: Production
+security:
+- bearerAuth: []
+- apiKey: []
+tags:
+- name: Sites
+  description: Sites under audit.
+paths:
+  /v1/sites:
+    get:
+      operationId: listSites
+      description: Returns the sites owned by the authenticated organisation, including their stored audit configuration and complete per-site activity facts. Counts and last audit come from authoritative tenant-scoped queries, independently of history page limits.
+      tags:
+      - Sites
+      summary: List sites
+      responses:
+        '200':
+          description: Sites
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SiteList'
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.read, or the request names another organisation
+    post:
+      operationId: createSites
+      description: Registers a public website for the authenticated organisation. The URL must pass the public-target policy and the organisation must be below the site capacity limit (250 sites unless the deployment sets otherwise, for every organisation whatever it pays). A crawl policy is held inside the crawl ceilings and the per-audit page cap. robots.txt is respected unless the policy explicitly sets `respect_robots` to false.
+      tags:
+      - Sites
+      summary: Create a site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - url
+              properties:
+                name:
+                  type: string
+                url:
+                  type: string
+                  format: uri
+                timezone:
+                  type: string
+                  default: UTC
+                crawl_policy:
+                  type: object
+                  description: Fields of the site's crawl policy (see CrawlPolicy); omitted fields take the ceilings or defaults. `respect_robots` is true unless it is given as false.
+      responses:
+        '201':
+          description: Site created
+        '400':
+          $ref: '#/components/responses/Problem'
+          description: 'invalid_json: the body or its crawl_policy is not of the documented shape'
+        '422':
+          $ref: '#/components/responses/Problem'
+          description: 'invalid_url, unsafe_url, or site_limit: the organisation holds as many sites as the capacity limit allows'
+  /v1/sites/{siteId}:
+    parameters:
+    - $ref: '#/components/parameters/SiteId'
+    get:
+      operationId: getSitesBySiteId
+      description: Returns stored site configuration and complete activity facts. A site outside the authenticated organisation is reported as not found.
+      tags:
+      - Sites
+      summary: Get a site
+      responses:
+        '200':
+          description: Site
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Site'
+        '404':
+          $ref: '#/components/responses/Problem'
+  /v1/sites/{siteId}/rules:
+    parameters:
+    - $ref: '#/components/parameters/SiteId'
+    get:
+      operationId: listSitesBySiteIdRules
+      description: Returns the deterministic rules configured for a site owned by the authenticated organisation, with their version and configuration metadata.
+      tags:
+      - Sites
+      summary: List the site's versioned deterministic rules
+      responses:
+        '200':
+          description: Rules
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.read, or the request names another organisation
+        '404':
+          $ref: '#/components/responses/Problem'
+          description: No such site in this organisation
+    post:
+      operationId: createSitesBySiteIdRules
+      description: Validates the rule type and configuration, then creates a versioned rule for the selected site. Invalid configurations are rejected before an audit can run them.
+      tags:
+      - Sites
+      summary: Create a deterministic rule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - name
+              - rule_type
+              - configuration
+              properties:
+                name:
+                  type: string
+                rule_type:
+                  type: string
+                severity:
+                  type: string
+                  enum:
+                  - info
+                  - warning
+                  - failure
+                  - critical
+                configuration:
+                  type: object
+                  additionalProperties: true
+      responses:
+        '201':
+          description: Rule created
+        '422':
+          $ref: '#/components/responses/Problem'
+  /v1/sites/{siteId}/rule-packs:
+    parameters:
+    - $ref: '#/components/parameters/SiteId'
+    get:
+      operationId: listSitesBySiteIdRulePacks
+      tags:
+      - Sites
+      summary: Packs installed on this site
+      description: Includes latest_version and upgrade_available. A newer pack is never applied on its own; you are told one exists.
+      responses:
+        '200':
+          description: Installed packs
+        '404':
+          $ref: '#/components/responses/Problem'
+    post:
+      operationId: createSitesBySiteIdRulePacks
+      description: Installs the selected catalogue pack on the organisation's site using the supplied variable values. The pack's templates become site rules with their own revision history.
+      tags:
+      - Sites
+      summary: Install a rule pack
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - pack_key
+              - variables
+              properties:
+                pack_key:
+                  type: string
+                variables:
+                  type: object
+                  additionalProperties:
+                    type: string
+                  description: The values the pack declares. Missing ones are named in a 422.
+      responses:
+        '201':
+          description: Installed
+        '404':
+          $ref: '#/components/responses/Problem'
+        '409':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+  /v1/sites/{siteId}/audits:
+    parameters:
+    - $ref: '#/components/parameters/SiteId'
+    get:
+      operationId: listSitesBySiteIdAudits
+      description: Returns audit runs for the selected site within the authenticated organisation. A site outside the organisation is reported as not found.
+      tags:
+      - Sites
+      summary: List site audits
+      parameters:
+      - $ref: '#/components/parameters/HistoryLimit'
+      - $ref: '#/components/parameters/HistoryCursor'
+      - $ref: '#/components/parameters/AuditStatusFilter'
+      responses:
+        '200':
+          description: Audits
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuditList'
+        '400':
+          $ref: '#/components/responses/Problem'
+          description: Invalid, repeated or unknown collection parameter
+    post:
+      operationId: createSitesBySiteIdAudits
+      description: 'Admits and queues an audit for the organisation''s site and returns its initial lifecycle state. Admission comes first: the most pages the audit can capture (`page_bound`: the site''s page limit within the per-audit cap, or one page for single_page) are reserved against the `audit.capture` meter of the organisation''s billing account. A refusal is answered now with the shared billing code and no audit exists. The audit then captures at most `page_bound` pages and is charged only for the page evidence it finalises. Reusing an Idempotency-Key returns the existing audit and reserves nothing more; single_page limits the scope to the site''s primary URL.'
+      tags:
+      - Sites
+      summary: Trigger an asynchronous audit
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason:
+                  type: string
+                single_page:
+                  type: boolean
+                  default: false
+                  description: Capture only the primary URL without following links or creating a monitor.
+                trigger_type:
+                  type: string
+                  default: api
+      responses:
+        '202':
+          description: Audit admitted and queued
+        '200':
+          description: Idempotent replay; the existing audit
+        '402':
+          $ref: '#/components/responses/Problem'
+          description: 'Billing refusal: paid_usage_paused, payment_required, payment_action_required or account_restricted'
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: forbidden or insufficient_scope; or the billing refusal product_not_eligible
+        '404':
+          $ref: '#/components/responses/Problem'
+        '410':
+          $ref: '#/components/responses/Problem'
+          description: 'Billing refusal: account_closed'
+        '413':
+          $ref: '#/components/responses/Problem'
+          description: 'Billing refusal: operation_too_large'
+        '429':
+          $ref: '#/components/responses/Problem'
+          description: 'Billing refusal: free_allowance_exhausted, account_budget_exhausted, product_budget_exhausted or exemption_limit_reached. reset_at says when the free allowance renews'
+        '503':
+          $ref: '#/components/responses/Problem'
+          description: 'Billing refusal: billing_temporarily_unavailable, with Retry-After'
+  /v1/sites/{siteId}/monitors:
+    parameters:
+    - $ref: '#/components/parameters/SiteId'
+    get:
+      operationId: listSitesBySiteIdMonitors
+      description: Returns the organisation's non-archived monitors for the selected site, including their scheduling configuration.
+      tags:
+      - Sites
+      summary: List the site's monitors
+      responses:
+        '200':
+          description: Monitors (archived ones omitted)
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.read, or the request names another organisation
+        '404':
+          $ref: '#/components/responses/Problem'
+          description: No such site in this organisation
+    post:
+      operationId: createSitesBySiteIdMonitors
+      tags:
+      - Sites
+      summary: Create a monitor
+      description: '`mode` is `full_site` (crawler discovery under the site''s crawl policy) or `url_set` (exactly the given `urls`, validated against the site''s hosts, patterns and the public-target policy; the whole set is refused if any entry fails). `cadence` is `manual`, `daily`, `six_hourly` or `hourly`, open to every organisation; each scheduled run is admitted against `audit.capture` when its slot arrives, and a refused run is skipped with a `monitor.skipped` event whose `reason` is the billing code. `anchor_minute` is minutes past midnight in `timezone` for daily, or within the interval otherwise.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MonitorInput'
+      responses:
+        '201':
+          description: Monitor with its URL set
+        '422':
+          $ref: '#/components/responses/Problem'
+components:
+  schemas:
+    AuditList:
+      type: object
+      additionalProperties: false
+      required:
+      - audits
+      properties:
+        audits:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/Audit'
+        next_cursor:
+          type: string
+          maxLength: 256
+          description: Opaque continuation boundary. Absent on the final page; no total is inferred from a page.
+    Site:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - organisation_id
+      - name
+      - primary_url
+      - status
+      - timezone
+      - crawl_policy
+      - created_at
+      - activity
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        primary_url:
+          type: string
+        status:
+          type: string
+        timezone:
+          type: string
+        crawl_policy:
+          $ref: '#/components/schemas/CrawlPolicy'
+        created_at:
+          type: string
+          format: date-time
+        activity:
+          $ref: '#/components/schemas/SiteActivity'
+    MonitorInput:
+      type: object
+      description: '`mode` is `full_site` (crawler discovery under the site''s crawl policy) or `url_set` (exactly the given `urls`). Every `cadence` is open to every organisation; `manual` monitors only run when asked. `anchor_minute` is minutes past midnight in `timezone` for daily cadences, or minutes into the interval otherwise.
+
+        '
+      required:
+      - mode
+      properties:
+        name:
+          type: string
+        mode:
+          type: string
+          enum:
+          - full_site
+          - url_set
+        cadence:
+          type: string
+          enum:
+          - manual
+          - daily
+          - six_hourly
+          - hourly
+        anchor_minute:
+          type: integer
+          minimum: 0
+          maximum: 1439
+        timezone:
+          type: string
+          description: An IANA zone name, for example Europe/London.
+        urls:
+          type: array
+          items:
+            type: string
+            format: uri
+          description: Required for url_set on creation; ignored on update.
+        capture_profile:
+          $ref: '#/components/schemas/CaptureProfile'
+        change_policy:
+          $ref: '#/components/schemas/ChangePolicy'
+    SiteList:
+      type: object
+      additionalProperties: false
+      required:
+      - sites
+      properties:
+        sites:
+          type: array
+          items:
+            $ref: '#/components/schemas/Site'
+    ChangePolicy:
+      type: object
+      description: When a page observation counts as changed.
+      properties:
+        min_text_change:
+          type: number
+          description: Fraction of text that must differ, 0-1.
+        min_visual_change:
+          type: number
+          description: Fraction of pixels that must differ, 0-1.
+        ignored_selectors:
+          type: array
+          items:
+            type: string
+        notify_only_on_rule_change:
+          type: boolean
+        ignore_numbers:
+          type: boolean
+    CaptureProfile:
+      type: object
+      description: Viewport and rendering settings for the monitor's evidence captures. Clamped to Ironfang Render's ceilings.
+      properties:
+        width:
+          type: integer
+        height:
+          type: integer
+        device_scale_factor:
+          type: number
+        locale:
+          type: string
+        color_scheme:
+          type: string
+          enum:
+          - light
+          - dark
+    LastSiteAudit:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - status
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        status:
+          $ref: '#/components/schemas/AuditStatus'
+        created_at:
+          type: string
+          format: date-time
+    Audit:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - organisation_id
+      - site_id
+      - site_name
+      - trigger_type
+      - status
+      - created_at
+      - discovered_page_count
+      - captured_page_count
+      - passed_page_count
+      - warning_page_count
+      - failed_page_count
+      - error_page_count
+      - credits_consumed
+      - evidence_hosted
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+          format: uuid
+        site_name:
+          type: string
+          description: The audited site's name, resolved with the audit so a list need not read every site to label its rows.
+        trigger_type:
+          type: string
+          enum:
+          - manual
+          - api
+          - schedule
+        reason:
+          type: string
+        status:
+          $ref: '#/components/schemas/AuditStatus'
+        compliance_state:
+          type: string
+          enum:
+          - PASS
+          - WARNING
+          - FAIL
+          - ERROR
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+        created_at:
+          type: string
+          format: date-time
+        discovered_page_count:
+          type: integer
+          minimum: 0
+        captured_page_count:
+          type: integer
+          minimum: 0
+        passed_page_count:
+          type: integer
+          minimum: 0
+        warning_page_count:
+          type: integer
+          minimum: 0
+        failed_page_count:
+          type: integer
+          minimum: 0
+        error_page_count:
+          type: integer
+          minimum: 0
+        root_hash:
+          type: string
+        manifest_sha256:
+          type: string
+        signing_key_id:
+          type: string
+        credits_consumed:
+          type: integer
+          minimum: 0
+          description: 'Page captures this audit was charged against audit.capture: one per finalised page evidence record, settled when it finalised. Zero while running, when not metered, or when its admission had expired. The name is kept from the launch-era credits.'
+        page_bound:
+          type: integer
+          minimum: 1
+          description: 'The most pages this audit may capture: what was reserved against audit.capture when it was admitted. Absent on audits from before admission.'
+        error:
+          type: string
+        retention_days:
+          type: integer
+          minimum: 0
+          description: 'The hosted retention promised when the audit was created: the rate catalogue''s standard retention for audit.capture (a retired plan''s, on older audits). A retention extension moves evidence_expires_at later; it never shortens it.'
+        evidence_expires_at:
+          type: string
+          format: date-time
+        evidence_hosted:
+          type: boolean
+        monitor_id:
+          type: string
+          format: uuid
+        scheduled_for:
+          type: string
+          format: date-time
+        scope_snapshot:
+          $ref: '#/components/schemas/ScopeSnapshot'
+        capture_profile_snapshot:
+          $ref: '#/components/schemas/CaptureProfile'
+        change_policy_snapshot:
+          $ref: '#/components/schemas/ChangePolicy'
+    CrawlPolicy:
+      type: object
+      additionalProperties: false
+      required:
+      - allowed_hosts
+      - include_patterns
+      - exclude_patterns
+      - ignored_parameters
+      - identity_parameters
+      - respect_robots
+      - max_pages
+      - max_depth
+      - requests_per_second
+      - max_response_bytes
+      properties:
+        allowed_hosts:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        include_patterns:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        exclude_patterns:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        ignored_parameters:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        identity_parameters:
+          type:
+          - array
+          - 'null'
+          items:
+            type: string
+        respect_robots:
+          type: boolean
+        max_pages:
+          type: integer
+          minimum: 0
+        max_depth:
+          type: integer
+          minimum: 0
+        requests_per_second:
+          type: integer
+          minimum: 0
+        max_response_bytes:
+          type: integer
+          minimum: 0
+    SiteActivity:
+      type: object
+      additionalProperties: false
+      required:
+      - audits
+      - has_capture
+      - open_findings
+      - last_audit
+      properties:
+        audits:
+          type: integer
+          minimum: 0
+        has_capture:
+          type: boolean
+        open_findings:
+          type: integer
+          minimum: 0
+        last_audit:
+          oneOf:
+          - $ref: '#/components/schemas/LastSiteAudit'
+          - type: 'null'
+    AuditStatus:
+      type: string
+      description: 'quota_blocked is historical: audits the retired plans could not pay for ended there. Audits are now admitted before they are accepted, so none enters it.'
+      enum:
+      - created
+      - queued
+      - discovering
+      - capturing
+      - evaluating
+      - finalising_evidence
+      - timestamping
+      - completed
+      - failed
+      - cancelled
+      - partial
+      - quota_blocked
+    ScopeSnapshot:
+      type: object
+      additionalProperties: false
+      required:
+      - mode
+      properties:
+        mode:
+          type: string
+          enum:
+          - full_site
+          - url_set
+        crawl_policy:
+          $ref: '#/components/schemas/CrawlPolicy'
+        urls:
+          type: array
+          items:
+            type: string
+  parameters:
+    HistoryCursor:
+      name: cursor
+      in: query
+      description: Opaque next_cursor from the preceding page. Sort order is immutable created_at descending, then ID descending. This is a continuation boundary, not a frozen snapshot; newer inserts do not shift older pages, and removed records disappear.
+      schema:
+        type: string
+        maxLength: 256
+    AuditStatusFilter:
+      name: status
+      in: query
+      description: Applied before pagination. active selects every non-terminal audit state.
+      schema:
+        type: string
+        enum:
+        - active
+        - created
+        - queued
+        - discovering
+        - capturing
+        - evaluating
+        - finalising_evidence
+        - timestamping
+        - completed
+        - failed
+        - cancelled
+        - partial
+        - quota_blocked
+    HistoryLimit:
+      name: limit
+      in: query
+      description: Bounded page size. The existing default of 200 is preserved; the portal requests 50.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 200
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: Makes queueing an audit safe to retry. Surrounding whitespace is ignored. A key is remembered per organisation, across both operations that queue an audit, for as long as the audit it queued exists. A request under a key already used returns that audit with 200 instead of queueing another. The request is not compared with the first, so there is no conflict response.
+      schema:
+        type: string
+        maxLength: 255
+    SiteId:
+      name: siteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    Problem:
+      description: Problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Stable machine-readable code. Billing refusals use the codes every Ironfang product shares (BillingCode), with the same status and message whichever product answered; everything else is Ironfang Audit's own.
+                  message:
+                    type: string
+                  docs:
+                    type: string
+                    format: uri
+                    description: Where the errors are documented.
+                    example: https://ironfang.com/audit/docs#errors
+                  product:
+                    type: string
+                    description: 'Billing refusals only: the product the refused work belongs to (audit).'
+                  meter:
+                    type: string
+                    description: 'Billing refusals only: the meter that refused, audit.capture or audit.retention_extension.'
+                  reset_at:
+                    type: string
+                    format: date-time
+                    description: 'Billing refusals only: when the free allowance renews (the next month''s start, UTC).'
+              request_id:
+                type: string
+                description: The X-Ironfang-Request-ID of the failed request.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `audit:read`, `audit:run`, `audit:manage`,
+
+        `audit:evidence`, `audit:integrations`, or `audit:*` - and
+
+        it acts only in the organisation it was minted for. Legacy Ironfang Render
+
+        keys carry no Ironfang Audit scopes and are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission
+
+        in the acting tenant, resolved live from Warden: read routes need
+
+        `audit.read`; creating sites and rules `audit.manage`; queueing
+
+        an audit `audit.run`; evidence bundles and raw artifacts
+
+        `audit.evidence`; webhooks, export destinations and manual exports
+
+        `audit.integrations`; billing changes `billing.manage`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Audit documentation
+  url: https://ironfang.com/audit/docs

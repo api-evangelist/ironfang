@@ -1,0 +1,295 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Analytics Origins API
+  version: 0.1.0
+  summary: Sites, origins, public keys and capture settings for session replay and web analytics.
+  description: 'Ironfang Analytics follows each visit to your website as a session:
+
+    the pages a visitor saw, in every tab, with how long they stayed, the
+
+    errors and failed requests they met, the events your pages tracked, and
+
+    the recordings that let you replay it, live or afterwards.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/analytics
+security:
+- apiKey: []
+- bearerAuth: []
+tags:
+- name: Origins
+  description: The origins a site's recorder may send from and their DNS verification.
+paths:
+  /v1/sites/{siteId}/origins:
+    parameters:
+    - $ref: '#/components/parameters/SiteId'
+    post:
+      tags:
+      - Origins
+      operationId: addOrigin
+      summary: Add an origin
+      description: Adds an origin the site's recorder may send from. It is normalised to exactly what a browser sends (lower case, no default port, no path). HTTPS is required except on localhost and loopback addresses, which are for development and need no verification. A public origin stays pending until its DNS TXT record is verified. Needs analytics.sites.write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - origin
+              additionalProperties: false
+              properties:
+                origin:
+                  type: string
+                  example: https://shop.example.com
+      responses:
+        '201':
+          description: Origin added
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - origin
+                properties:
+                  origin:
+                    $ref: '#/components/schemas/Origin'
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+  /v1/sites/{siteId}/origins/{originId}:
+    parameters:
+    - $ref: '#/components/parameters/SiteId'
+    - $ref: '#/components/parameters/OriginId'
+    delete:
+      tags:
+      - Origins
+      operationId: removeOrigin
+      summary: Remove an origin
+      description: Removes an origin; recorders on it are refused from then on. Needs analytics.sites.write.
+      responses:
+        '204':
+          description: Origin removed
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/sites/{siteId}/origins/{originId}/verify:
+    parameters:
+    - $ref: '#/components/parameters/SiteId'
+    - $ref: '#/components/parameters/OriginId'
+    post:
+      tags:
+      - Origins
+      operationId: verifyOrigin
+      summary: Check an origin's DNS record
+      description: Looks up the origin's TXT record (`dns_record` on the origin) once. If a record has exactly the expected value the origin is verified for good; a later failed lookup never un-verifies it. Not finding the record is a normal answer (200 with `found` false), because DNS changes take time to appear. Needs analytics.sites.write.
+      responses:
+        '200':
+          description: The result of the check
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - origin
+                - found
+                properties:
+                  origin:
+                    $ref: '#/components/schemas/Origin'
+                  found:
+                    type: boolean
+                  detail:
+                    type: string
+                    description: Why the record was not found, when it was not.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  parameters:
+    OriginId:
+      name: originId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    SiteId:
+      name: siteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    InvalidJSON:
+      description: The body is not one strict JSON value of the documented shape (`invalid_json`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such object in this organisation (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: The object already exists (`conflict`), or the site changed since it was read (`version_conflict`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidRequest:
+      description: A field is invalid, or a limit would be exceeded; the message names it (`invalid_request`, `limit_reached`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The credential lacks the permission or scope, names another organisation, or belongs to a partner integration that is not active (`forbidden`, `insufficient_scope`, `integration_inactive`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No credential, an invalid one, an expired partner integration key, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `api_key_expired`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    Origin:
+      type: object
+      required:
+      - id
+      - site_id
+      - origin
+      - verification
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+          format: uuid
+        origin:
+          type: string
+          example: https://shop.example.com
+        verification:
+          type: string
+          enum:
+          - pending
+          - verified
+          - not_required
+        verification_token:
+          type: string
+        dns_record:
+          type: object
+          description: The TXT record to publish; absent for loopback origins.
+          required:
+          - type
+          - name
+          - value
+          properties:
+            type:
+              type: string
+              enum:
+              - TXT
+            name:
+              type: string
+              example: _ironfang-analytics.shop.example.com
+            value:
+              type: string
+        created_at:
+          type: string
+          format: date-time
+        verified_at:
+          type: string
+          format: date-time
+        checked_at:
+          type: string
+          format: date-time
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          - docs
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable code.
+            message:
+              type: string
+              description: Human-readable explanation; do not parse.
+            docs:
+              type: string
+              format: uri
+        request_id:
+          type: string
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal. Its scopes are its
+
+        permissions - `analytics:sites:read`, `analytics:sites:write` and the
+
+        other `analytics:` scopes, or `analytics:*` - and it acts only in the
+
+        organisation it was minted for. Keys without the scope a route needs
+
+        are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden,
+
+        which each operation names: sites need `analytics.sites.read` to read
+
+        and `analytics.sites.write` to change; sessions, recordings and
+
+        heatmaps need `analytics.sessions.read`, and deleting a session or a
+
+        recording `analytics.sessions.delete`. A missing permission is 403; a
+
+        permission lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Analytics documentation
+  url: https://ironfang.com/analytics/docs

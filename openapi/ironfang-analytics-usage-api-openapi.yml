@@ -1,0 +1,239 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Analytics Usage API
+  version: 0.1.0
+  summary: Sites, origins, public keys and capture settings for session replay and web analytics.
+  description: 'Ironfang Analytics follows each visit to your website as a session:
+
+    the pages a visitor saw, in every tab, with how long they stayed, the
+
+    errors and failed requests they met, the events your pages tracked, and
+
+    the recordings that let you replay it, live or afterwards.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/analytics
+security:
+- apiKey: []
+- bearerAuth: []
+tags:
+- name: Usage
+  description: This month's recordings as the organisation's billing account counts them, and whether new recordings are being admitted.
+paths:
+  /v1/usage:
+    get:
+      tags:
+      - Usage
+      operationId: getUsage
+      summary: Get this month's usage
+      description: 'This calendar month''s (UTC) recordings: the analytics.recording meter of the organisation''s billing account (its free allowance, what is used, held and charged), whether a new recording would be admitted now and, if not, whether Ironfang paused it, the organisation holds its stored-bytes limit or billing refuses it, and the organisation''s capacity: sites, open recordings, and what it stores against what it may. A recording belongs to the month it was admitted in. Needs analytics.usage.read.'
+      responses:
+        '200':
+          description: This month's usage
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usage'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+components:
+  schemas:
+    Meter:
+      type: object
+      required:
+      - meter
+      - free_allowance
+      - used
+      - free_used
+      - billable
+      - reserved
+      - remaining_free
+      - charge
+      - currency
+      - exempt
+      - budget
+      properties:
+        meter:
+          type: string
+          enum:
+          - analytics.recording
+        free_allowance:
+          type: integer
+          description: Recordings the month includes free.
+        used:
+          type: integer
+          description: Kept recordings counted in the month.
+        free_used:
+          type: integer
+          description: How many of them the free allowance covers.
+        billable:
+          type: integer
+          description: How many are charged.
+        reserved:
+          type: integer
+          description: Recordings admitted and not yet ended; each holds its unit until then.
+        remaining_free:
+          type: integer
+          description: Free recordings neither used nor held.
+        charge:
+          type: string
+          description: The exact charge for used, before tax, in major units (for example "1.25").
+        currency:
+          type: string
+          description: 'ISO 4217 currency code: GBP.'
+        exempt:
+          type: boolean
+          description: True when the account's Ironfang Analytics usage is counted and not charged.
+        budget:
+          type:
+          - string
+          - 'null'
+          description: The monthly limit set for Ironfang Analytics before tax; null when it shares the account's.
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          - docs
+          properties:
+            code:
+              type: string
+              description: Stable machine-readable code.
+            message:
+              type: string
+              description: Human-readable explanation; do not parse.
+            docs:
+              type: string
+              format: uri
+        request_id:
+          type: string
+    Usage:
+      type: object
+      required:
+      - period_start
+      - period_end
+      - recordings
+      - billing
+      - collection
+      - open_recordings
+      - stored_bytes
+      - max_stored_bytes
+      - max_sites
+      - max_open_recordings
+      properties:
+        period_start:
+          type: string
+          format: date-time
+          description: The first instant of the UTC calendar month the figures are for.
+        period_end:
+          type: string
+          format: date-time
+        recordings:
+          type: integer
+          description: 'Recordings admitted in the month and kept: the billing count when billing is on.'
+        billing:
+          description: The analytics.recording meter of the organisation's billing account; null when this deployment does not bill yet.
+          oneOf:
+          - $ref: '#/components/schemas/Meter'
+          - type: 'null'
+        collection:
+          type: object
+          required:
+          - state
+          properties:
+            state:
+              type: string
+              enum:
+              - recording
+              - paused
+              - storage_limit
+              - billing_paused
+              description: recording when a new recording would be admitted now; paused when Ironfang paused the organisation's collection; storage_limit when its unexpired recordings hold max_stored_bytes, until expiry or deletion frees room; billing_paused when its billing account refuses new recordings (the free allowance is used without paid usage, a budget is reached, paid usage is paused, and so on). Recordings already open carry on.
+            code:
+              type: string
+              description: 'The refusal code, as the collector answers a new recording: storage_limit, or the billing code; only with storage_limit and billing_paused.'
+            message:
+              type: string
+              description: What to do about it; do not parse.
+        open_recordings:
+          type: integer
+          description: Recordings admitted and not yet ended.
+        stored_bytes:
+          type: integer
+          description: What the organisation's unexpired recordings hold.
+        max_stored_bytes:
+          type: integer
+          description: 'What the organisation''s unexpired recordings may hold: once stored_bytes reaches it, no new recording is admitted (the collector answers 429 storage_limit) until expiry or deletion frees room. 10 GiB, unless a managed partner''s agreement sets another figure; paying more does not lift it.'
+        max_sites:
+          type: integer
+          description: Sites the organisation may have.
+        max_open_recordings:
+          type:
+          - integer
+          - 'null'
+          description: Recordings the organisation may have open at once; null for no limit of its own.
+  responses:
+    Forbidden:
+      description: The credential lacks the permission or scope, names another organisation, or belongs to a partner integration that is not active (`forbidden`, `insufficient_scope`, `integration_inactive`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No credential, an invalid one, an expired partner integration key, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `api_key_expired`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal. Its scopes are its
+
+        permissions - `analytics:sites:read`, `analytics:sites:write` and the
+
+        other `analytics:` scopes, or `analytics:*` - and it acts only in the
+
+        organisation it was minted for. Keys without the scope a route needs
+
+        are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden,
+
+        which each operation names: sites need `analytics.sites.read` to read
+
+        and `analytics.sites.write` to change; sessions, recordings and
+
+        heatmaps need `analytics.sessions.read`, and deleting a session or a
+
+        recording `analytics.sessions.delete`. A missing permission is 403; a
+
+        permission lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Analytics documentation
+  url: https://ironfang.com/analytics/docs

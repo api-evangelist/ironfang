@@ -1,0 +1,990 @@
+# x-archived-from: ironfang-security-openapi.yaml (https://api.ironfang.com/security/openapi.yaml, fetched 2026-10-03)
+# x-archived-on: 2026-10-03
+# Source of truth: ironfang-ltd/ironfang-security openapi/security.yaml - change it there first, then copy it here.
+openapi: 3.1.0
+info:
+  title: Ironfang Security API
+  version: 0.1.0
+  summary: External Security Check - verify a domain, run a low-impact external assessment, fix and recheck findings.
+  description: |
+    Ironfang Security helps an organisation understand what it exposes to
+    the internet, fix what matters and keep evidence that it did.
+
+    The first service is the External Security Check: a free, low-impact
+    external assessment of a domain the organisation has proved it
+    controls. It reads DNS, TLS, HTTP, email-domain and service-exposure
+    configuration. It does not attempt exploitation, authentication or
+    anything intrusive, and it is not a penetration test or a certification.
+
+    The authority chain is explicit: a domain is added, its ownership is
+    verified with a DNS TXT record, the organisation confirms it is
+    authorised to have it assessed under a versioned scan policy, and only
+    then can scans run. Names found in certificate transparency logs are
+    listed as discoveries and are never scanned automatically.
+
+    Findings are structured objects with a severity (how bad it would be)
+    and a separate confidence (how sure Ironfang is). Each finding carries
+    the evidence that was observed, remediation guidance and its history.
+    A finding can be rechecked after a fix; the recheck repeats the checks
+    behind it and records the result.
+
+    Everything is organisation-bound: an object in another organisation is
+    reported as not found. Authenticate with a Warden user token and act in
+    a tenant with `X-Ironfang-Tenant`. Reads need `security.read`; adding
+    domains, confirming authorisation, starting scans and changing findings
+    need `security.write`.
+
+    Every error is JSON of the shape `{"error": {"code", "message", "docs"},
+    "request_id"}`: branch on `code` and the HTTP status, never on `message`.
+    When the service is switched off the API answers 503 with code
+    `security_disabled`; when scanning is paused, starting scans and
+    verification checks answer 503 `scans_paused` while reads keep working.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+  - url: https://api.ironfang.com/security
+externalDocs:
+  description: Ironfang Security documentation
+  url: https://ironfang.com/security/docs
+security:
+  - bearerAuth: []
+tags:
+  - name: Service
+    description: Whether Security is available, and the limits that apply.
+  - name: Domains
+    description: Domains the organisation has added, their ownership verification and authorisation.
+  - name: Scans
+    description: External Security Check runs and their results.
+  - name: Findings
+    description: Normalised findings, their evidence, status and rechecks.
+  - name: Activity
+    description: What happened in the organisation's Security account.
+paths:
+  /v1/status:
+    get:
+      tags: [Service]
+      operationId: getStatus
+      summary: Service status and limits
+      description: >-
+        Whether Security is enabled, paused or switched off, the free-tier
+        limits that apply, and the scanner's identity (User-Agent and source
+        addresses) for allowlisting.
+      responses:
+        '200':
+          description: Status.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ServiceStatus' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/overview:
+    get:
+      tags: [Service]
+      operationId: getOverview
+      summary: Security overview
+      description: >-
+        The organisation's domains, open findings by severity, the latest
+        scan, the top recommended actions and recent activity.
+      responses:
+        '200':
+          description: Overview.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Overview' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/scan-policy:
+    get:
+      tags: [Service]
+      operationId: getScanPolicy
+      summary: Current scan policy
+      description: >-
+        What the External Security Check includes and never does, and the
+        statement the organisation confirms to authorise it.
+      responses:
+        '200':
+          description: The current policy.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScanPolicy' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/domains:
+    get:
+      tags: [Domains]
+      operationId: listDomains
+      summary: List domains
+      responses:
+        '200':
+          description: The organisation's domains, oldest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/DomainSummary' }
+        default: { $ref: '#/components/responses/Problem' }
+    post:
+      tags: [Domains]
+      operationId: addDomain
+      summary: Add a domain
+      description: >-
+        Adds a domain and issues a DNS TXT verification challenge. Accepts
+        what a person would type (a URL or a name with a trailing dot) and
+        normalises it. Refuses IP addresses, public suffixes and reserved
+        names. Adding a domain that was removed earlier restores it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AddDomainRequest' }
+      responses:
+        '201':
+          description: The domain, with its verification challenge.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Domain' }
+        '400': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/domains/{domainId}:
+    parameters:
+      - $ref: '#/components/parameters/DomainId'
+    get:
+      tags: [Domains]
+      operationId: getDomain
+      summary: Get a domain
+      responses:
+        '200':
+          description: The domain.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Domain' }
+        '404': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+    delete:
+      tags: [Domains]
+      operationId: removeDomain
+      summary: Remove a domain
+      description: >-
+        Stops all checks of the domain and removes it from the list. Its
+        scan history, findings and evidence are kept for the audit trail.
+      responses:
+        '204': { description: Removed. }
+        '404': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/domains/{domainId}/verification/check:
+    parameters:
+      - $ref: '#/components/parameters/DomainId'
+    post:
+      tags: [Domains]
+      operationId: checkVerification
+      summary: Check the verification record now
+      description: >-
+        Looks up the TXT record immediately rather than waiting for the
+        automatic recheck. Limited to one check every few seconds per domain.
+      responses:
+        '200':
+          description: The domain after the check.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Domain' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/domains/{domainId}/verification/renew:
+    parameters:
+      - $ref: '#/components/parameters/DomainId'
+    post:
+      tags: [Domains]
+      operationId: renewVerification
+      summary: Issue a new verification token
+      description: >-
+        Replaces an expired or failed challenge with a new token. Refused
+        while the domain is verified.
+      responses:
+        '200':
+          description: The domain with its new challenge.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Domain' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/domains/{domainId}/authorisation:
+    parameters:
+      - $ref: '#/components/parameters/DomainId'
+    post:
+      tags: [Domains]
+      operationId: authoriseDomain
+      summary: Confirm authorisation to assess
+      description: >-
+        Records that the acting user confirmed the current scan policy's
+        statement for this verified domain. The record is immutable and
+        names the policy and statement versions. A new policy version
+        requires a new confirmation.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AuthoriseRequest' }
+      responses:
+        '201':
+          description: The domain with its authorisation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Domain' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/domains/{domainId}/scans:
+    parameters:
+      - $ref: '#/components/parameters/DomainId'
+    post:
+      tags: [Scans]
+      operationId: startScan
+      summary: Run the External Security Check
+      description: >-
+        Queues a full scan of a verified, authorised domain. The verification
+        record is looked up again first; if it has been removed the domain
+        returns to unverified and the scan is refused. Subject to a cooldown
+        per domain, a daily limit and one running scan per organisation.
+      responses:
+        '202':
+          description: The queued scan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scan' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/domains/{domainId}/discoveries:
+    parameters:
+      - $ref: '#/components/parameters/DomainId'
+    get:
+      tags: [Domains]
+      operationId: listDiscoveries
+      summary: Names discovered for a domain
+      description: >-
+        Names found in certificate transparency logs. They are listed for
+        review only and are not scanned.
+      responses:
+        '200':
+          description: Discoveries, alphabetically.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Discovery' }
+        '404': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/scans:
+    get:
+      tags: [Scans]
+      operationId: listScans
+      summary: Scan history
+      parameters:
+        - name: domain_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Scans, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ScanSummary' }
+                  next_cursor: { type: string, description: Opaque cursor for the next page; empty on the last page. }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/scans/{scanId}:
+    parameters:
+      - $ref: '#/components/parameters/ScanId'
+    get:
+      tags: [Scans]
+      operationId: getScan
+      summary: Get a scan and its results
+      responses:
+        '200':
+          description: The scan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scan' }
+        '404': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/scans/{scanId}/cancel:
+    parameters:
+      - $ref: '#/components/parameters/ScanId'
+    post:
+      tags: [Scans]
+      operationId: cancelScan
+      summary: Cancel a queued or running scan
+      responses:
+        '200':
+          description: The scan after cancellation.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scan' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/findings:
+    get:
+      tags: [Findings]
+      operationId: listFindings
+      summary: List findings
+      description: >-
+        Findings across the organisation, most severe first. By default only
+        findings that still ask something of you (open, acknowledged, needs
+        review) are listed; pass `status` to choose.
+      parameters:
+        - name: domain_id
+          in: query
+          required: false
+          schema: { type: string, format: uuid }
+        - name: scan_id
+          in: query
+          required: false
+          description: Only findings observed in this scan.
+          schema: { type: string, format: uuid }
+        - name: status
+          in: query
+          required: false
+          description: Comma-separated statuses, or `all`.
+          schema: { type: string }
+        - name: severity
+          in: query
+          required: false
+          description: Comma-separated severities.
+          schema: { type: string }
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Findings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/FindingSummary' }
+                  next_cursor: { type: string }
+        '400': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/findings/{findingId}:
+    parameters:
+      - $ref: '#/components/parameters/FindingId'
+    get:
+      tags: [Findings]
+      operationId: getFinding
+      summary: Get a finding
+      description: What was found, why it matters, the evidence, how to fix it and its history.
+      responses:
+        '200':
+          description: The finding.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Finding' }
+        '404': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+    patch:
+      tags: [Findings]
+      operationId: updateFinding
+      summary: Change a finding's status
+      description: >-
+        Sets open, acknowledged, accepted_risk or false_positive, with an
+        optional note. `fixed` is only ever set by a scan or recheck that
+        observes the fix.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateFindingRequest' }
+      responses:
+        '200':
+          description: The finding.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Finding' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '422': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/findings/{findingId}/recheck:
+    parameters:
+      - $ref: '#/components/parameters/FindingId'
+    post:
+      tags: [Findings]
+      operationId: recheckFinding
+      summary: Recheck a finding
+      description: >-
+        Repeats the checks behind this finding on its host. If the condition
+        is no longer observed the finding becomes fixed; its evidence and
+        history are kept.
+      responses:
+        '202':
+          description: The recheck scan.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Scan' }
+        '404': { $ref: '#/components/responses/Problem' }
+        '409': { $ref: '#/components/responses/Problem' }
+        '429': { $ref: '#/components/responses/Problem' }
+        default: { $ref: '#/components/responses/Problem' }
+  /v1/activity:
+    get:
+      tags: [Activity]
+      operationId: listActivity
+      summary: Activity
+      parameters:
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Activity, newest first.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/ActivityItem' }
+                  next_cursor: { type: string }
+        default: { $ref: '#/components/responses/Problem' }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: |
+        A Warden user token. Each route also requires a tenant permission in
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+        reads need `security.read`; everything that changes state needs
+        `security.write`. A missing permission is 403; a permission lookup
+        failure is 503. Platform API keys are not accepted yet.
+  parameters:
+    DomainId:
+      name: domainId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ScanId:
+      name: scanId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    FindingId:
+      name: findingId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: The next_cursor of the previous page.
+      schema: { type: string }
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema: { type: integer, minimum: 1, maximum: 100, default: 25 }
+  responses:
+    Problem:
+      description: An error.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Problem' }
+  schemas:
+    Problem:
+      type: object
+      required: [error, request_id]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: |
+                Stable error code. Among them: `unauthorized`, `forbidden`,
+                `not_found`, `validation_failed`, `domain_invalid`,
+                `domain_exists`, `domain_limit_reached`,
+                `verification_pending_limit`, `verification_required`,
+                `already_verified`, `authorisation_required`,
+                `policy_outdated`, `scan_in_progress`, `scan_cooldown`,
+                `daily_limit_reached`, `domain_rate_limited`, `scan_not_active`,
+                `recheck_unavailable`, `recheck_cooldown`, `check_rate_limited`,
+                `organisation_suspended`, `scans_paused`, `security_disabled`,
+                `verification_expired`, `verification_unavailable`,
+                `verification_pending_limit`, `finding_fixed`, `internal`.
+                From the Ironfang API in front of the service:
+                `api_keys_not_supported`, `permissions_unavailable`,
+                `body_too_large`, `invalid_body`, `invalid_tenant`,
+                `security_unavailable`, `security_timeout`.
+            message: { type: string }
+            docs: { type: string, format: uri }
+            retry_after_seconds: { type: integer, description: Set on cooldowns and rate limits. }
+        request_id: { type: string }
+    Severity:
+      type: string
+      enum: [critical, high, medium, low, info]
+    Confidence:
+      type: string
+      description: How sure Ironfang is. `low` is presented as "potential".
+      enum: [confirmed, high, medium, low]
+    FindingKind:
+      type: string
+      enum: [issue, hardening, informational, potential_vulnerability]
+    FindingStatus:
+      type: string
+      enum: [open, acknowledged, fixed, accepted_risk, false_positive, needs_review]
+    CheckCategory:
+      type: string
+      enum: [dns, tls, http, email, exposure, technology, discovery]
+    VerificationStatus:
+      type: string
+      enum: [waiting, checking, verified, failed, expired, lapsed]
+    ScanStatus:
+      type: string
+      enum: [queued, running, completed, partial, failed, cancelled, killed]
+    ScanKind:
+      type: string
+      enum: [full, recheck]
+    ScanBlockedReason:
+      type: string
+      description: Why a scan cannot start now.
+      enum: [verification_required, authorisation_required, policy_outdated, scan_in_progress, scan_cooldown, daily_limit_reached, organisation_suspended, scans_paused, security_disabled]
+    SeverityCounts:
+      type: object
+      required: [critical, high, medium, low, info]
+      properties:
+        critical: { type: integer }
+        high: { type: integer }
+        medium: { type: integer }
+        low: { type: integer }
+        info: { type: integer }
+    Limits:
+      type: object
+      required: [max_domains, max_pending_verifications, full_scan_cooldown_seconds, max_scans_per_day, max_concurrent_scans, recheck_cooldown_seconds, manual_verification_interval_seconds, verification_ttl_seconds]
+      properties:
+        max_domains: { type: integer }
+        max_pending_verifications: { type: integer }
+        full_scan_cooldown_seconds: { type: integer }
+        max_scans_per_day: { type: integer }
+        max_concurrent_scans: { type: integer }
+        recheck_cooldown_seconds: { type: integer }
+        manual_verification_interval_seconds: { type: integer }
+        verification_ttl_seconds: { type: integer }
+    ScannerIdentity:
+      type: object
+      required: [user_agent, info_url, source_addresses]
+      properties:
+        user_agent: { type: string }
+        info_url: { type: string, format: uri }
+        source_addresses:
+          type: array
+          description: Public addresses scanner traffic comes from, for allowlisting.
+          items: { type: string }
+    ServiceStatus:
+      type: object
+      required: [state, preview, limits, scanner]
+      properties:
+        state:
+          type: string
+          enum: [enabled, scans_paused, disabled]
+        message: { type: string, description: Shown to customers while paused or disabled. }
+        preview: { type: boolean, description: True while Security is a free preview. }
+        limits: { $ref: '#/components/schemas/Limits' }
+        scanner: { $ref: '#/components/schemas/ScannerIdentity' }
+    Person:
+      type: object
+      required: [label]
+      properties:
+        label: { type: string }
+    DnsProvider:
+      type: object
+      required: [id, name]
+      properties:
+        id: { type: string, description: "e.g. cloudflare, route53, godaddy, namecheap, azure, google, other" }
+        name: { type: string }
+        help_url: { type: string, format: uri }
+    VerificationRecord:
+      type: object
+      required: [type, name, host_label, value]
+      properties:
+        type: { type: string, enum: [TXT] }
+        name: { type: string, description: Fully qualified record name. }
+        host_label: { type: string, description: "The name relative to the domain, for providers that append the domain." }
+        value: { type: string }
+    Verification:
+      type: object
+      required: [status, method, record, checks]
+      properties:
+        status: { $ref: '#/components/schemas/VerificationStatus' }
+        method: { type: string, enum: [dns_txt] }
+        record: { $ref: '#/components/schemas/VerificationRecord' }
+        expires_at: { type: string, format: date-time }
+        last_checked_at: { type: string, format: date-time }
+        next_check_at: { type: string, format: date-time }
+        manual_check_available_at: { type: string, format: date-time }
+        verified_at: { type: string, format: date-time }
+        checks: { type: integer, description: How many times the record has been looked up. }
+        failure_reason: { type: string }
+        observed_values:
+          type: array
+          description: TXT values seen at the record name on the last lookup, to help troubleshooting.
+          items: { type: string }
+        dns_provider: { $ref: '#/components/schemas/DnsProvider' }
+    Authorisation:
+      type: object
+      required: [id, policy_version, statement, statement_version, accepted_at, accepted_by, current]
+      properties:
+        id: { type: string, format: uuid }
+        policy_version: { type: string }
+        statement: { type: string }
+        statement_version: { type: string }
+        accepted_at: { type: string, format: date-time }
+        accepted_by: { $ref: '#/components/schemas/Person' }
+        current: { type: boolean, description: False when the policy has changed and must be confirmed again. }
+    DomainSummary:
+      type: object
+      required: [id, name, display_name, verification_status, authorised, can_scan, open_findings, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, description: ASCII (punycode) name. }
+        display_name: { type: string }
+        verification_status: { $ref: '#/components/schemas/VerificationStatus' }
+        authorised: { type: boolean }
+        can_scan: { type: boolean }
+        scan_blocked_reason: { $ref: '#/components/schemas/ScanBlockedReason' }
+        next_scan_at: { type: string, format: date-time, description: When the cooldown ends. }
+        latest_scan: { $ref: '#/components/schemas/ScanSummary' }
+        open_findings: { $ref: '#/components/schemas/SeverityCounts' }
+        created_at: { type: string, format: date-time }
+    Domain:
+      allOf:
+        - $ref: '#/components/schemas/DomainSummary'
+        - type: object
+          required: [verification, discoveries]
+          properties:
+            verification: { $ref: '#/components/schemas/Verification' }
+            authorisation: { $ref: '#/components/schemas/Authorisation' }
+            discoveries: { type: integer, description: Number of discovered names. }
+    AddDomainRequest:
+      type: object
+      required: [domain]
+      properties:
+        domain: { type: string, maxLength: 300, examples: [example.co.uk] }
+    AuthoriseRequest:
+      type: object
+      required: [policy_version, statement_version, confirm]
+      properties:
+        policy_version: { type: string }
+        statement_version: { type: string }
+        confirm: { type: boolean, const: true }
+    PolicyItem:
+      type: object
+      required: [id, title, description]
+      properties:
+        id: { type: string }
+        title: { type: string }
+        description: { type: string }
+    ScanPolicy:
+      type: object
+      required: [version, title, summary, included, excluded, statement, statement_version, terms_url, scanner, disclaimer]
+      properties:
+        version: { type: string }
+        title: { type: string }
+        summary: { type: string }
+        included:
+          type: array
+          items: { $ref: '#/components/schemas/PolicyItem' }
+        excluded:
+          type: array
+          items: { $ref: '#/components/schemas/PolicyItem' }
+        statement: { type: string }
+        statement_version: { type: string }
+        terms_url: { type: string, format: uri }
+        scanner: { $ref: '#/components/schemas/ScannerIdentity' }
+        disclaimer: { type: string }
+    ScanCounts:
+      type: object
+      required: [critical, high, medium, low, info, passed, confirmed, unverified, errors]
+      properties:
+        critical: { type: integer }
+        high: { type: integer }
+        medium: { type: integer }
+        low: { type: integer }
+        info: { type: integer }
+        passed: { type: integer, description: Checks that observed a control working. }
+        confirmed: { type: integer, description: Findings with confirmed or high confidence. }
+        unverified: { type: integer, description: Findings with medium or low confidence. }
+        errors: { type: integer, description: Checks that could not complete. }
+    ScanChanges:
+      type: object
+      required: [new, fixed, reopened]
+      properties:
+        new: { type: integer }
+        fixed: { type: integer }
+        reopened: { type: integer }
+    ScanSummary:
+      type: object
+      required: [id, domain_id, domain, kind, status, requested_at, progress, counts]
+      properties:
+        id: { type: string, format: uuid }
+        domain_id: { type: string, format: uuid }
+        domain: { type: string }
+        kind: { $ref: '#/components/schemas/ScanKind' }
+        status: { $ref: '#/components/schemas/ScanStatus' }
+        requested_at: { type: string, format: date-time }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
+        duration_ms: { type: integer }
+        progress:
+          type: object
+          required: [total, completed]
+          properties:
+            total: { type: integer }
+            completed: { type: integer }
+        counts: { $ref: '#/components/schemas/ScanCounts' }
+        changes: { $ref: '#/components/schemas/ScanChanges' }
+        recheck_finding_id: { type: string, format: uuid }
+        status_reason: { type: string, description: "Why a scan was cancelled, stopped or failed." }
+    CategoryResult:
+      type: object
+      required: [category, title, status, passed, findings, errors]
+      properties:
+        category: { $ref: '#/components/schemas/CheckCategory' }
+        title: { type: string }
+        status: { type: string, enum: [pending, running, completed, failed, cancelled] }
+        passed: { type: integer }
+        findings: { type: integer }
+        errors: { type: integer }
+    PassedCheck:
+      type: object
+      required: [check_id, title, category, host, summary, docs_url]
+      properties:
+        check_id: { type: string }
+        title: { type: string }
+        category: { $ref: '#/components/schemas/CheckCategory' }
+        host: { type: string }
+        summary: { type: string }
+        docs_url: { type: string, format: uri }
+    CheckNote:
+      type: object
+      required: [check_id, title, host, message]
+      properties:
+        check_id: { type: string }
+        title: { type: string }
+        host: { type: string }
+        message: { type: string }
+    RecommendedAction:
+      type: object
+      required: [finding_id, title, severity, confidence, host, domain_id, reason]
+      properties:
+        finding_id: { type: string, format: uuid }
+        title: { type: string }
+        severity: { $ref: '#/components/schemas/Severity' }
+        confidence: { $ref: '#/components/schemas/Confidence' }
+        host: { type: string }
+        domain_id: { type: string, format: uuid }
+        reason: { type: string }
+    Scan:
+      allOf:
+        - $ref: '#/components/schemas/ScanSummary'
+        - type: object
+          required: [policy_version, categories, findings, passed_checks, observations, errors, limitations, recommended_actions, scanner, disclaimer]
+          properties:
+            policy_version: { type: string }
+            requested_by: { $ref: '#/components/schemas/Person' }
+            categories:
+              type: array
+              items: { $ref: '#/components/schemas/CategoryResult' }
+            findings:
+              type: array
+              description: Findings observed in this scan.
+              items: { $ref: '#/components/schemas/FindingSummary' }
+            passed_checks:
+              type: array
+              items: { $ref: '#/components/schemas/PassedCheck' }
+            observations:
+              type: array
+              description: Informational results that are neither a pass nor a finding (e.g. detected technologies).
+              items: { $ref: '#/components/schemas/CheckNote' }
+            errors:
+              type: array
+              description: Checks that could not complete.
+              items: { $ref: '#/components/schemas/CheckNote' }
+            limitations:
+              type: array
+              items: { type: string }
+            recommended_actions:
+              type: array
+              items: { $ref: '#/components/schemas/RecommendedAction' }
+            scanner: { $ref: '#/components/schemas/ScannerIdentity' }
+            disclaimer: { type: string }
+    FindingSummary:
+      type: object
+      required: [id, key, title, category, kind, severity, confidence, status, host, domain_id, first_seen_at, last_seen_at, verification]
+      properties:
+        id: { type: string, format: uuid }
+        key: { type: string, description: "Catalogue key, e.g. http.hsts_missing." }
+        title: { type: string }
+        category: { $ref: '#/components/schemas/CheckCategory' }
+        kind: { $ref: '#/components/schemas/FindingKind' }
+        severity: { $ref: '#/components/schemas/Severity' }
+        confidence: { $ref: '#/components/schemas/Confidence' }
+        status: { $ref: '#/components/schemas/FindingStatus' }
+        host: { type: string }
+        domain_id: { type: string, format: uuid }
+        detail: { type: string, description: What was observed on this host. }
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        resolved_at: { type: string, format: date-time }
+        verification:
+          type: string
+          description: Whether a scan or recheck has confirmed the current state.
+          enum: [unverified, fixed_verified, still_present]
+    Evidence:
+      type: object
+      required: [id, kind, summary, data, captured_at, scan_id]
+      properties:
+        id: { type: string, format: uuid }
+        kind: { type: string, enum: [dns_answer, certificate, tls_handshake, http_response, tcp_connect, service_banner, certificate_transparency, note] }
+        summary: { type: string }
+        data: { type: object, additionalProperties: true }
+        captured_at: { type: string, format: date-time }
+        scan_id: { type: string, format: uuid }
+    FindingEvent:
+      type: object
+      required: [at, kind]
+      properties:
+        at: { type: string, format: date-time }
+        kind: { type: string, enum: [detected, seen, status_changed, recheck_requested, recheck_fixed, recheck_still_present, fixed, reopened] }
+        from_status: { $ref: '#/components/schemas/FindingStatus' }
+        to_status: { $ref: '#/components/schemas/FindingStatus' }
+        actor: { $ref: '#/components/schemas/Person' }
+        note: { type: string }
+        scan_id: { type: string, format: uuid }
+    Recheck:
+      type: object
+      required: [available]
+      properties:
+        available: { type: boolean }
+        reason: { type: string, description: Why a recheck cannot start now. }
+        available_at: { type: string, format: date-time }
+        scan_id: { type: string, format: uuid, description: The recheck in progress. }
+    Finding:
+      allOf:
+        - $ref: '#/components/schemas/FindingSummary'
+        - type: object
+          required: [check, summary, why, fix, docs_url, references, evidence, history, recheck]
+          properties:
+            check:
+              type: object
+              required: [id, title]
+              properties:
+                id: { type: string }
+                title: { type: string }
+            summary: { type: string, description: "What we found, in general terms." }
+            why: { type: string, description: Why it matters. }
+            fix: { type: string, description: How to fix it. May contain inline `code`. }
+            docs_url: { type: string, format: uri }
+            references:
+              type: array
+              items: { type: string, format: uri }
+            cwe: { type: string }
+            evidence:
+              type: array
+              items: { $ref: '#/components/schemas/Evidence' }
+            history:
+              type: array
+              items: { $ref: '#/components/schemas/FindingEvent' }
+            recheck: { $ref: '#/components/schemas/Recheck' }
+            note: { type: string, description: The latest note recorded with a status change. }
+    UpdateFindingRequest:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          enum: [open, acknowledged, accepted_risk, false_positive]
+        note: { type: string, maxLength: 1000 }
+    Discovery:
+      type: object
+      required: [id, name, source, first_seen_at, last_seen_at, in_scope]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        source: { type: string, enum: [certificate_transparency] }
+        first_seen_at: { type: string, format: date-time }
+        last_seen_at: { type: string, format: date-time }
+        in_scope: { type: boolean, description: Always false in V1; discoveries are never scanned automatically. }
+    ActivityItem:
+      type: object
+      required: [id, at, action, actor, summary]
+      properties:
+        id: { type: string, format: uuid }
+        at: { type: string, format: date-time }
+        action: { type: string, description: "e.g. domain.added, domain.verified, authorisation.recorded, scan.started, scan.completed, finding.status_changed." }
+        actor:
+          type: object
+          required: [kind, label]
+          properties:
+            kind: { type: string, enum: [user, staff, system] }
+            label: { type: string }
+        subject:
+          type: object
+          required: [kind, id, label]
+          properties:
+            kind: { type: string, enum: [domain, scan, finding] }
+            id: { type: string, format: uuid }
+            label: { type: string }
+        summary: { type: string }
+    Overview:
+      type: object
+      required: [state, domains, open_findings, recommended_actions, recent_activity, limits]
+      properties:
+        state:
+          type: string
+          enum: [enabled, scans_paused, disabled]
+        message: { type: string }
+        domains:
+          type: array
+          items: { $ref: '#/components/schemas/DomainSummary' }
+        open_findings: { $ref: '#/components/schemas/SeverityCounts' }
+        latest_scan: { $ref: '#/components/schemas/ScanSummary' }
+        recommended_actions:
+          type: array
+          items: { $ref: '#/components/schemas/RecommendedAction' }
+        recent_activity:
+          type: array
+          items: { $ref: '#/components/schemas/ActivityItem' }
+        limits: { $ref: '#/components/schemas/Limits' }

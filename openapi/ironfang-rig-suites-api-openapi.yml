@@ -1,0 +1,615 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Rig Suites API
+  version: 0.1.0
+  summary: Disposable inboxes, callback URLs, mock endpoints and connector routes for integration tests.
+  description: 'Ironfang Rig gives an application under test a disposable external
+
+    world: temporary inbox addresses, public callback URLs, mock HTTP
+
+    endpoints and connector routes, allocated fresh for every run, with an
+
+    append-only, sequenced timeline of everything Ironfang observed.'
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/rig
+security:
+- apiKey: []
+- bearerAuth: []
+tags:
+- name: Suites
+  description: Persistent, versioned test definitions.
+paths:
+  /v1/suites:
+    get:
+      tags:
+      - Suites
+      operationId: listSuites
+      summary: List suites
+      description: Returns the organisation's suites, newest first, optionally within one project. Read-only.
+      parameters:
+      - name: project
+        in: query
+        required: false
+        description: Limit to one project by id.
+        schema:
+          type: string
+          format: uuid
+      - $ref: '#/components/parameters/Cursor'
+      - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: A page of suites
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - suites
+                properties:
+                  suites:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Suite'
+                  next_cursor:
+                    type: string
+        '400':
+          $ref: '#/components/responses/InvalidQuery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+    post:
+      tags:
+      - Suites
+      operationId: createSuite
+      summary: Create a suite
+      description: Creates a suite and its first version from a definition. The definition is validated in full and stored canonically; its SHA-256 identifies the version. The slug is unique within the project. Needs rig.write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - project_id
+              - slug
+              - name
+              - definition
+              additionalProperties: false
+              properties:
+                project_id:
+                  type: string
+                  format: uuid
+                slug:
+                  type: string
+                  pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+                  example: signup
+                name:
+                  type: string
+                  maxLength: 120
+                  example: Signup flow
+                definition:
+                  $ref: '#/components/schemas/Definition'
+      responses:
+        '201':
+          description: Suite created with version 1
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuiteWithVersion'
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+  /v1/suites/{suiteId}:
+    parameters:
+    - $ref: '#/components/parameters/SuiteId'
+    get:
+      tags:
+      - Suites
+      operationId: getSuite
+      summary: Get a suite
+      description: Returns the suite and its current version.
+      responses:
+        '200':
+          description: The suite and its current version
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SuiteWithVersion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+      - Suites
+      operationId: reviseSuite
+      summary: Revise a suite
+      description: Records a new version when the definition changed and answers the current version unchanged when it did not, so sending the same document twice creates one version. Existing runs keep the version they were created from. Needs rig.write.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - definition
+              additionalProperties: false
+              properties:
+                name:
+                  type: string
+                  maxLength: 120
+                  description: A new display name; omit to keep the current one.
+                definition:
+                  $ref: '#/components/schemas/Definition'
+      responses:
+        '200':
+          description: The suite and the version now current
+          content:
+            application/json:
+              schema:
+                allOf:
+                - $ref: '#/components/schemas/SuiteWithVersion'
+                - type: object
+                  properties:
+                    revised:
+                      type: boolean
+                      description: Whether anything changed.
+        '400':
+          $ref: '#/components/responses/InvalidJSON'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/InvalidRequest'
+  /v1/suites/{suiteId}/versions:
+    parameters:
+    - $ref: '#/components/parameters/SuiteId'
+    get:
+      tags:
+      - Suites
+      operationId: listSuiteVersions
+      summary: List a suite's versions
+      description: Returns up to 100 versions, newest first, each with its full definition.
+      responses:
+        '200':
+          description: The versions
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                - versions
+                properties:
+                  versions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SuiteVersion'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+components:
+  parameters:
+    Cursor:
+      name: cursor
+      in: query
+      required: false
+      description: The next_cursor of the previous page.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      required: false
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    SuiteId:
+      name: suiteId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  responses:
+    InvalidRequest:
+      description: A field is invalid; the message names it (`invalid_request`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: The credential lacks the permission or scope, or names another organisation (`forbidden`, `insufficient_scope`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidQuery:
+      description: An unknown, repeated or malformed query parameter (`invalid_query`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: No credential, an invalid one, or a delegated token where none is accepted (`unauthorized`, `invalid_api_key`, `delegated_not_allowed`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such object in this organisation (`not_found`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    InvalidJSON:
+      description: The body is not one strict JSON value of the documented shape (`invalid_json`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Conflict:
+      description: A name is already taken, or the target is archived (`conflict`, `archived`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  schemas:
+    MockResponse:
+      type: object
+      required:
+      - status
+      additionalProperties: false
+      description: 'One answer. With template, the body and the header values are rendered from the request: {{request.method}}, {{request.path}}, {{request.query}}, {{request.query.name}}, {{request.header.Name}}, {{request.body}}, {{request.json.a.b.0}}, {{run.id}}, {{resource.name}}, {{step}}, {{call}} and {{received_at}}. In a json body a placeholder sits inside a string and is escaped for it. An unknown placeholder is refused when the rules are written.'
+      properties:
+        status:
+          type: integer
+          minimum: 100
+          maximum: 599
+          example: 201
+        headers:
+          type: object
+          additionalProperties:
+            type: string
+        body:
+          type: string
+          maxLength: 65536
+          description: A text body; exclusive with json.
+        json:
+          description: A JSON body; sets Content-Type unless a header does.
+        delay:
+          type: string
+          description: Held before answering, a duration such as "250ms", at most 10s.
+        template:
+          type: boolean
+          description: Render the body and header values from the request.
+    OpenAPISpec:
+      type: object
+      description: 'For a mock_http, an OpenAPI 3 document the mock stands in for, instead of rules: one rule per operation, in document order, its path template as the match, its lowest 2xx (or default) response as the answer, and the documented example, or a value built from the schema, as the body. References resolve within the document; nothing is fetched. At most 32 operations; name the ones a suite needs in include. The CLI inlines openapi.file from beside the suite file; the platform takes document only.'
+      required:
+      - document
+      additionalProperties: false
+      properties:
+        document:
+          type: string
+          maxLength: 262144
+          description: The OpenAPI 3 document, JSON or YAML.
+        include:
+          type: array
+          maxItems: 32
+          items:
+            type: string
+          description: Operations to keep, as "GET /pets/{id}".
+        prefer:
+          type: string
+          enum:
+          - example
+          - schema
+          description: Whether a documented example (the default) or a value built from the schema answers.
+    ConnectorSpec:
+      type: object
+      description: Binds a callback to a local route by label. The label is all the platform ever sends; the destination behind it belongs to the connector on the developer's machine.
+      required:
+      - route
+      additionalProperties: false
+      properties:
+        route:
+          type: string
+          pattern: ^[a-z0-9][a-z0-9-]{0,62}$
+          example: stripe
+    SuiteWithVersion:
+      type: object
+      required:
+      - suite
+      - version
+      properties:
+        suite:
+          $ref: '#/components/schemas/Suite'
+        version:
+          $ref: '#/components/schemas/SuiteVersion'
+    MockRule:
+      type: object
+      description: 'One rule of a mock: what to match and what to answer. Rules are evaluated in order and the first match answers. A rule answers with respond, one answer, or with sequence, its calls taking the responses in turn and repeat saying what later calls get. Deterministic: the same request against the same rules, at the same step, gets the same answer, delay included.'
+      required:
+      - match
+      additionalProperties: false
+      properties:
+        match:
+          type: object
+          additionalProperties: false
+          properties:
+            method:
+              type: string
+              description: An HTTP method, or "*" or omitted for any.
+              example: POST
+            path:
+              type: string
+              description: Exact path under the mock URL, a prefix ending in "/*", or a template whose {name} segments match any one segment; omitted for any.
+              example: /v1/ship/{id}
+            headers:
+              type: object
+              additionalProperties:
+                type: string
+              description: Headers that must be present with exactly these values.
+            json:
+              type: object
+              additionalProperties: true
+              description: Top-level fields a JSON request body must equal.
+        respond:
+          $ref: '#/components/schemas/MockResponse'
+        sequence:
+          type: array
+          minItems: 2
+          maxItems: 16
+          description: The responses this rule gives its calls in turn; exclusive with respond. Replacing the rules starts every sequence afresh.
+          items:
+            $ref: '#/components/schemas/MockResponse'
+        repeat:
+          type: string
+          enum:
+          - last
+          - cycle
+          description: 'After a sequence''s last response: keep giving the last (the default) or start again.'
+    SuiteVersion:
+      type: object
+      required:
+      - id
+      - organisation_id
+      - suite_id
+      - version
+      - definition
+      - definition_sha256
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        suite_id:
+          type: string
+          format: uuid
+        version:
+          type: integer
+        definition:
+          $ref: '#/components/schemas/Definition'
+        definition_sha256:
+          type: string
+          description: SHA-256 of the canonical definition.
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    Suite:
+      type: object
+      required:
+      - id
+      - organisation_id
+      - project_id
+      - slug
+      - name
+      - current_version
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        project_id:
+          type: string
+          format: uuid
+        slug:
+          type: string
+        name:
+          type: string
+        current_version:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        archived_at:
+          type: string
+          format: date-time
+    Definition:
+      type: object
+      description: A suite's content. Resources are named identities a run receives; expectations are deterministic conditions on the run's events, stored and validated now and evaluated once the platform observes the events they name.
+      required:
+      - version
+      - resources
+      additionalProperties: false
+      properties:
+        version:
+          type: integer
+          const: 1
+        defaults:
+          type: object
+          additionalProperties: false
+          properties:
+            run_ttl:
+              type: string
+              description: Default run lifetime, 1m to 24h ("30m").
+              example: 30m
+        resources:
+          type: object
+          minProperties: 1
+          maxProperties: 32
+          additionalProperties:
+            $ref: '#/components/schemas/ResourceSpec'
+          example:
+            customer_email:
+              type: email
+            stripe_callback:
+              type: callback
+              connector:
+                route: stripe
+            shipping_api:
+              type: mock_http
+        expectations:
+          type: array
+          maxItems: 64
+          items:
+            $ref: '#/components/schemas/ExpectationSpec'
+    ResourceSpec:
+      type: object
+      required:
+      - type
+      additionalProperties: false
+      properties:
+        type:
+          type: string
+          enum:
+          - email
+          - callback
+          - mock_http
+          - connector_route
+        scope:
+          type: string
+          enum:
+          - run
+          default: run
+        route:
+          type: string
+          description: The route label of a connector_route.
+        connector:
+          $ref: '#/components/schemas/ConnectorSpec'
+        rules:
+          type: array
+          maxItems: 32
+          description: For a mock_http, the rules it answers with, in order.
+          items:
+            $ref: '#/components/schemas/MockRule'
+        openapi:
+          $ref: '#/components/schemas/OpenAPISpec'
+    ExpectationSpec:
+      type: object
+      required:
+      - id
+      - resource
+      - event
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          pattern: ^[a-z][a-z0-9_]{0,63}$
+          example: verification_email
+        resource:
+          type: string
+          description: A declared resource name.
+        event:
+          type: string
+          description: An event type from the catalogue, such as email.received or callback.forwarded.
+        match:
+          type: object
+          maxProperties: 16
+          additionalProperties: true
+          example:
+            subject_contains: Verify
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+            message:
+              type: string
+            docs:
+              type: string
+              format: uri
+              description: Where the API and its error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `rig:read`, `rig:write`, `rig:run`,
+
+        `rig:connector`, or `rig:*` - and it acts only in the organisation
+
+        it was minted for. Keys without Rig scopes are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission in
+
+        the acting tenant (`X-Ironfang-Tenant`), resolved live from Warden:
+
+        reads need `rig.read`; creating and revising projects and suites
+
+        `rig.write`; starting, finishing and cancelling runs and allocating
+
+        resources `rig.run`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Rig documentation
+  url: https://ironfang.com/rig/docs

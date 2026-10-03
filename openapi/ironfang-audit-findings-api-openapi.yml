@@ -1,0 +1,519 @@
+openapi: 3.2.0
+info:
+  title: Ironfang Audit Findings API
+  version: 1.0.0
+  summary: Website audits with findings and signed, independently timestamped evidence.
+  description: Asynchronous website audits with signed, independently timestamped evidence.
+  contact:
+    name: Ironfang
+    email: hello@ironfang.uk
+    url: https://ironfang.com/contact
+  termsOfService: https://ironfang.com/legal/terms
+  license:
+    name: Proprietary - use governed by the Ironfang terms of service
+    url: https://ironfang.com/legal/terms
+servers:
+- url: https://api.ironfang.com/audit
+  description: Production
+security:
+- bearerAuth: []
+- apiKey: []
+tags:
+- name: Findings
+  description: Findings raised by audits.
+paths:
+  /v1/findings:
+    get:
+      operationId: listFindings
+      tags:
+      - Findings
+      summary: The finding inbox
+      description: 'Outstanding problems rather than audit results. A finding is one problem on one logical page against one requirement, for as long as that pairing exists: a page that fails the same rule every night is one finding, not one per night. Defaults to everything not resolved. Use sort=created for bounded cursor pages, newest creation time then ID descending. Creation time is immutable when a later audit sees the same problem, so updates do not move findings across the cursor. Filters are evaluated on each request; pages are not a frozen snapshot of membership. Omit sort for the legacy last-seen descending, ID ascending offset list. Summary counts are separate from the number of loaded findings.'
+      parameters:
+      - name: site_id
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: page_id
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: rule_id
+        in: query
+        description: The rule lineage id, so a reworded rule keeps its findings.
+        schema:
+          type: string
+          format: uuid
+      - name: state
+        in: query
+        description: Repeatable. Omit for everything still outstanding.
+        schema:
+          type: array
+          items:
+            type: string
+            enum:
+            - open
+            - acknowledged
+            - accepted_risk
+            - resolved
+            - reopened
+      - name: severity
+        in: query
+        schema:
+          type: string
+          enum:
+          - info
+          - warning
+          - failure
+          - critical
+      - name: assignee
+        in: query
+        schema:
+          type: string
+      - name: open_longer_than_days
+        in: query
+        description: Findings first seen more than this many days ago.
+        schema:
+          type: integer
+          minimum: 0
+          maximum: 365000
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          default: 50
+          maximum: 200
+      - name: sort
+        in: query
+        schema:
+          type: string
+          enum:
+          - last_seen
+          - created
+          default: last_seen
+      - name: cursor
+        in: query
+        description: Returned next_cursor; valid only with sort=created. Omit on the first page.
+        schema:
+          type: string
+      - name: offset
+        in: query
+        description: Legacy last-seen list only; cannot be combined with sort=created.
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+      responses:
+        '200':
+          description: Findings; next_cursor is present only when another creation-ordered page exists.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingList'
+        '400':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+  /v1/findings/summary:
+    get:
+      operationId: getFindingsSummary
+      tags:
+      - Findings
+      summary: The numbers at the top of the finding inbox
+      description: Open, acknowledged and accepted counts, how many are regressions, how many are past a due date somebody set, and the median time to resolution. The median is null until something has been resolved, because a median of nothing is not zero.
+      responses:
+        '200':
+          description: Summary
+        '401':
+          $ref: '#/components/responses/Problem'
+          description: No credential, or one that is not accepted
+        '403':
+          $ref: '#/components/responses/Problem'
+          description: The key's scopes or the person's role do not allow audit.read, or the request names another organisation
+  /v1/findings/bulk:
+    post:
+      operationId: bulkUpdateFindings
+      tags:
+      - Findings
+      summary: Apply one decision to several findings
+      description: 'The same path as a single update, once per finding, so each one gets its own event and nothing is attributed differently for having been done in a batch. Per-finding failures are reported rather than failing the request: a selection that includes one finding somebody else just resolved should still assign the other nine.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+              - ids
+              properties:
+                ids:
+                  type: array
+                  maxItems: 200
+                  items:
+                    type: string
+                    format: uuid
+                state:
+                  type: string
+                  enum:
+                  - acknowledged
+                  - accepted_risk
+                  - resolved
+                assignee_user_id:
+                  type: string
+                resolution_code:
+                  type: string
+                  enum:
+                  - false_positive
+                  - accepted_risk
+                  - superseded
+                  - other
+                comment:
+                  type: string
+      responses:
+        '200':
+          description: What was updated, and what could not be
+        '422':
+          $ref: '#/components/responses/Problem'
+  /v1/findings/{findingId}:
+    parameters:
+    - name: findingId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      operationId: getFindingsByFindingId
+      description: Returns a finding belonging to the authenticated organisation, including its current triage state. Use the finding events endpoint to retrieve its change history.
+      tags:
+      - Findings
+      summary: Get one finding
+      responses:
+        '200':
+          description: Finding
+        '404':
+          $ref: '#/components/responses/Problem'
+    patch:
+      operationId: updateFindingsByFindingId
+      tags:
+      - Findings
+      summary: Assign, schedule, acknowledge, accept the risk, or close a finding
+      description: 'A person cannot mark a finding fixed: that is a claim about the page which only a passing observation can make, so closing one by hand needs a resolution such as false_positive or accepted_risk. Reopening is likewise something an observation does. Every change is recorded against the person who made it.'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                state:
+                  type: string
+                  enum:
+                  - acknowledged
+                  - accepted_risk
+                  - resolved
+                assignee_user_id:
+                  type: string
+                  description: Empty string clears the assignment
+                due_at:
+                  type: string
+                  description: RFC 3339, or an empty string to clear
+                accepted_risk_until:
+                  type: string
+                  description: RFC 3339. When it passes, the finding stops being suppressed and notifies again.
+                resolution_code:
+                  type: string
+                  enum:
+                  - false_positive
+                  - accepted_risk
+                  - superseded
+                  - other
+                comment:
+                  type: string
+      responses:
+        '200':
+          description: The updated finding
+        '404':
+          $ref: '#/components/responses/Problem'
+        '422':
+          $ref: '#/components/responses/Problem'
+  /v1/findings/{findingId}/events:
+    parameters:
+    - name: findingId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    get:
+      operationId: listFindingsByFindingIdEvents
+      tags:
+      - Findings
+      summary: The append-only history of a finding
+      description: Every state change, assignment and comment, newest first, each attributed to the person or to the system. Comments are operational records and are not part of signed evidence. A finding whose rule flaps accumulates history without anyone acting, so this is paged like the other histories.
+      parameters:
+      - $ref: '#/components/parameters/HistoryLimit'
+      - $ref: '#/components/parameters/HistoryCursor'
+      responses:
+        '200':
+          description: Events
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FindingEventList'
+        '400':
+          $ref: '#/components/responses/Problem'
+          description: Invalid, repeated or unknown collection parameter
+        '404':
+          $ref: '#/components/responses/Problem'
+components:
+  schemas:
+    FindingEventList:
+      type: object
+      additionalProperties: false
+      required:
+      - events
+      properties:
+        events:
+          type: array
+          maxItems: 200
+          items:
+            $ref: '#/components/schemas/FindingEvent'
+        next_cursor:
+          type: string
+          maxLength: 256
+          description: Opaque continuation boundary. Absent on the final page; no total is inferred from a page.
+    Finding:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - organisation_id
+      - site_id
+      - page_id
+      - rule_lineage_id
+      - state
+      - severity
+      - first_observation_id
+      - latest_observation_id
+      - first_seen_at
+      - last_seen_at
+      - created_at
+      - updated_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        organisation_id:
+          type: string
+          format: uuid
+        site_id:
+          type: string
+          format: uuid
+        page_id:
+          type: string
+          format: uuid
+        rule_lineage_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum:
+          - open
+          - acknowledged
+          - accepted_risk
+          - resolved
+          - reopened
+        severity:
+          type: string
+          enum:
+          - info
+          - warning
+          - failure
+          - critical
+        first_observation_id:
+          type: string
+          format: uuid
+        latest_observation_id:
+          type: string
+          format: uuid
+        resolved_observation_id:
+          type: string
+          format: uuid
+        first_seen_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: string
+          format: date-time
+        assignee_user_id:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+        accepted_risk_until:
+          type: string
+          format: date-time
+        resolution_code:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        page_url:
+          type: string
+        rule_name:
+          type: string
+        site_name:
+          type: string
+        first_audit_id:
+          type: string
+          format: uuid
+        latest_audit_id:
+          type: string
+          format: uuid
+    FindingList:
+      type: object
+      additionalProperties: false
+      required:
+      - findings
+      properties:
+        findings:
+          type: array
+          items:
+            $ref: '#/components/schemas/Finding'
+        next_cursor:
+          type: string
+    FindingEvent:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - finding_id
+      - event_type
+      - actor_type
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        finding_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+        actor_type:
+          type: string
+        actor:
+          type: string
+        from_state:
+          type: string
+        to_state:
+          type: string
+        observation_id:
+          type: string
+        comment:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+  parameters:
+    HistoryCursor:
+      name: cursor
+      in: query
+      description: Opaque next_cursor from the preceding page. Sort order is immutable created_at descending, then ID descending. This is a continuation boundary, not a frozen snapshot; newer inserts do not shift older pages, and removed records disappear.
+      schema:
+        type: string
+        maxLength: 256
+    HistoryLimit:
+      name: limit
+      in: query
+      description: Bounded page size. The existing default of 200 is preserved; the portal requests 50.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 200
+  responses:
+    Problem:
+      description: Problem response
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: object
+                required:
+                - code
+                - message
+                properties:
+                  code:
+                    type: string
+                    description: Stable machine-readable code. Billing refusals use the codes every Ironfang product shares (BillingCode), with the same status and message whichever product answered; everything else is Ironfang Audit's own.
+                  message:
+                    type: string
+                  docs:
+                    type: string
+                    format: uri
+                    description: Where the errors are documented.
+                    example: https://ironfang.com/audit/docs#errors
+                  product:
+                    type: string
+                    description: 'Billing refusals only: the product the refused work belongs to (audit).'
+                  meter:
+                    type: string
+                    description: 'Billing refusals only: the meter that refused, audit.capture or audit.retention_extension.'
+                  reset_at:
+                    type: string
+                    format: date-time
+                    description: 'Billing refusals only: when the free allowance renews (the next month''s start, UTC).'
+              request_id:
+                type: string
+                description: The X-Ironfang-Request-ID of the failed request.
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+      bearerFormat: if_live_ platform API key
+      description: 'A platform API key minted in the portal (Warden). Its scopes are its
+
+        permissions - `audit:read`, `audit:run`, `audit:manage`,
+
+        `audit:evidence`, `audit:integrations`, or `audit:*` - and
+
+        it acts only in the organisation it was minted for. Legacy Ironfang Render
+
+        keys carry no Ironfang Audit scopes and are refused with 403.
+
+        '
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: Warden JWT
+      description: 'A Warden user token. Each route also requires a tenant permission
+
+        in the acting tenant, resolved live from Warden: read routes need
+
+        `audit.read`; creating sites and rules `audit.manage`; queueing
+
+        an audit `audit.run`; evidence bundles and raw artifacts
+
+        `audit.evidence`; webhooks, export destinations and manual exports
+
+        `audit.integrations`; billing changes `billing.manage`. A missing permission is 403; a permission
+
+        lookup failure is 503.
+
+        '
+externalDocs:
+  description: Ironfang Audit documentation
+  url: https://ironfang.com/audit/docs
