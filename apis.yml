@@ -113,15 +113,15 @@ common:
 - type: RateLimits
   url: rate-limits/ironfang-rate-limits.yml
 - type: DeveloperPortal
-  url: https://ironfang.com/renderwolf
+  url: https://ironfang.com/render
 - type: GettingStarted
-  url: https://ironfang.com/renderwolf/guides
+  url: https://ironfang.com/render/guides
 - type: Support
   url: https://ironfang.com/contact
 - type: GitHubOrganization
   url: https://github.com/ironfang-ltd
 - type: Pricing
-  url: https://ironfang.com/renderwolf
+  url: https://ironfang.com/render
 - type: SignUp
   url: https://id.ironfang.com/signup
 - type: TermsOfService
@@ -133,7 +133,7 @@ apis:
 - aid: ironfang:ironfang-account-api
   name: Ironfang Account API
   description: Usage against quota.
-  humanURL: https://ironfang.com/renderwolf/docs
+  humanURL: https://ironfang.com/render/docs
   baseURL: https://api.ironfang.com/render
   tags:
   - Account
@@ -141,9 +141,9 @@ apis:
   - type: OpenAPI
     url: openapi/ironfang-account-api-openapi.yml
   - type: Documentation
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: APIReference
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: LLMsTxt
     url: llms/ironfang-llms.txt
   - type: LLMsTxt
@@ -161,7 +161,7 @@ apis:
 - aid: ironfang:ironfang-batches-api
   name: Ironfang Batches API
   description: Up to 100 renders submitted, and refused, together.
-  humanURL: https://ironfang.com/renderwolf/docs
+  humanURL: https://ironfang.com/render/docs
   baseURL: https://api.ironfang.com/render
   tags:
   - Batches
@@ -169,9 +169,9 @@ apis:
   - type: OpenAPI
     url: openapi/ironfang-batches-api-openapi.yml
   - type: Documentation
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: APIReference
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: LLMsTxt
     url: llms/ironfang-llms.txt
   - type: LLMsTxt
@@ -189,7 +189,7 @@ apis:
 - aid: ironfang:ironfang-destinations-api
   name: Ironfang Destinations API
   description: Where a finished job goes - a signed webhook, or your own S3 bucket.
-  humanURL: https://ironfang.com/renderwolf/docs
+  humanURL: https://ironfang.com/render/docs
   baseURL: https://api.ironfang.com/render
   tags:
   - Destination
@@ -199,9 +199,9 @@ apis:
   - type: OpenAPI
     url: openapi/ironfang-destinations-api-openapi.yml
   - type: Documentation
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: APIReference
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: LLMsTxt
     url: llms/ironfang-llms.txt
   - type: LLMsTxt
@@ -217,7 +217,7 @@ apis:
 - aid: ironfang:ironfang-jobs-api
   name: Ironfang Jobs API
   description: The Jobs API from Ironfang — 4 operation(s) for jobs.
-  humanURL: https://ironfang.com/renderwolf/docs
+  humanURL: https://ironfang.com/render/docs
   baseURL: https://api.ironfang.com/render
   tags:
   - Job
@@ -227,9 +227,9 @@ apis:
   - type: OpenAPI
     url: openapi/ironfang-jobs-api-openapi.yml
   - type: Documentation
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: APIReference
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: LLMsTxt
     url: llms/ironfang-llms.txt
   - type: LLMsTxt
@@ -247,7 +247,7 @@ apis:
 - aid: ironfang:ironfang-render-api
   name: Ironfang Render API
   description: Turn a URL or HTML into an image, PDF or video.
-  humanURL: https://ironfang.com/renderwolf/docs
+  humanURL: https://ironfang.com/render/docs
   baseURL: https://api.ironfang.com/render
   tags:
   - Render
@@ -255,9 +255,9 @@ apis:
   - type: OpenAPI
     url: openapi/ironfang-render-api-openapi.yml
   - type: Documentation
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: APIReference
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: LLMsTxt
     url: llms/ironfang-llms.txt
   - type: LLMsTxt
@@ -283,7 +283,7 @@ apis:
 - aid: ironfang:ironfang-signed-urls-api
   name: Ironfang Signed URLs API
   description: Shareable render URLs that need no API key.
-  humanURL: https://ironfang.com/renderwolf/docs
+  humanURL: https://ironfang.com/render/docs
   baseURL: https://api.ironfang.com/render
   tags:
   - Signed URLs
@@ -291,9 +291,9 @@ apis:
   - type: OpenAPI
     url: openapi/ironfang-signed-urls-api-openapi.yml
   - type: Documentation
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: APIReference
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: LLMsTxt
     url: llms/ironfang-llms.txt
   - type: LLMsTxt
@@ -313,7 +313,7 @@ apis:
 - aid: ironfang:ironfang-templates-api
   name: Ironfang Templates API
   description: Stored HTML with `{{variable}}` placeholders, rendered on demand.
-  humanURL: https://ironfang.com/renderwolf/docs
+  humanURL: https://ironfang.com/render/docs
   baseURL: https://api.ironfang.com/render
   tags:
   - Templates
@@ -321,9 +321,9 @@ apis:
   - type: OpenAPI
     url: openapi/ironfang-templates-api-openapi.yml
   - type: Documentation
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: APIReference
-    url: https://ironfang.com/renderwolf/docs
+    url: https://ironfang.com/render/docs
   - type: LLMsTxt
     url: llms/ironfang-llms.txt
   - type: LLMsTxt
