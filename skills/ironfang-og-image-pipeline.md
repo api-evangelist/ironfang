@@ -1,5 +1,5 @@
 ---
-name: renderwolf-og-image-pipeline
+name: ironfang-og-image-pipeline
 description: >-
   Generate Open Graph / social card images at scale with Renderwolf by storing one HTML
   template and minting a signed URL per page, so crawlers fetch the image directly and editing

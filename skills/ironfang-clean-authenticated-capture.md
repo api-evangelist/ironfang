@@ -1,5 +1,5 @@
 ---
-name: renderwolf-clean-authenticated-capture
+name: ironfang-clean-authenticated-capture
 description: >-
   Capture a page that needs a session, or a page cluttered with ads and cookie banners, using
   Renderwolf's RenderCommon options — headers, cookies, blocking, selector waits — and know

@@ -1,5 +1,5 @@
 ---
-name: renderwolf-durable-render-jobs
+name: ironfang-durable-render-jobs
 description: >-
   Run Renderwolf renders as durable jobs — submit with an idempotency key, poll or receive a
   signed webhook, collect the result inside its 24-hour window, and cancel safely — the correct

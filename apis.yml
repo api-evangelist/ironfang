@@ -134,7 +134,7 @@ apis:
   name: Ironfang Account API
   description: Usage against quota.
   humanURL: https://ironfang.com/renderwolf/docs
-  baseURL: https://api.ironfang.com/renderwolf
+  baseURL: https://api.ironfang.com/render
   tags:
   - Account
   properties:
@@ -162,7 +162,7 @@ apis:
   name: Ironfang Batches API
   description: Up to 100 renders submitted, and refused, together.
   humanURL: https://ironfang.com/renderwolf/docs
-  baseURL: https://api.ironfang.com/renderwolf
+  baseURL: https://api.ironfang.com/render
   tags:
   - Batches
   properties:
@@ -190,7 +190,7 @@ apis:
   name: Ironfang Destinations API
   description: Where a finished job goes - a signed webhook, or your own S3 bucket.
   humanURL: https://ironfang.com/renderwolf/docs
-  baseURL: https://api.ironfang.com/renderwolf
+  baseURL: https://api.ironfang.com/render
   tags:
   - Destination
   tags_raw:
@@ -218,7 +218,7 @@ apis:
   name: Ironfang Jobs API
   description: The Jobs API from Ironfang — 4 operation(s) for jobs.
   humanURL: https://ironfang.com/renderwolf/docs
-  baseURL: https://api.ironfang.com/renderwolf
+  baseURL: https://api.ironfang.com/render
   tags:
   - Job
   tags_raw:
@@ -248,7 +248,7 @@ apis:
   name: Ironfang Render API
   description: Turn a URL or HTML into an image, PDF or video.
   humanURL: https://ironfang.com/renderwolf/docs
-  baseURL: https://api.ironfang.com/renderwolf
+  baseURL: https://api.ironfang.com/render
   tags:
   - Render
   properties:
@@ -284,7 +284,7 @@ apis:
   name: Ironfang Signed URLs API
   description: Shareable render URLs that need no API key.
   humanURL: https://ironfang.com/renderwolf/docs
-  baseURL: https://api.ironfang.com/renderwolf
+  baseURL: https://api.ironfang.com/render
   tags:
   - Signed URLs
   properties:
@@ -314,7 +314,7 @@ apis:
   name: Ironfang Templates API
   description: Stored HTML with `{{variable}}` placeholders, rendered on demand.
   humanURL: https://ironfang.com/renderwolf/docs
-  baseURL: https://api.ironfang.com/renderwolf
+  baseURL: https://api.ironfang.com/render
   tags:
   - Templates
   properties:

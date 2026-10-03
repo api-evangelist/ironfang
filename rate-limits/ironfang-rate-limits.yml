@@ -22,14 +22,16 @@ limits:
     note: >-
       Shared across every Renderwolf customer rendering the same host. Ironfang will raise it
       for a site you own on request.
-  - scope: per-account
+  - name: per-account
+    scope: per-account
     window: 1 minute
     limit: 120
     unit: renders
     burst: null
     status_on_exhaustion: 429
     error_code: rate_limited
-  - scope: per-account-quota
+  - name: per-account-quota
+    scope: per-account-quota
     window: billing period (calendar month on free, billing anniversary on paid)
     limit: plan-dependent - 250 / 5,000 / 15,000 / 50,000 credits
     status_on_exhaustion: 429
@@ -37,7 +39,8 @@ limits:
     note: >-
       A hard cap, not a rate limit - it pauses work rather than creating an overage charge.
       Recorded here because it shares the 429 status. See plans/ironfang-plans-pricing.yml.
-  - scope: per-mcp-connection
+  - name: per-mcp-connection
+    scope: per-mcp-connection
     window: billing period
     limit: 'max(25, 10% of the plan monthly credits)'
     status_on_exhaustion: MCP error

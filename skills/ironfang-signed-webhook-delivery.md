@@ -1,5 +1,5 @@
 ---
-name: renderwolf-signed-webhook-delivery
+name: ironfang-signed-webhook-delivery
 description: >-
   Register a Renderwolf delivery destination (signed webhook or your own S3-compatible bucket),
   attach it to jobs, verify the HMAC signature correctly, and handle the retry ladder — so

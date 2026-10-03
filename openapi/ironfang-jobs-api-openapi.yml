@@ -1,26 +1,27 @@
 openapi: 3.2.0
 info:
-  title: Renderwolf Jobs API
+  title: Ironfang Render Jobs API
   version: 1.0.0
   summary: Screenshots, PDFs, dynamic images and video through one API.
-  description: Renderwolf renders web pages to images, PDFs and video.
+  description: Ironfang Render renders web pages to images, PDFs and video.
   contact:
     name: Ironfang
     email: hello@ironfang.uk
-    url: https://ironfang.uk
-  termsOfService: https://ironfang.uk/legal/terms
+    url: https://ironfang.com
+  termsOfService: https://ironfang.com/legal/terms
   license:
     name: Proprietary - use governed by the Ironfang terms of service
-    url: https://ironfang.uk/legal/terms
+    url: https://ironfang.com/legal/terms
 servers:
-- url: https://api.ironfang.uk/renderwolf
+- url: https://api.ironfang.com/render
   description: Production
-- url: https://api.ironfang.uk
+- url: https://api.ironfang.com
   description: Production, unpartitioned - retained for existing clients
 security:
 - apiKey: []
 tags:
 - name: Jobs
+  description: Asynchronous jobs - status, result, cancellation.
 paths:
   /v1/jobs:
     post:
@@ -51,16 +52,37 @@ paths:
         your own reference, up to 120 characters.
 
 
-        Credits: the job''s maximum cost is reserved when it is accepted and
+        Billing: the most the job can count is reserved on your billing
 
-        settled when it finishes - a site preview reserves the 60-second
+        account when it is accepted - in the same step, so a job you were told
 
-        ceiling and releases the difference. Failed work is refunded. A
+        about always holds its reservation, and a refusal leaves no job. The
 
-        queued job cancels for free; a running one is charged only if it
+        one reservation is kept across retries of the job and committed, with
 
-        produced a usable output.'
+        what the job produced, when it succeeds; a site preview reserves the
+
+        60 second limit and commits its real length. A job that fails,
+
+        is cancelled while queued, or is cancelled while running without a
+
+        usable output, counts nothing. The job''s `usage` says what it holds:
+
+        `{"meter", "reserved", "committed"}`.
+
+
+        Capacity: an account may have 1,000 unfinished jobs (queued, running
+
+        or being cancelled); a job past that is `429 queue_full` and is not
+
+        created. A job that uses the browser runs in one of the account''s 2
+
+        browser slots, shared with its synchronous renders; while both are
+
+        busy it waits in the queue rather than being refused.'
       operationId: submitJob
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -96,21 +118,24 @@ paths:
         '400':
           description: Invalid submission.
         '403':
-          description: The key carries no `renderwolf:render` scope
-          or is not account-backed.: null
+          description: The key carries no `render:render` scope, or is not account-backed.
         '404':
           description: The template named by an image job does not exist.
         '409':
           description: '`idempotency_conflict`: the key was used with a different request.'
         '429':
-          description: Monthly credits exhausted.
+          $ref: '#/components/responses/RateLimited'
+        '402':
+          $ref: '#/components/responses/BillingRefused'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
         '501':
           description: This deployment cannot render clips or site previews.
     get:
       tags:
       - Jobs
       summary: List jobs
-      description: Newest first. `status` filters; `limit` up to 100; pass `next_cursor` back to continue.
+      description: Newest first. `status` filters; `active` includes queued, running and cancellation_requested. `limit` up to 100; pass `next_cursor` back to continue.
       operationId: listJobs
       parameters:
       - name: status
@@ -129,6 +154,12 @@ paths:
       responses:
         '200':
           description: Jobs and `next_cursor`.
+        '400':
+          description: '`bad_request`: `cursor` is not one this endpoint issued.'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The key carries no `render:render` scope, or is not account-backed.
   /v1/jobs/{id}:
     get:
       tags:
@@ -142,7 +173,9 @@ paths:
 
         while hosted, a signed `url` valid for 15 minutes. A failed job
 
-        carries `error.code` and `error.message`. The submitted request is
+        carries `error.code` and `error.message`. `usage` names the meter
+
+        and the quantity reserved and committed. The submitted request is
 
         never returned; `request_summary` is the redacted shape.'
       operationId: getJob
@@ -161,7 +194,7 @@ paths:
       tags:
       - Jobs
       summary: Cancel a job
-      description: A queued job is cancelled and refunded at once; a running one stops at its next safe point.
+      description: A queued job is cancelled and its reservation released at once; a running one stops at its next safe point, and counts only if it had already produced a usable output.
       operationId: cancelJob
       parameters:
       - name: id
@@ -171,8 +204,7 @@ paths:
           type: string
       responses:
         '200':
-          description: The job
-          cancelled or with cancellation requested.: null
+          description: The job, cancelled or with cancellation requested.
         '404':
           description: No such job on this account.
         '409':
@@ -235,6 +267,86 @@ paths:
         '410':
           description: The hosted result has expired.
 components:
+  responses:
+    RateLimited:
+      description: "Rate limits and exhausted billing allowances share this status,\nseparated by `error.code`:\n\n- `rate_limited` - your account exceeded 120 renders/minute\n- `target_rate_limited` - the site being rendered is being hit too hard\n  across all customers (60/minute per host)\n- `clip_busy`, `preview_busy` - every encoder or preview slot on the\n  worker is in use; `Retry-After` says when to come back\n- `concurrency_limit` - your account already has 2 browser\n  operations in progress, synchronous renders and running jobs\n  together; retry after `Retry-After`, or submit a durable job,\n  which waits for a free slot instead of being refused\n- `queue_full` - your account already has 1,000 unfinished jobs, or\n  the batch would take it past that; nothing was enqueued\n- `free_allowance_exhausted` - this month's free allowance for the\n  meter is used up and paid usage is not enabled\n- `account_budget_exhausted`, `product_budget_exhausted` - the\n  billing account's monthly limit, or Ironfang Render's, is reached\n- `exemption_limit_reached` - an exempt account's agreed limit is reached\n\nThe rate and capacity limits clear by themselves, so retry with\nbackoff, after `Retry-After` where it is sent. The billing codes do\nnot: enable paid usage or raise the limit in Billing, or wait for the\nmonth to roll over. Nothing was reserved or counted. Branch on the\ncode rather than the status.\n"
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying, on the refusals that clear by themselves.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BillingRefused:
+      description: 'Paid usage cannot be billed: `paid_usage_paused`, `payment_required`,
+
+        `payment_action_required` or `account_restricted`. Resolve it in
+
+        Billing; nothing was reserved or counted. The same body can also
+
+        carry `account_closed` (410) and `operation_too_large` (413).
+
+        '
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BillingUnavailable:
+      description: '`billing_temporarily_unavailable` - the billing ledger could not admit
+
+        the request just now. Retry after `Retry-After` seconds; nothing was
+
+        reserved.
+
+        '
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: 'Makes a submission safe to retry. Any string up to 255 characters;
+
+        surrounding whitespace is ignored and a longer key is a `400
+
+        bad_request`. A key is remembered per account for as long as the job
+
+        it created exists, and has no expiry of its own. Jobs and batches
+
+        keep separate key spaces.
+
+
+        A job submitted again under its key returns the existing job with
+
+        `200` when the request is the same, and is a `409
+
+        idempotency_conflict` when it differs. A batch submitted again under
+
+        its key returns the batch the key first created, with its jobs and
+
+        `202`; the request is not compared, so a batch has no conflict
+
+        response.
+
+        '
+      schema:
+        type: string
+        maxLength: 255
   schemas:
     JobDelivery:
       type: object
@@ -274,10 +386,108 @@ components:
 
             of the prefix is refused when the job is submitted, not quietly
 
-            rewritten. Defaults to `renderwolf/{date}/{job_id}`.
+            rewritten. Defaults to `render/{date}/{job_id}`.
 
             '
           example: captures/{external_id}/{job_id}.png
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: 'Stable, safe to branch on. New codes may be added: treat a
+
+                code you do not recognise as a failure of the class its HTTP
+
+                status indicates.
+
+                '
+              enum:
+              - bad_request
+              - unauthorized
+              - invalid_api_key
+              - auth_failed
+              - forbidden
+              - billing_moved
+              - not_found
+              - rate_limited
+              - target_rate_limited
+              - render_failed
+              - bad_signature
+              - signing_disabled
+              - account_gone
+              - account_not_linked
+              - account_required
+              - admission_failed
+              - bad_destination
+              - bad_target
+              - batch_plan_failed
+              - batch_submit_failed
+              - batch_too_large
+              - bundle_failed
+              - clip_busy
+              - concurrency_limit
+              - delegated_not_allowed
+              - delivery_disabled
+              - delivery_plan_failed
+              - destination_disabled
+              - idempotency_conflict
+              - idempotency_key_used
+              - insufficient_scope
+              - invalid_token
+              - job_finished
+              - job_plan_failed
+              - job_submit_failed
+              - logo_fetch_failed
+              - pdf_too_long
+              - preview_busy
+              - queue_full
+              - result_expired
+              - result_not_ready
+              - result_read_failed
+              - secret_failed
+              - site_preview_disabled
+              - store_failed
+              - unknown_destination
+              - unscannable
+              - vault_failed
+              - video_disabled
+              - free_allowance_exhausted
+              - account_budget_exhausted
+              - product_budget_exhausted
+              - paid_usage_paused
+              - payment_required
+              - payment_action_required
+              - account_restricted
+              - account_closed
+              - product_not_eligible
+              - exemption_limit_reached
+              - operation_too_large
+              - billing_temporarily_unavailable
+            message:
+              type: string
+              description: Human-readable. May change; do not match on it.
+            docs:
+              type: string
+              format: uri
+              description: Where the error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request. Quote it to support.
+      example:
+        error:
+          code: target_rate_limited
+          message: too many renders for that host, try again shortly
+          docs: https://ironfang.com/render/docs#errors
+        request_id: 01992f6e-7c1a-7b3e-9d52-4f0a6c8e2b17
   securitySchemes:
     apiKey:
       type: http
@@ -285,3 +495,6 @@ components:
       description: 'An API key from the portal, sent as `Authorization: Bearer rw_live_...`.
 
         '
+externalDocs:
+  description: Ironfang Render documentation
+  url: https://ironfang.com/render/docs

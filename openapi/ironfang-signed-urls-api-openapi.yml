@@ -1,21 +1,21 @@
 openapi: 3.2.0
 info:
-  title: Renderwolf Signed URLs API
+  title: Ironfang Render Signed URLs API
   version: 1.0.0
   summary: Screenshots, PDFs, dynamic images and video through one API.
-  description: Renderwolf renders web pages to images, PDFs and video.
+  description: Ironfang Render renders web pages to images, PDFs and video.
   contact:
     name: Ironfang
     email: hello@ironfang.uk
-    url: https://ironfang.uk
-  termsOfService: https://ironfang.uk/legal/terms
+    url: https://ironfang.com
+  termsOfService: https://ironfang.com/legal/terms
   license:
     name: Proprietary - use governed by the Ironfang terms of service
-    url: https://ironfang.uk/legal/terms
+    url: https://ironfang.com/legal/terms
 servers:
-- url: https://api.ironfang.uk/renderwolf
+- url: https://api.ironfang.com/render
   description: Production
-- url: https://api.ironfang.uk
+- url: https://api.ironfang.com
   description: Production, unpartitioned - retained for existing clients
 security:
 - apiKey: []
@@ -32,7 +32,18 @@ paths:
 
         `` tag or an email. The URL is bound to your account, so renders
 
-        through it meter against your quota.
+        through it are admitted and counted against your organisation''s
+
+        billing account like any other.
+
+
+        A signed URL expires after 30 days unless `ttl_hours` says otherwise:
+
+        any number of hours, or `0` for a URL that never expires, which is
+
+        what an `og:image` tag needs. The response says when the URL
+
+        expires.
 
 
         Requires signing to be configured on the deployment; returns `501`
@@ -93,7 +104,11 @@ paths:
       - name: exp
         in: path
         required: true
-        description: Expiry stamp, part of the signed payload. `0` never expires.
+        description: 'Expiry, in unix seconds, part of the signed payload. `0` never
+
+          expires.
+
+          '
         schema:
           type: string
       - name: sig
@@ -119,7 +134,114 @@ paths:
                 $ref: '#/components/schemas/Error'
         '429':
           $ref: '#/components/responses/RateLimited'
+        '402':
+          $ref: '#/components/responses/BillingRefused'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
 components:
+  responses:
+    BillingUnavailable:
+      description: '`billing_temporarily_unavailable` - the billing ledger could not admit
+
+        the request just now. Retry after `Retry-After` seconds; nothing was
+
+        reserved.
+
+        '
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Image:
+      description: 'The rendered image. `png` unless `format: jpeg` was requested.
+
+        '
+      headers:
+        X-Ironfang-Cache:
+          description: '`hit` when served from cache, in which case it counted nothing.'
+          schema:
+            type: string
+            enum:
+            - hit
+        X-Ironfang-Meter:
+          $ref: '#/components/headers/Meter'
+        X-Ironfang-Quantity:
+          $ref: '#/components/headers/Quantity'
+        X-Ironfang-Render-Ms:
+          description: Render time in milliseconds, excluding any requested delay.
+          schema:
+            type: integer
+        X-Ironfang-Delay-Ms:
+          description: The `delay_ms` actually waited, when one was requested.
+          schema:
+            type: integer
+        X-Ironfang-Captured-At:
+          description: 'RFC 3339 timestamp of a fresh capture. Present only on
+
+            `no_cache` renders, where the response is also `no-store` - the
+
+            pairing is what makes a capture usable as evidence.
+
+            '
+          schema:
+            type: string
+            format: date-time
+      content:
+        image/png:
+          schema:
+            type: string
+            format: binary
+        image/jpeg:
+          schema:
+            type: string
+            format: binary
+    RateLimited:
+      description: "Rate limits and exhausted billing allowances share this status,\nseparated by `error.code`:\n\n- `rate_limited` - your account exceeded 120 renders/minute\n- `target_rate_limited` - the site being rendered is being hit too hard\n  across all customers (60/minute per host)\n- `clip_busy`, `preview_busy` - every encoder or preview slot on the\n  worker is in use; `Retry-After` says when to come back\n- `concurrency_limit` - your account already has 2 browser\n  operations in progress, synchronous renders and running jobs\n  together; retry after `Retry-After`, or submit a durable job,\n  which waits for a free slot instead of being refused\n- `queue_full` - your account already has 1,000 unfinished jobs, or\n  the batch would take it past that; nothing was enqueued\n- `free_allowance_exhausted` - this month's free allowance for the\n  meter is used up and paid usage is not enabled\n- `account_budget_exhausted`, `product_budget_exhausted` - the\n  billing account's monthly limit, or Ironfang Render's, is reached\n- `exemption_limit_reached` - an exempt account's agreed limit is reached\n\nThe rate and capacity limits clear by themselves, so retry with\nbackoff, after `Retry-After` where it is sent. The billing codes do\nnot: enable paid usage or raise the limit in Billing, or wait for the\nmonth to roll over. Nothing was reserved or counted. Branch on the\ncode rather than the status.\n"
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying, on the refusals that clear by themselves.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: No such template, or not yours.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BillingRefused:
+      description: 'Paid usage cannot be billed: `paid_usage_paused`, `payment_required`,
+
+        `payment_action_required` or `account_restricted`. Resolve it in
+
+        Billing; nothing was reserved or counted. The same body can also
+
+        carry `account_closed` (410) and `operation_too_large` (413).
+
+        '
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Malformed body, or neither/both of `url` and `html`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   schemas:
     SignedUrl:
       type: object
@@ -131,6 +253,12 @@ components:
         path:
           type: string
           description: Path only, for serving behind your own domain.
+        expires_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+          description: When the URL stops rendering (UTC); null when it never expires.
     Error:
       type: object
       required:
@@ -144,28 +272,91 @@ components:
           properties:
             code:
               type: string
-              description: Stable, safe to branch on.
+              description: 'Stable, safe to branch on. New codes may be added: treat a
+
+                code you do not recognise as a failure of the class its HTTP
+
+                status indicates.
+
+                '
               enum:
               - bad_request
               - unauthorized
               - invalid_api_key
               - auth_failed
               - forbidden
-              - email_unverified
+              - billing_moved
               - not_found
-              - quota_exhausted
               - rate_limited
               - target_rate_limited
               - render_failed
               - bad_signature
               - signing_disabled
+              - account_gone
+              - account_not_linked
+              - account_required
+              - admission_failed
+              - bad_destination
+              - bad_target
+              - batch_plan_failed
+              - batch_submit_failed
+              - batch_too_large
+              - bundle_failed
+              - clip_busy
+              - concurrency_limit
+              - delegated_not_allowed
+              - delivery_disabled
+              - delivery_plan_failed
+              - destination_disabled
+              - idempotency_conflict
+              - idempotency_key_used
+              - insufficient_scope
+              - invalid_token
+              - job_finished
+              - job_plan_failed
+              - job_submit_failed
+              - logo_fetch_failed
+              - pdf_too_long
+              - preview_busy
+              - queue_full
+              - result_expired
+              - result_not_ready
+              - result_read_failed
+              - secret_failed
+              - site_preview_disabled
+              - store_failed
+              - unknown_destination
+              - unscannable
+              - vault_failed
+              - video_disabled
+              - free_allowance_exhausted
+              - account_budget_exhausted
+              - product_budget_exhausted
+              - paid_usage_paused
+              - payment_required
+              - payment_action_required
+              - account_restricted
+              - account_closed
+              - product_not_eligible
+              - exemption_limit_reached
+              - operation_too_large
+              - billing_temporarily_unavailable
             message:
               type: string
               description: Human-readable. May change; do not match on it.
+            docs:
+              type: string
+              format: uri
+              description: Where the error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request. Quote it to support.
       example:
         error:
           code: target_rate_limited
           message: too many renders for that host, try again shortly
+          docs: https://ironfang.com/render/docs#errors
+        request_id: 01992f6e-7c1a-7b3e-9d52-4f0a6c8e2b17
     SignRequest:
       type: object
       required:
@@ -204,82 +395,36 @@ components:
           default: false
         ttl_hours:
           type: integer
-          default: 0
-          description: Hours until the URL expires. `0` never expires.
-  responses:
-    RateLimited:
-      description: "Three distinct conditions share this status, separated by `error.code`:\n\n- `rate_limited` - your account exceeded 120 renders/minute\n- `target_rate_limited` - the site being rendered is being hit too hard\n  across all customers (60/minute per host)\n- `quota_exhausted` - the plan's monthly allowance is spent\n\nThe first two clear within the minute, so retry with backoff. The third\ndoes not: upgrade in the portal or wait for the period to roll over.\nBranch on the code rather than the status.\n"
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    NotFound:
-      description: No such template, or not yours.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    BadRequest:
-      description: Malformed body, or neither/both of `url` and `html`.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    Unauthorized:
-      description: Missing, malformed, revoked or unknown API key.
-      content:
-        application/json:
-          schema:
-            $ref: '#/components/schemas/Error'
-    Image:
-      description: 'The rendered image. `png` unless `format: jpeg` was requested.
+          minimum: 0
+          default: 720
+          description: 'Hours until the URL expires. Leaving it out gives 720 (30 days);
+
+            `0` never expires.
+
+            '
+  headers:
+    Meter:
+      description: 'The billing meter this request counted against, e.g.
+
+        `render.screenshot`. Present on every billable response, cache hits
+
+        included.
 
         '
-      headers:
-        X-Renderwolf-Cache:
-          description: '`hit` when served from cache, in which case it was free.'
-          schema:
-            type: string
-            enum:
-            - hit
-        X-Renderwolf-Credits:
-          description: 'What this call cost. `0` on a cache hit, because a cache hit is
+      schema:
+        type: string
+    Quantity:
+      description: 'The quantity this request committed to its meter: 1 for a unit
 
-            free. Read it to log spend per request without polling
+        render, output seconds (rounded up) for video, `0` for a cache hit or
 
-            `/v1/usage`.
+        an unmetered key. Read it to log usage per request without polling
 
-            '
-          schema:
-            type: integer
-        X-Renderwolf-Render-Ms:
-          description: Render time in milliseconds, excluding any requested delay.
-          schema:
-            type: integer
-        X-Renderwolf-Delay-Ms:
-          description: The `delay_ms` actually waited, when one was requested.
-          schema:
-            type: integer
-        X-Renderwolf-Captured-At:
-          description: 'RFC 3339 timestamp of a fresh capture. Present only on
+        `/v1/usage`.
 
-            `no_cache` renders, where the response is also `no-store` - the
-
-            pairing is what makes a capture usable as evidence.
-
-            '
-          schema:
-            type: string
-            format: date-time
-      content:
-        image/png:
-          schema:
-            type: string
-            format: binary
-        image/jpeg:
-          schema:
-            type: string
-            format: binary
+        '
+      schema:
+        type: integer
   securitySchemes:
     apiKey:
       type: http
@@ -287,3 +432,6 @@ components:
       description: 'An API key from the portal, sent as `Authorization: Bearer rw_live_...`.
 
         '
+externalDocs:
+  description: Ironfang Render documentation
+  url: https://ironfang.com/render/docs

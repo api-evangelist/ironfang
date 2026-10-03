@@ -1,34 +1,34 @@
 openapi: 3.2.0
 info:
-  title: Renderwolf Account API
+  title: Ironfang Render Account API
   version: 1.0.0
   summary: Screenshots, PDFs, dynamic images and video through one API.
-  description: Renderwolf renders web pages to images, PDFs and video.
+  description: Ironfang Render renders web pages to images, PDFs and video.
   contact:
     name: Ironfang
     email: hello@ironfang.uk
-    url: https://ironfang.uk
-  termsOfService: https://ironfang.uk/legal/terms
+    url: https://ironfang.com
+  termsOfService: https://ironfang.com/legal/terms
   license:
     name: Proprietary - use governed by the Ironfang terms of service
-    url: https://ironfang.uk/legal/terms
+    url: https://ironfang.com/legal/terms
 servers:
-- url: https://api.ironfang.uk/renderwolf
+- url: https://api.ironfang.com/render
   description: Production
-- url: https://api.ironfang.uk
+- url: https://api.ironfang.com
   description: Production, unpartitioned - retained for existing clients
 security:
 - apiKey: []
 tags:
 - name: Account
-  description: Usage against quota.
+  description: Usage this period, from the billing account.
 paths:
   /v1/capabilities:
     get:
       tags:
       - Account
       security: []
-      summary: What Renderwolf does, is building and does not offer
+      summary: What Ironfang Render does, is building and does not offer
       description: 'A dated statement of capabilities with a status of `live`, `planned`
 
         or `not_offered`. Public and cacheable; the comparison pages are
@@ -50,8 +50,6 @@ paths:
                   updated:
                     type: string
                     format: date
-                  free_credits_per_month:
-                    type: integer
                   capabilities:
                     type: array
                     items:
@@ -79,20 +77,24 @@ paths:
 
         first, synchronous calls and jobs alike: kind, outcome, safe error
 
-        code, cache hit or miss, credits charged and refunded, response size
+        code, cache hit or miss, the `meter` it counted against and the
 
-        and type, duration, the target''s origin and path, the names of the
+        `quantity` it committed (0 for a cache hit or a failure), response
 
-        option fields supplied, and the request id you can quote to support.
+        size and type, duration, the target''s origin and path, the names of
+
+        the option fields supplied, and the request id you can quote to
+
+        support.
 
 
         It is diagnostic, not replay. Nothing here can rebuild the request:
 
         header and cookie values, HTML, template variables, URL query strings
 
-        and signatures are never recorded. Retention is seven days on every
+        and signatures are never recorded. Retention is seven days for every
 
-        plan.
+        account.
 
 
         `id` matches the request id, a job id or your own `X-Request-ID`,
@@ -148,8 +150,7 @@ paths:
           type: string
       - name: id
         in: query
-        description: Request id
-        job id or your X-Request-ID: null
+        description: Request id, job id or your X-Request-ID
         schema:
           type: string
       - name: limit
@@ -173,9 +174,20 @@ paths:
       tags:
       - Account
       summary: Usage this period
-      description: 'For subscribers the period runs from the billing anniversary, not the
+      description: 'This UTC calendar month''s Ironfang Render usage from your
 
-        first of the month, so it lines up with invoices.'
+        organisation''s billing account: for every Render meter, what was used,
+
+        how much of it the free allowance covered, what is held by work in
+
+        flight, and what the settled usage costs before tax. The whole
+
+        account - every product, budgets, statements - is `/billing/v1`.
+
+
+        An env bootstrap key, or a deployment with billing off, is unmetered
+
+        and answers `{"unmetered": true}`.'
       operationId: getUsage
       responses:
         '200':
@@ -186,28 +198,24 @@ paths:
                 $ref: '#/components/schemas/Usage'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
 components:
   schemas:
     Usage:
       type: object
+      description: 'This UTC calendar month''s usage of every Ironfang Render meter, from
+
+        the organisation''s billing account. Amounts are pounds before tax, as
+
+        exact decimal strings.
+
+        '
       properties:
-        period:
+        product:
           type: string
-          description: 'The period these numbers cover. Follows the billing anniversary for
-
-            subscribers, the calendar month otherwise.
-
-            '
-        credits:
-          type: integer
-          description: Credits spent so far this period. Cache hits are free and not counted.
-        renders:
-          type: integer
-          deprecated: true
-          description: The same number under the name the API shipped with.
-        limit:
-          type: integer
-          description: Credits included in the plan for this period, grants included.
+          enum:
+          - render
         period_start:
           type: string
           format: date
@@ -215,68 +223,68 @@ components:
           type: string
           format: date
           description: The period as [period_start, period_end) in UTC dates.
-        by_kind:
-          type: object
-          description: 'Where this period''s credits went, keyed by render kind
-
-            (`screenshot`, `pdf`, `image`, `qr`, `clip`). Kinds with no spend
-
-            are absent.
-
-            '
-          additionalProperties:
-            type: object
-            properties:
-              credits:
-                type: integer
-              count:
-                type: integer
-        unattributed:
-          type: integer
-          description: 'Credits from before per-kind metering existed. The breakdown plus
-
-            this always equals `credits`.
-
-            '
-        daily:
+        catalogue_version:
+          type: string
+          description: The billing catalogue version that prices this period.
+        mode:
+          type: string
+          enum:
+          - free
+          - setup_pending
+          - enabled
+          - paused
+          - closed
+          description: The billing account's mode; `enabled` means paid usage beyond the free allowances is on.
+        currency:
+          type: string
+          enum:
+          - GBP
+        settled:
+          type: string
+          description: What Ironfang Render's settled usage costs this period.
+        reserved:
+          type: string
+          description: The most work in flight could add if it all succeeds; not charged on top of `settled`.
+        meters:
           type: array
-          description: The last 30 days of spend, oldest first, zero days included.
           items:
             type: object
             properties:
-              day:
+              id:
                 type: string
-                format: date
-              credits:
+                description: The meter, e.g. `render.screenshot`.
+              unit:
+                type: string
+              unit_plural:
+                type: string
+              free_allowance:
                 type: integer
-              by_kind:
-                type: object
-                additionalProperties:
-                  type: integer
-      example:
-        period: 2026-08
-        credits: 412
-        renders: 412
-        limit: 5000
-        period_start: '2026-08-01'
-        period_end: '2026-09-01'
-        by_kind:
-          screenshot:
-            credits: 231
-            count: 231
-          pdf:
-            credits: 118
-            count: 59
-          qr:
-            credits: 63
-            count: 63
-        daily:
-        - day: '2026-08-25'
-          credits: 41
-          by_kind:
-            screenshot: 30
-            pdf: 8
-            qr: 3
+                description: This month's free quantity.
+              used:
+                type: integer
+                description: Quantity committed this month.
+              free_used:
+                type: integer
+                description: How much of `used` the free allowance covered.
+              billable:
+                type: integer
+                description: '`used` beyond the free allowance.'
+              reserved:
+                type: integer
+                description: Quantity held by work in flight.
+              remaining_free:
+                type: integer
+                description: Free allowance left once work in flight is counted.
+              charge:
+                type: string
+                description: What `billable` costs
+                before tax.: null
+              free_utility:
+                type: boolean
+                description: A meter that is never charged (QR codes).
+              exempt:
+                type: boolean
+                description: The account is exempt from settling this product.
     Error:
       type: object
       required:
@@ -290,37 +298,114 @@ components:
           properties:
             code:
               type: string
-              description: Stable, safe to branch on.
+              description: 'Stable, safe to branch on. New codes may be added: treat a
+
+                code you do not recognise as a failure of the class its HTTP
+
+                status indicates.
+
+                '
               enum:
               - bad_request
               - unauthorized
               - invalid_api_key
               - auth_failed
               - forbidden
-              - email_unverified
+              - billing_moved
               - not_found
-              - quota_exhausted
               - rate_limited
               - target_rate_limited
               - render_failed
               - bad_signature
               - signing_disabled
+              - account_gone
+              - account_not_linked
+              - account_required
+              - admission_failed
+              - bad_destination
+              - bad_target
+              - batch_plan_failed
+              - batch_submit_failed
+              - batch_too_large
+              - bundle_failed
+              - clip_busy
+              - concurrency_limit
+              - delegated_not_allowed
+              - delivery_disabled
+              - delivery_plan_failed
+              - destination_disabled
+              - idempotency_conflict
+              - idempotency_key_used
+              - insufficient_scope
+              - invalid_token
+              - job_finished
+              - job_plan_failed
+              - job_submit_failed
+              - logo_fetch_failed
+              - pdf_too_long
+              - preview_busy
+              - queue_full
+              - result_expired
+              - result_not_ready
+              - result_read_failed
+              - secret_failed
+              - site_preview_disabled
+              - store_failed
+              - unknown_destination
+              - unscannable
+              - vault_failed
+              - video_disabled
+              - free_allowance_exhausted
+              - account_budget_exhausted
+              - product_budget_exhausted
+              - paid_usage_paused
+              - payment_required
+              - payment_action_required
+              - account_restricted
+              - account_closed
+              - product_not_eligible
+              - exemption_limit_reached
+              - operation_too_large
+              - billing_temporarily_unavailable
             message:
               type: string
               description: Human-readable. May change; do not match on it.
+            docs:
+              type: string
+              format: uri
+              description: Where the error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request. Quote it to support.
       example:
         error:
           code: target_rate_limited
           message: too many renders for that host, try again shortly
+          docs: https://ironfang.com/render/docs#errors
+        request_id: 01992f6e-7c1a-7b3e-9d52-4f0a6c8e2b17
   responses:
-    BadRequest:
-      description: Malformed body, or neither/both of `url` and `html`.
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
-    Unauthorized:
-      description: Missing, malformed, revoked or unknown API key.
+    Forbidden:
+      description: '`insufficient_scope` - the key does not carry the scope;
+
+        `account_not_linked` - the key''s account belongs to no Ironfang
+
+        organisation, so its usage cannot be billed; `product_not_eligible` -
+
+        paid use of Ironfang Render needs an eligible billing account.
+
+        '
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BadRequest:
+      description: Malformed body, or neither/both of `url` and `html`.
       content:
         application/json:
           schema:
@@ -332,3 +417,6 @@ components:
       description: 'An API key from the portal, sent as `Authorization: Bearer rw_live_...`.
 
         '
+externalDocs:
+  description: Ironfang Render documentation
+  url: https://ironfang.com/render/docs

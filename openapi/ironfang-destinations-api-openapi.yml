@@ -1,21 +1,21 @@
 openapi: 3.2.0
 info:
-  title: Renderwolf Destinations API
+  title: Ironfang Render Destinations API
   version: 1.0.0
   summary: Screenshots, PDFs, dynamic images and video through one API.
-  description: Renderwolf renders web pages to images, PDFs and video.
+  description: Ironfang Render renders web pages to images, PDFs and video.
   contact:
     name: Ironfang
     email: hello@ironfang.uk
-    url: https://ironfang.uk
-  termsOfService: https://ironfang.uk/legal/terms
+    url: https://ironfang.com
+  termsOfService: https://ironfang.com/legal/terms
   license:
     name: Proprietary - use governed by the Ironfang terms of service
-    url: https://ironfang.uk/legal/terms
+    url: https://ironfang.com/legal/terms
 servers:
-- url: https://api.ironfang.uk/renderwolf
+- url: https://api.ironfang.com/render
   description: Production
-- url: https://api.ironfang.uk
+- url: https://api.ironfang.com
   description: Production, unpartitioned - retained for existing clients
 security:
 - apiKey: []
@@ -51,7 +51,7 @@ paths:
         us. They are never returned after creation.
 
 
-        Needs the `renderwolf:destinations` scope, which maps to the
+        Needs the `render:destinations` scope, which maps to the
 
         `destinations.manage` permission.'
       operationId: createDestination
@@ -100,7 +100,7 @@ paths:
         '400':
           description: '`bad_destination`: not a public https URL, or missing bucket credentials.'
         '403':
-          description: The key carries no `renderwolf:destinations` scope.
+          description: The key carries no `render:destinations` scope.
         '501':
           description: This deployment has no credential vault configured.
     get:
@@ -112,12 +112,17 @@ paths:
       responses:
         '200':
           description: The account's destinations.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          description: The key carries no `render:destinations` scope, or is not account-backed.
   /v1/destinations/{id}:
     get:
       tags:
       - Destinations
       summary: Get a destination
       operationId: getDestination
+      description: Returns a delivery destination belonging to the authenticated account. Stored delivery credentials are not included in the response.
       parameters:
       - name: id
         in: path
@@ -188,7 +193,7 @@ paths:
       tags:
       - Destinations
       summary: Test a destination now
-      description: 'A webhook receives a signed `renderwolf.destination.test` event; a
+      description: 'A webhook receives a signed `render.destination.test` event; a
 
         bucket has a uniquely named object written to it. Always `200`: the
 
@@ -218,25 +223,53 @@ paths:
 
         used up its attempts. Delivery state never affects the job''s own
 
-        outcome.'
+        outcome. Filters apply before the cursor boundary. `pending` selects
+
+        pending deliveries with no attempts; `retrying` selects pending deliveries
+
+        with at least one attempt. `job_id` selects one owned job.'
       operationId: listDeliveries
       parameters:
       - name: destination
         in: query
         schema:
           type: string
+          format: uuid
+      - name: job_id
+        in: query
+        schema:
+          type: string
+          format: uuid
+      - name: status
+        in: query
+        schema:
+          type: string
+          enum:
+          - pending
+          - retrying
+          - delivering
+          - delivered
+          - failed
       - name: limit
         in: query
         schema:
           type: integer
+          minimum: 1
           maximum: 100
+          default: 50
       - name: cursor
         in: query
         schema:
           type: string
       responses:
         '200':
-          description: Deliveries and `next_cursor`.
+          description: Deliveries and next_cursor, with no-store caching.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryList'
+        '400':
+          description: Invalid, repeated or unknown query parameter.
   /v1/deliveries/{id}:
     get:
       tags:
@@ -272,7 +305,11 @@ paths:
           type: string
       responses:
         '200':
-          description: The delivery. `payload` is absent once purged.
+          description: The delivery. Payload is absent once purged.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryRecord'
         '404':
           description: No such delivery on this account.
   /v1/deliveries/{id}/redeliver:
@@ -296,11 +333,199 @@ paths:
           type: string
       responses:
         '200':
-          description: The delivery
-          queued again.: null
+          description: The delivery, queued again.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeliveryRecord'
         '404':
           description: No such delivery on this account.
 components:
+  schemas:
+    DeliveryList:
+      type: object
+      additionalProperties: false
+      required:
+      - deliveries
+      - next_cursor
+      properties:
+        deliveries:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/DeliveryRecord'
+        next_cursor:
+          type: string
+          maxLength: 256
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: 'Stable, safe to branch on. New codes may be added: treat a
+
+                code you do not recognise as a failure of the class its HTTP
+
+                status indicates.
+
+                '
+              enum:
+              - bad_request
+              - unauthorized
+              - invalid_api_key
+              - auth_failed
+              - forbidden
+              - billing_moved
+              - not_found
+              - rate_limited
+              - target_rate_limited
+              - render_failed
+              - bad_signature
+              - signing_disabled
+              - account_gone
+              - account_not_linked
+              - account_required
+              - admission_failed
+              - bad_destination
+              - bad_target
+              - batch_plan_failed
+              - batch_submit_failed
+              - batch_too_large
+              - bundle_failed
+              - clip_busy
+              - concurrency_limit
+              - delegated_not_allowed
+              - delivery_disabled
+              - delivery_plan_failed
+              - destination_disabled
+              - idempotency_conflict
+              - idempotency_key_used
+              - insufficient_scope
+              - invalid_token
+              - job_finished
+              - job_plan_failed
+              - job_submit_failed
+              - logo_fetch_failed
+              - pdf_too_long
+              - preview_busy
+              - queue_full
+              - result_expired
+              - result_not_ready
+              - result_read_failed
+              - secret_failed
+              - site_preview_disabled
+              - store_failed
+              - unknown_destination
+              - unscannable
+              - vault_failed
+              - video_disabled
+              - free_allowance_exhausted
+              - account_budget_exhausted
+              - product_budget_exhausted
+              - paid_usage_paused
+              - payment_required
+              - payment_action_required
+              - account_restricted
+              - account_closed
+              - product_not_eligible
+              - exemption_limit_reached
+              - operation_too_large
+              - billing_temporarily_unavailable
+            message:
+              type: string
+              description: Human-readable. May change; do not match on it.
+            docs:
+              type: string
+              format: uri
+              description: Where the error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request. Quote it to support.
+      example:
+        error:
+          code: target_rate_limited
+          message: too many renders for that host, try again shortly
+          docs: https://ironfang.com/render/docs#errors
+        request_id: 01992f6e-7c1a-7b3e-9d52-4f0a6c8e2b17
+    DeliveryRecord:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - job_id
+      - destination_id
+      - event
+      - status
+      - attempts
+      - created_at
+      properties:
+        id:
+          type: string
+          format: uuid
+        job_id:
+          type: string
+          format: uuid
+        destination_id:
+          type: string
+          format: uuid
+        event:
+          type: string
+        status:
+          type: string
+          enum:
+          - pending
+          - delivering
+          - delivered
+          - failed
+        attempts:
+          type: integer
+          minimum: 0
+        created_at:
+          type: string
+          format: date-time
+        next_attempt_at:
+          type: string
+          format: date-time
+        delivered_at:
+          type: string
+          format: date-time
+        response_status:
+          type: integer
+        error:
+          type: string
+        object_key:
+          type: string
+        payload:
+          type: string
+          description: Last posted body; omitted from lists and after purging.
+        payload_timestamp:
+          type: string
+        payload_signature:
+          type: string
+        payload_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        payload_retention_days:
+          type: integer
+        response_body:
+          type: string
+  responses:
+    Unauthorized:
+      description: Missing, malformed, revoked or unknown API key.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
   securitySchemes:
     apiKey:
       type: http
@@ -308,3 +533,6 @@ components:
       description: 'An API key from the portal, sent as `Authorization: Bearer rw_live_...`.
 
         '
+externalDocs:
+  description: Ironfang Render documentation
+  url: https://ironfang.com/render/docs

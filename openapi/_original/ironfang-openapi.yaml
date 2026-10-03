@@ -1,5 +1,5 @@
-# x-archived-from: ironfang-openapi.yaml
-# x-archived-on: 2026-09-16
+# x-archived-from: ironfang-render-openapi.yaml (https://api.ironfang.com/render/openapi.yaml, fetched 2026-10-03)
+# x-archived-on: 2026-10-03
 openapi: 3.1.0
 
 # Written against the handlers in internal/httpapi, not from memory. When an
@@ -12,19 +12,18 @@ openapi: 3.1.0
 # belongs in a public contract.
 
 info:
-  title: Renderwolf API
+  title: Ironfang Render API
   version: '1.0.0'
   summary: Screenshots, PDFs, dynamic images and video through one API.
   description: |
-    Renderwolf renders web pages to images, PDFs and video. Give it a URL or a
+    Ironfang Render renders web pages to images, PDFs and video. Give it a URL or a
     block of HTML and get the finished asset without running a browser.
 
-    ## Free tier attribution
+    ## No attribution on your output
 
-    Output from a free account carries a small Renderwolf badge in the bottom
-    corner on screenshots, template images, PDFs, clips and site previews. Any
-    paid plan removes it. It follows the account's plan rather than the request,
-    so there is no field here that turns it on or off.
+    Nothing you render through the API carries an Ironfang badge or watermark,
+    whatever your billing state. Only the anonymous free tools on
+    ironfang.com mark their output.
 
     ## Authentication
 
@@ -34,7 +33,7 @@ info:
     Authorization: Bearer rw_live_...
     ```
 
-    Keys are created in the portal at https://portal.ironfang.uk. They are shown
+    Keys are created in the portal at https://portal.ironfang.com. They are shown
     once at creation and stored only as a hash, so a lost key is replaced rather
     than recovered.
 
@@ -44,19 +43,59 @@ info:
     rendered file directly. `/v1/site-preview` returns a multipart payload with
     the poster and MP4. Only errors and the metadata endpoints return JSON.
 
-    ## Caching and billing
+    ## Billing
 
-    Identical requests return a cached result, and **cache hits are free** - they
-    do not count against quota. `X-Renderwolf-Cache: hit` tells you which you
-    got. Set `no_cache: true` to force a fresh render, which is billable; the
-    flag is deliberately excluded from the cache key, so two fresh requests do
-    not hit each other's results.
+    Ironfang Render has no plans or credits. Usage is billed to your
+    organisation's Ironfang billing account, which every product shares
+    (`/billing/v1`, managed in the portal). Each kind of work counts against a
+    meter, and each meter has a monthly free allowance (UTC calendar months);
+    beyond it, usage is pay-as-you-go at graduated rates once paid usage is
+    enabled on the billing account. The catalogue of meters, allowances and
+    rates is `GET /billing/v1/catalogue`.
 
-    ## Quotas and rate limits
+    | Work | Meter | Counts |
+    | --- | --- | --- |
+    | Screenshot, signed screenshot | `render.screenshot` | 1 per screenshot |
+    | PDF | `render.pdf` | 1 per PDF of at most 100 pages |
+    | Template image, signed image | `render.image` | 1 per image |
+    | QR code | `render.qr` | 1 per code; a free utility, never charged |
+    | Clip, 1080p (`vertical`, `landscape`) | `render.video_second_fhd` | output seconds, rounded up per clip |
+    | Clip, `720p` or `square` | `render.video_second_hd` | output seconds, rounded up per clip |
+    | Site preview | `render.site_preview_second` | output seconds, rounded up per preview |
 
-    Monthly quota depends on plan: free 250, hobby 5,000, pro 15,000, scale
-    50,000 renders. For subscribers the period follows the billing anniversary
-    rather than the calendar month.
+    Every billable request is admitted before any work starts: the most it
+    can count is reserved, and a request that cannot be admitted is refused
+    with nothing done. What the work actually produced is committed when it
+    succeeds - never more than was reserved - and a failure, a refused input
+    or a cancellation commits nothing. A clip reserves its duration; a site
+    preview reserves the 60 second limit and commits its real length. Billable
+    responses say what they counted in `X-Ironfang-Meter` and
+    `X-Ironfang-Quantity`; `GET /v1/usage` reports the period.
+
+    A billing refusal answers with a stable code in the usual error body:
+    `free_allowance_exhausted`, `account_budget_exhausted` or
+    `product_budget_exhausted` (429); `paid_usage_paused`, `payment_required`,
+    `payment_action_required` or `account_restricted` (402);
+    `product_not_eligible` (403); `account_closed` (410);
+    `operation_too_large` (413); `billing_temporarily_unavailable` (503, with
+    `Retry-After`). An API key on an account that belongs to no Ironfang
+    organisation is `403 account_not_linked`.
+
+    A PDF may have at most 100 pages. A longer document is refused with
+    `422 pdf_too_long` and nothing is counted.
+
+    ## Caching
+
+    An identical request made again within **ten minutes** of the render that
+    produced it may be served from cache: `X-Ironfang-Cache: hit`,
+    `X-Ironfang-Quantity: 0`, nothing reserved and nothing counted. The cache
+    is per instance and bounded in size, so an entry can be evicted sooner and
+    a hit is never guaranteed; after ten minutes the same request is a new,
+    billable render. PDFs are never cached. Set `no_cache: true` to force a
+    fresh render, which is billable; the flag is deliberately excluded from
+    the cache key, so two fresh requests do not hit each other's results.
+
+    ## Rate limits
 
     Two rate limits apply, both per minute:
 
@@ -65,33 +104,72 @@ info:
 
     The second protects the sites being rendered: one API call is a full page
     load, so a victim's exposure must not scale with our customer count. Both
-    are checked after the cache and before charging, so a blocked call costs
-    nothing.
+    are checked after the cache and before admission, so a blocked call
+    reserves and costs nothing.
+
+    ## Capacity limits
+
+    Three more limits are the same for every account, and no billing setting
+    lifts them. They are refused with Ironfang Render's own codes, never a
+    billing code, and a refused call reserves and costs nothing.
+
+    - **2 browser operations in progress per account.** Screenshots, PDFs,
+      template images and site previews count together, however they
+      arrived: synchronous requests (signed URLs included) and durable jobs a
+      worker is running, across the whole service. A synchronous request
+      over the limit is `429 concurrency_limit` with `Retry-After`; a signed
+      URL, whose caller is a browser or a link-preview crawler, first waits
+      up to 10 seconds for one to finish. A durable job over it is not
+      refused: it waits in the queue until one of the account's operations
+      finishes. QR codes and clips use no browser and do
+      not count. A cache hit uses no browser either.
+    - **1,000 unfinished jobs per account** (queued, running or being
+      cancelled). A job or a batch that would take the account past it is
+      `429 queue_full`, with `Retry-After`; a batch is refused whole, and no
+      job of it is created.
 
     ## Bot protection
 
-    Renderwolf does not attempt to circumvent bot protection, CAPTCHAs or
+    Ironfang Render does not attempt to circumvent bot protection, CAPTCHAs or
     paywalls. A challenge page renders as the challenge page. This is a
     deliberate limit, not a bug.
+
+    ## For agents and tools
+
+    The canonical base URL is https://api.ironfang.com/render. Every operation
+    has a stable `operationId`. Every error an operation returns is JSON of the
+    shape `{"error": {"code", "message", "docs"}, "request_id"}`: branch on
+    `code` and the HTTP status, never on `message`. The machine-readable index
+    of the Ironfang APIs is https://ironfang.com/.well-known/api-catalog, and
+    https://ironfang.com/llms.txt is a plain-text map of them for a language
+    model. Ironfang Render is also available as MCP tools at
+    https://mcp.ironfang.com/mcp (see https://ironfang.com/docs/mcp). Renderwolf
+    is the name the product launched under, not a separate product; its
+    `/renderwolf` prefix and `X-Renderwolf-*` headers were retired on
+    28 September 2026, and the prefix now answers `410`.
   contact:
     name: Ironfang
     email: hello@ironfang.uk
-    url: https://ironfang.uk
-  termsOfService: https://ironfang.uk/legal/terms
+    url: https://ironfang.com
+  termsOfService: https://ironfang.com/legal/terms
   license:
     name: Proprietary - use governed by the Ironfang terms of service
-    url: https://ironfang.uk/legal/terms
+    url: https://ironfang.com/legal/terms
 
-# api.ironfang.uk carries every Ironfang product, so the product name is part
-# of the path: /renderwolf/v1/usage, not /v1/usage. Product precedes version so
+# api.ironfang.com carries every Ironfang product, so the product name is part
+# of the path: /render/v1/usage, not /v1/usage. Product precedes version so
 # each product versions on its own clock. The bare prefix is still served for
 # clients written before the partition and is not going away, but new
 # integrations should use the first server below.
 servers:
-  - url: https://api.ironfang.uk/renderwolf
+  - url: https://api.ironfang.com/render
     description: Production
-  - url: https://api.ironfang.uk
+  - url: https://api.ironfang.com
     description: Production, unpartitioned - retained for existing clients
+
+externalDocs:
+  description: Ironfang Render documentation
+  url: https://ironfang.com/render/docs
 
 security:
   - apiKey: []
@@ -107,8 +185,10 @@ tags:
     description: Up to 100 renders submitted, and refused, together.
   - name: Destinations
     description: Where a finished job goes - a signed webhook, or your own S3 bucket.
+  - name: Jobs
+    description: Asynchronous jobs - status, result, cancellation.
   - name: Account
-    description: Usage against quota.
+    description: Usage this period, from the billing account.
 
 paths:
   /v1/screenshot:
@@ -117,7 +197,10 @@ paths:
       summary: Render a screenshot
       description: |
         Supply exactly one of `url` or `html`. Returns the image bytes.
+        Counts one `render.screenshot`.
       operationId: createScreenshot
+      parameters:
+        - $ref: '#/components/parameters/SyncIdempotencyKey'
       requestBody:
         required: true
         content:
@@ -150,8 +233,12 @@ paths:
           $ref: '#/components/responses/Image'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
         '422': { $ref: '#/components/responses/RenderFailed' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '402': { $ref: '#/components/responses/BillingRefused' }
+        '503': { $ref: '#/components/responses/BillingUnavailable' }
 
   /v1/qr:
     post:
@@ -161,7 +248,7 @@ paths:
         Styled, optionally logo-bearing QR codes, drawn natively and
         **verified before delivery**: every response is decoded and compared
         to `data` on the way out. A code that would not scan is a
-        `422 unscannable` and the credit is returned - the guarantee is the
+        `422 unscannable` and nothing is counted - the guarantee is the
         feature.
 
         A logo forces the highest error-correction level and is composited
@@ -170,15 +257,16 @@ paths:
         same target guard and rate caps as screenshot URLs.
 
         QRs are deterministic, so identical requests hit the cache and cache
-        hits are free. QR costs no credits on any plan (`CostQR` is zero) -
-        still metered per kind, and never refused at a cap. Output never
-        carries the free-tier badge - a mark inside a scannable symbol would
-        corrupt it.
+        hits count nothing. Each code counts one `render.qr`, a free utility:
+        it shows in usage and is never charged. Output never carries a
+        badge - a mark inside a scannable symbol would corrupt it.
 
         To place a QR inside a stored template render, use the `qr` object
         on `POST /v1/image/{id}` instead - each entry becomes a
         `{{qr.<name>}}` variable holding a data URI.
       operationId: createQr
+      parameters:
+        - $ref: '#/components/parameters/SyncIdempotencyKey'
       requestBody:
         required: true
         content:
@@ -204,8 +292,12 @@ paths:
           $ref: '#/components/responses/Image'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
         '422': { $ref: '#/components/responses/RenderFailed' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '402': { $ref: '#/components/responses/BillingRefused' }
+        '503': { $ref: '#/components/responses/BillingUnavailable' }
 
   /v1/pdf:
     post:
@@ -217,7 +309,13 @@ paths:
         `header_html` and `footer_html` are Chromium print templates: they
         support the classes `date`, `title`, `url`, `pageNumber` and
         `totalPages`, which Chromium substitutes at print time.
+
+        Counts one `render.pdf`. A PDF may have at most 100 pages; a document
+        that prints to more is refused with `422 pdf_too_long` and nothing is
+        counted. PDFs are never cached.
       operationId: createPdf
+      parameters:
+        - $ref: '#/components/parameters/SyncIdempotencyKey'
       requestBody:
         required: true
         content:
@@ -242,8 +340,12 @@ paths:
           $ref: '#/components/responses/Pdf'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
         '422': { $ref: '#/components/responses/RenderFailed' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '402': { $ref: '#/components/responses/BillingRefused' }
+        '503': { $ref: '#/components/responses/BillingUnavailable' }
 
   /v1/video:
     post:
@@ -253,14 +355,18 @@ paths:
         A background, captions that appear on a schedule, an optional
         watermark and an optional audio bed, encoded to MP4.
 
-        Rendered inside the request, so clips are capped at 60 seconds. Cost
-        is one credit per second of vertical or landscape output, half that
-        for `720p` and 0.6 for `square` - pixels are what the encoder spends.
-        A clip that fails to render is refunded.
+        Rendered inside the request, so clips are capped at 60 seconds. A
+        clip counts its output seconds, rounded up: `render.video_second_fhd`
+        for the 1080p sizes (`vertical`, `landscape`) and
+        `render.video_second_hd` for `720p` and `square`. Its duration is
+        reserved before the encode and committed when the clip is delivered;
+        a clip that fails to render counts nothing.
 
         Every asset URL is fetched by us through the same guard a screenshot
         target faces, and each is capped at 64 MB.
       operationId: createClip
+      parameters:
+        - $ref: '#/components/parameters/SyncIdempotencyKey'
       requestBody:
         required: true
         content:
@@ -293,8 +399,12 @@ paths:
           $ref: '#/components/responses/Clip'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
         '422': { $ref: '#/components/responses/RenderFailed' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '402': { $ref: '#/components/responses/BillingRefused' }
+        '503': { $ref: '#/components/responses/BillingUnavailable' }
         '501':
           description: This deployment has no encoder configured.
           content:
@@ -314,15 +424,20 @@ paths:
 
         The response is one `multipart/form-data` payload containing the first
         video frame as `poster.jpg` and the H.264 video as `preview.mp4`.
-        Renderwolf calculates the duration from the page height and selected
-        motion, up to a 60 second hard limit. Cost is one credit per output
-        second, rounded up. Failed work is refunded and cached repeats are free.
+        Ironfang Render calculates the duration from the page height and selected
+        motion, up to a 60 second hard limit. A preview counts its output
+        seconds, rounded up, against `render.site_preview_second`: the 60
+        second limit is reserved before the recording starts and the real
+        length is committed when the preview is delivered. Failed work counts
+        nothing and cached repeats are free.
 
-        This endpoint is available on the product-partitioned Renderwolf URL
+        This endpoint is available on the product-partitioned Ironfang Render URL
         only. It has no unprefixed `/v1/site-preview` compatibility route.
       operationId: createSitePreview
+      parameters:
+        - $ref: '#/components/parameters/SyncIdempotencyKey'
       servers:
-        - url: https://api.ironfang.uk/renderwolf
+        - url: https://api.ironfang.com/render
           description: Production
       requestBody:
         required: true
@@ -343,8 +458,12 @@ paths:
           $ref: '#/components/responses/SitePreview'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
         '422': { $ref: '#/components/responses/RenderFailed' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '402': { $ref: '#/components/responses/BillingRefused' }
+        '503': { $ref: '#/components/responses/BillingUnavailable' }
         '501':
           description: This deployment does not have browser video capture configured.
           content:
@@ -356,6 +475,11 @@ paths:
       tags: [Templates]
       summary: List templates
       operationId: listTemplates
+      description: Paged newest first. Follow next_cursor until empty; `total` is the whole count and does not change between pages. summary=true returns an empty html field; fetch a template by ID to edit or render it.
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, maxLength: 256 }, description: Opaque next_cursor from the previous page; empty means the first page. }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 }, description: Maximum templates per page. }
+        - { name: summary, in: query, schema: { type: boolean, default: false }, description: Omit HTML bodies from the database read. }
       responses:
         '200':
           description: |
@@ -363,19 +487,16 @@ paths:
             array. Clients that iterate must read `templates`.
           content:
             application/json:
-              schema:
-                type: object
-                required: [templates]
-                properties:
-                  templates:
-                    type: array
-                    items: { $ref: '#/components/schemas/Template' }
+              schema: { $ref: '#/components/schemas/TemplateList' }
               example:
+                total: 1
+                next_cursor: ''
                 templates:
                   - id: 01a01c7c-682e-7b2a-95cd-ffb2f2a4d9be
                     name: og-card
                     width: 1200
                     height: 630
+        '400': { description: 'Malformed cursor, repeated or unknown parameter, or limit outside 1-100.' }
         '401': { $ref: '#/components/responses/Unauthorized' }
     post:
       tags: [Templates]
@@ -413,6 +534,9 @@ paths:
       tags: [Templates]
       summary: Fetch a template
       operationId: getTemplate
+      description: >-
+        Returns a stored rendering template belonging to the authenticated account,
+        including its HTML and output dimensions.
       responses:
         '200':
           description: The template.
@@ -425,6 +549,9 @@ paths:
       tags: [Templates]
       summary: Replace a template
       operationId: updateTemplate
+      description: >-
+        Replaces the authenticated account's stored template with the supplied name,
+        HTML and dimensions. Subsequent renders use the updated template.
       requestBody:
         required: true
         content:
@@ -443,6 +570,9 @@ paths:
       tags: [Templates]
       summary: Delete a template
       operationId: deleteTemplate
+      description: >-
+        Removes a stored template from the authenticated account so it can no longer be
+        used for new template renders.
       responses:
         '204':
           description: Deleted.
@@ -475,9 +605,13 @@ paths:
           $ref: '#/components/responses/Image'
         '400': { $ref: '#/components/responses/BadRequest' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409': { $ref: '#/components/responses/IdempotencyConflict' }
         '422': { $ref: '#/components/responses/RenderFailed' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '402': { $ref: '#/components/responses/BillingRefused' }
+        '503': { $ref: '#/components/responses/BillingUnavailable' }
 
   /v1/sign:
     post:
@@ -486,7 +620,13 @@ paths:
       description: |
         Returns a URL that renders on GET without an API key - safe to put in an
         `<img>` tag or an email. The URL is bound to your account, so renders
-        through it meter against your quota.
+        through it are admitted and counted against your organisation's
+        billing account like any other.
+
+        A signed URL expires after 30 days unless `ttl_hours` says otherwise:
+        any number of hours, or `0` for a URL that never expires, which is
+        what an `og:image` tag needs. The response says when the URL
+        expires.
 
         Requires signing to be configured on the deployment; returns `501`
         otherwise.
@@ -537,7 +677,9 @@ paths:
         - name: exp
           in: path
           required: true
-          description: Expiry stamp, part of the signed payload. `0` never expires.
+          description: |
+            Expiry, in unix seconds, part of the signed payload. `0` never
+            expires.
           schema: { type: string }
         - name: sig
           in: path
@@ -558,12 +700,14 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
         '429': { $ref: '#/components/responses/RateLimited' }
+        '402': { $ref: '#/components/responses/BillingRefused' }
+        '503': { $ref: '#/components/responses/BillingUnavailable' }
 
   /v1/capabilities:
     get:
       tags: [Account]
       security: []
-      summary: What Renderwolf does, is building and does not offer
+      summary: What Ironfang Render does, is building and does not offer
       description: |
         A dated statement of capabilities with a status of `live`, `planned`
         or `not_offered`. Public and cacheable; the comparison pages are
@@ -580,7 +724,6 @@ paths:
                 properties:
                   product: { type: string }
                   updated: { type: string, format: date }
-                  free_credits_per_month: { type: integer }
                   capabilities:
                     type: array
                     items:
@@ -608,12 +751,24 @@ paths:
         different request is a `409 idempotency_conflict`. `external_id` is
         your own reference, up to 120 characters.
 
-        Credits: the job's maximum cost is reserved when it is accepted and
-        settled when it finishes - a site preview reserves the 60-second
-        ceiling and releases the difference. Failed work is refunded. A
-        queued job cancels for free; a running one is charged only if it
-        produced a usable output.
+        Billing: the most the job can count is reserved on your billing
+        account when it is accepted - in the same step, so a job you were told
+        about always holds its reservation, and a refusal leaves no job. The
+        one reservation is kept across retries of the job and committed, with
+        what the job produced, when it succeeds; a site preview reserves the
+        60 second limit and commits its real length. A job that fails,
+        is cancelled while queued, or is cancelled while running without a
+        usable output, counts nothing. The job's `usage` says what it holds:
+        `{"meter", "reserved", "committed"}`.
+
+        Capacity: an account may have 1,000 unfinished jobs (queued, running
+        or being cancelled); a job past that is `429 queue_full` and is not
+        created. A job that uses the browser runs in one of the account's 2
+        browser slots, shared with its synchronous renders; while both are
+        busy it waits in the queue rather than being refused.
       operationId: submitJob
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -632,15 +787,17 @@ paths:
         '200':
           description: The same Idempotency-Key and request were seen before; this is that job.
         '400': { description: Invalid submission. }
-        '403': { description: The key carries no `renderwolf:render` scope, or is not account-backed. }
+        '403': { description: 'The key carries no `render:render` scope, or is not account-backed.' }
         '404': { description: The template named by an image job does not exist. }
         '409': { description: '`idempotency_conflict`: the key was used with a different request.' }
-        '429': { description: Monthly credits exhausted. }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '402': { $ref: '#/components/responses/BillingRefused' }
+        '503': { $ref: '#/components/responses/BillingUnavailable' }
         '501': { description: This deployment cannot render clips or site previews. }
     get:
       tags: [Jobs]
       summary: List jobs
-      description: Newest first. `status` filters; `limit` up to 100; pass `next_cursor` back to continue.
+      description: Newest first. `status` filters; `active` includes queued, running and cancellation_requested. `limit` up to 100; pass `next_cursor` back to continue.
       operationId: listJobs
       parameters:
         - { name: status, in: query, schema: { type: string } }
@@ -648,6 +805,9 @@ paths:
         - { name: cursor, in: query, schema: { type: string } }
       responses:
         '200': { description: Jobs and `next_cursor`. }
+        '400': { description: '`bad_request`: `cursor` is not one this endpoint issued.' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 'The key carries no `render:render` scope, or is not account-backed.' }
   /v1/jobs/{id}:
     get:
       tags: [Jobs]
@@ -657,7 +817,8 @@ paths:
         `succeeded`, `failed` or `cancelled`. A succeeded job carries
         `result` with `content_type`, `bytes`, `sha256`, `expires_at` and,
         while hosted, a signed `url` valid for 15 minutes. A failed job
-        carries `error.code` and `error.message`. The submitted request is
+        carries `error.code` and `error.message`. `usage` names the meter
+        and the quantity reserved and committed. The submitted request is
         never returned; `request_summary` is the redacted shape.
       operationId: getJob
       parameters:
@@ -668,12 +829,12 @@ paths:
     delete:
       tags: [Jobs]
       summary: Cancel a job
-      description: A queued job is cancelled and refunded at once; a running one stops at its next safe point.
+      description: A queued job is cancelled and its reservation released at once; a running one stops at its next safe point, and counts only if it had already produced a usable output.
       operationId: cancelJob
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
-        '200': { description: The job, cancelled or with cancellation requested. }
+        '200': { description: 'The job, cancelled or with cancellation requested.' }
         '404': { description: No such job on this account. }
         '409': { description: '`job_finished`: nothing left to cancel.' }
   /v1/jobs/{id}/result:
@@ -708,6 +869,45 @@ paths:
         '403': { description: Bad or expired signature. }
         '410': { description: The hosted result has expired. }
   /v1/batches:
+    get:
+      operationId: listBatches
+      summary: List batches
+      description: Tenant-scoped metadata, newest first by creation time and ID. Equal
+        timestamps retain stable pagination. Newer insertions do not appear on subsequent
+        pages; refresh the first page to see them. No input payloads or child job bodies
+        in batch summaries. A final page has an empty next_cursor. Responses are no-store.
+        The JWT portal twin has the same response and pagination contract.
+      tags:
+      - Batches
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          maxLength: 256
+        description: Pass next_cursor from the preceding page; empty means the first page.
+      responses:
+        '200':
+          description: One bounded page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchList'
+        '400':
+          description: Malformed cursor, repeated/unknown parameter or limit outside 1–100.
+        '401':
+          description: Authentication required.
+        '403':
+          description: The caller cannot read this collection.
+        '500':
+          description: Storage unavailable.
     post:
       tags: [Batches]
       summary: Submit up to 100 jobs together
@@ -718,18 +918,29 @@ paths:
         only to items of that kind; an item that names a different kind stands
         on its own request, and any item may carry its own `delivery`. Every item is validated as a single job would be,
         and an unknown field is refused rather than ignored, because a typo
-        that is silently dropped is a credit spent on the wrong render.
+        that is silently dropped is a render spent on the wrong thing.
 
         The batch is accepted or refused whole. Every item is validated before
-        any is stored, and the credits for all of them are reserved in one
-        transaction, so a batch that would exceed your monthly credits is a
-        `429` that charged nothing and left no jobs behind. The error names
-        the item that was wrong.
+        any is stored, and every item is admitted on your billing account in
+        one step, so a batch any item of which cannot be admitted is refused
+        with the billing code, reserves nothing and leaves no jobs behind.
+        Each item then commits or releases on its own as its job finishes.
+        A validation error names the item that was wrong. A batch that would
+        take the account past 1,000 unfinished jobs is refused whole the
+        same way, with `429 queue_full`.
 
         Items are ordinary jobs: poll them individually, or poll the batch for
         the aggregate. There is no ZIP of results - configure a storage
         destination if you want the output collected in one place.
+
+        Send `Idempotency-Key` to make the submission safe to retry: the same
+        key returns the batch it first created, with its jobs and another
+        `202`, instead of a second set of jobs and a second reservation. The
+        request is not compared with the first. Poll the batch for its
+        current counts.
       operationId: submitBatch
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -757,8 +968,10 @@ paths:
         '202':
           description: The batch was accepted; the body carries the batch and one job per item.
         '400': { description: 'Invalid submission, or `batch_too_large`. The message names the item.' }
-        '403': { description: The key carries no `renderwolf:render` scope, or is not account-backed. }
-        '429': { description: '`quota_exhausted`: the whole batch was refused and nothing was charged.' }
+        '403': { description: 'The key carries no `render:render` scope, or is not account-backed.' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+        '402': { $ref: '#/components/responses/BillingRefused' }
+        '503': { $ref: '#/components/responses/BillingUnavailable' }
   /v1/batches/{id}:
     get:
       tags: [Batches]
@@ -770,7 +983,7 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
-        '200': { description: The batch, its counts and its jobs. }
+        '200': { description: 'The batch, its counts and its jobs.' }
         '404': { description: No such batch on this account. }
   /v1/destinations:
     post:
@@ -790,7 +1003,7 @@ paths:
         `prefix` are optional. Scope the credentials to the prefix you give
         us. They are never returned after creation.
 
-        Needs the `renderwolf:destinations` scope, which maps to the
+        Needs the `render:destinations` scope, which maps to the
         `destinations.manage` permission.
       operationId: createDestination
       requestBody:
@@ -815,7 +1028,7 @@ paths:
       responses:
         '201': { description: 'The destination. A webhook also carries `signing_secret`, shown once.' }
         '400': { description: '`bad_destination`: not a public https URL, or missing bucket credentials.' }
-        '403': { description: The key carries no `renderwolf:destinations` scope. }
+        '403': { description: The key carries no `render:destinations` scope. }
         '501': { description: This deployment has no credential vault configured. }
     get:
       tags: [Destinations]
@@ -824,11 +1037,16 @@ paths:
       operationId: listDestinations
       responses:
         '200': { description: The account's destinations. }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { description: 'The key carries no `render:destinations` scope, or is not account-backed.' }
   /v1/destinations/{id}:
     get:
       tags: [Destinations]
       summary: Get a destination
       operationId: getDestination
+      description: >-
+        Returns a delivery destination belonging to the authenticated account. Stored
+        delivery credentials are not included in the response.
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
@@ -874,7 +1092,7 @@ paths:
       tags: [Destinations]
       summary: Test a destination now
       description: |
-        A webhook receives a signed `renderwolf.destination.test` event; a
+        A webhook receives a signed `render.destination.test` event; a
         bucket has a uniquely named object written to it. Always `200`: the
         body's `ok` says whether the destination answered, and `error` says
         what went wrong if it did not.
@@ -891,14 +1109,16 @@ paths:
       description: |
         One row per authenticated render in the last seven days, newest
         first, synchronous calls and jobs alike: kind, outcome, safe error
-        code, cache hit or miss, credits charged and refunded, response size
-        and type, duration, the target's origin and path, the names of the
-        option fields supplied, and the request id you can quote to support.
+        code, cache hit or miss, the `meter` it counted against and the
+        `quantity` it committed (0 for a cache hit or a failure), response
+        size and type, duration, the target's origin and path, the names of
+        the option fields supplied, and the request id you can quote to
+        support.
 
         It is diagnostic, not replay. Nothing here can rebuild the request:
         header and cookie values, HTML, template variables, URL query strings
-        and signatures are never recorded. Retention is seven days on every
-        plan.
+        and signatures are never recorded. Retention is seven days for every
+        account.
 
         `id` matches the request id, a job id or your own `X-Request-ID`,
         which is how you arrive here from an error message.
@@ -911,7 +1131,7 @@ paths:
         - { name: cache, in: query, schema: { type: string, enum: [hit, miss] } }
         - { name: key, in: query, description: API key id, schema: { type: string } }
         - { name: error, in: query, description: Safe error code, schema: { type: string } }
-        - { name: id, in: query, description: Request id, job id or your X-Request-ID, schema: { type: string } }
+        - { name: id, in: query, description: 'Request id, job id or your X-Request-ID', schema: { type: string } }
         - { name: limit, in: query, schema: { type: integer, maximum: 200, default: 50 } }
         - { name: offset, in: query, schema: { type: integer, default: 0 } }
       responses:
@@ -925,14 +1145,23 @@ paths:
         Newest first, optionally for one `destination`. A delivery is
         `pending`, `delivering`, `delivered` or `failed`; `failed` means it
         used up its attempts. Delivery state never affects the job's own
-        outcome.
+        outcome. Filters apply before the cursor boundary. `pending` selects
+        pending deliveries with no attempts; `retrying` selects pending deliveries
+        with at least one attempt. `job_id` selects one owned job.
       operationId: listDeliveries
       parameters:
-        - { name: destination, in: query, schema: { type: string } }
-        - { name: limit, in: query, schema: { type: integer, maximum: 100 } }
+        - { name: destination, in: query, schema: { type: string, format: uuid } }
+        - { name: job_id, in: query, schema: { type: string, format: uuid } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, retrying, delivering, delivered, failed] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
         - { name: cursor, in: query, schema: { type: string } }
       responses:
-        '200': { description: Deliveries and `next_cursor`. }
+        '200':
+          description: Deliveries and next_cursor, with no-store caching.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryList' }
+        '400': { description: "Invalid, repeated or unknown query parameter." }
   /v1/deliveries/{id}:
     get:
       tags: [Destinations]
@@ -954,7 +1183,11 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
-        '200': { description: 'The delivery. `payload` is absent once purged.' }
+        '200':
+          description: The delivery. Payload is absent once purged.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryRecord' }
         '404': { description: No such delivery on this account. }
   /v1/deliveries/{id}/redeliver:
     post:
@@ -969,15 +1202,25 @@ paths:
       parameters:
         - { name: id, in: path, required: true, schema: { type: string } }
       responses:
-        '200': { description: The delivery, queued again. }
+        '200':
+          description: The delivery, queued again.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DeliveryRecord' }
         '404': { description: No such delivery on this account. }
   /v1/usage:
     get:
       tags: [Account]
       summary: Usage this period
       description: |
-        For subscribers the period runs from the billing anniversary, not the
-        first of the month, so it lines up with invoices.
+        This UTC calendar month's Ironfang Render usage from your
+        organisation's billing account: for every Render meter, what was used,
+        how much of it the free allowance covered, what is held by work in
+        flight, and what the settled usage costs before tax. The whole
+        account - every product, budgets, statements - is `/billing/v1`.
+
+        An env bootstrap key, or a deployment with billing off, is unmetered
+        and answers `{"unmetered": true}`.
       operationId: getUsage
       responses:
         '200':
@@ -986,6 +1229,7 @@ paths:
             application/json:
               schema: { $ref: '#/components/schemas/Usage' }
         '401': { $ref: '#/components/responses/Unauthorized' }
+        '403': { $ref: '#/components/responses/Forbidden' }
 
 components:
   securitySchemes:
@@ -1004,28 +1248,75 @@ components:
       schema:
         type: string
         format: uuid
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Makes a submission safe to retry. Any string up to 255 characters;
+        surrounding whitespace is ignored and a longer key is a `400
+        bad_request`. A key is remembered per account for as long as the job
+        it created exists, and has no expiry of its own. Jobs and batches
+        keep separate key spaces.
+
+        A job submitted again under its key returns the existing job with
+        `200` when the request is the same, and is a `409
+        idempotency_conflict` when it differs. A batch submitted again under
+        its key returns the batch the key first created, with its jobs and
+        `202`; the request is not compared, so a batch has no conflict
+        response.
+      schema:
+        type: string
+        maxLength: 255
+    SyncIdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Makes a synchronous render happen, and count, at most once. Any string
+        up to 255 characters, remembered per account. The first request under
+        a key is admitted and rendered as usual; a synchronous result is not
+        kept, so the same request again under the key is a `409
+        idempotency_key_used` and reserves nothing - send a new key to render
+        again. A different request under a used key is a `409
+        idempotency_conflict`. An identical request inside the cache window is
+        still served from cache.
+      schema:
+        type: string
+        maxLength: 255
+
+  headers:
+    Meter:
+      description: |
+        The billing meter this request counted against, e.g.
+        `render.screenshot`. Present on every billable response, cache hits
+        included.
+      schema: { type: string }
+    Quantity:
+      description: |
+        The quantity this request committed to its meter: 1 for a unit
+        render, output seconds (rounded up) for video, `0` for a cache hit or
+        an unmetered key. Read it to log usage per request without polling
+        `/v1/usage`.
+      schema: { type: integer }
 
   responses:
     Image:
       description: |
         The rendered image. `png` unless `format: jpeg` was requested.
       headers:
-        X-Renderwolf-Cache:
-          description: '`hit` when served from cache, in which case it was free.'
+        X-Ironfang-Cache:
+          description: '`hit` when served from cache, in which case it counted nothing.'
           schema: { type: string, enum: [hit] }
-        X-Renderwolf-Credits:
-          description: |
-            What this call cost. `0` on a cache hit, because a cache hit is
-            free. Read it to log spend per request without polling
-            `/v1/usage`.
-          schema: { type: integer }
-        X-Renderwolf-Render-Ms:
+        X-Ironfang-Meter: { $ref: '#/components/headers/Meter' }
+        X-Ironfang-Quantity: { $ref: '#/components/headers/Quantity' }
+        X-Ironfang-Render-Ms:
           description: Render time in milliseconds, excluding any requested delay.
           schema: { type: integer }
-        X-Renderwolf-Delay-Ms:
+        X-Ironfang-Delay-Ms:
           description: The `delay_ms` actually waited, when one was requested.
           schema: { type: integer }
-        X-Renderwolf-Captured-At:
+        X-Ironfang-Captured-At:
           description: |
             RFC 3339 timestamp of a fresh capture. Present only on
             `no_cache` renders, where the response is also `no-store` - the
@@ -1040,15 +1331,12 @@ components:
     Clip:
       description: The rendered clip.
       headers:
-        X-Renderwolf-Cache:
+        X-Ironfang-Cache:
           schema: { type: string, enum: [hit] }
-        X-Renderwolf-Render-Ms:
+        X-Ironfang-Render-Ms:
           schema: { type: integer }
-        X-Renderwolf-Credits:
-          description: |
-            What this clip cost. `0` on a cache hit, because a cache hit is
-            free.
-          schema: { type: integer }
+        X-Ironfang-Meter: { $ref: '#/components/headers/Meter' }
+        X-Ironfang-Quantity: { $ref: '#/components/headers/Quantity' }
       content:
         video/mp4:
           schema: { type: string, format: binary }
@@ -1056,16 +1344,17 @@ components:
     SitePreview:
       description: The poster image and scrolling MP4 returned as two file parts.
       headers:
-        X-Renderwolf-Cache:
+        X-Ironfang-Cache:
           schema: { type: string, enum: [hit] }
-        X-Renderwolf-Render-Ms:
+        X-Ironfang-Render-Ms:
           schema: { type: integer }
-        X-Renderwolf-Credits:
+        X-Ironfang-Meter: { $ref: '#/components/headers/Meter' }
+        X-Ironfang-Quantity:
           description: |
-            What this preview cost. `0` on a cache hit, because a cache hit is
-            free. The poster is included in the video cost.
+            Output seconds committed, rounded up; the poster is included. `0`
+            on a cache hit.
           schema: { type: integer }
-        X-Renderwolf-Output-Seconds:
+        X-Ironfang-Output-Seconds:
           description: Calculated video length in seconds. Present on fresh renders.
           schema: { type: number }
       content:
@@ -1086,15 +1375,9 @@ components:
     Pdf:
       description: The rendered PDF.
       headers:
-        X-Renderwolf-Cache:
-          schema: { type: string, enum: [hit] }
-        X-Renderwolf-Credits:
-          description: |
-            What this call cost. `0` on a cache hit, because a cache hit is
-            free. Read it to log spend per request without polling
-            `/v1/usage`.
-          schema: { type: integer }
-        X-Renderwolf-Render-Ms:
+        X-Ironfang-Meter: { $ref: '#/components/headers/Meter' }
+        X-Ironfang-Quantity: { $ref: '#/components/headers/Quantity' }
+        X-Ironfang-Render-Ms:
           schema: { type: integer }
       content:
         application/pdf:
@@ -1120,16 +1403,76 @@ components:
 
     RateLimited:
       description: |
-        Three distinct conditions share this status, separated by `error.code`:
+        Rate limits and exhausted billing allowances share this status,
+        separated by `error.code`:
 
         - `rate_limited` - your account exceeded 120 renders/minute
         - `target_rate_limited` - the site being rendered is being hit too hard
           across all customers (60/minute per host)
-        - `quota_exhausted` - the plan's monthly allowance is spent
+        - `clip_busy`, `preview_busy` - every encoder or preview slot on the
+          worker is in use; `Retry-After` says when to come back
+        - `concurrency_limit` - your account already has 2 browser
+          operations in progress, synchronous renders and running jobs
+          together; retry after `Retry-After`, or submit a durable job,
+          which waits for a free slot instead of being refused
+        - `queue_full` - your account already has 1,000 unfinished jobs, or
+          the batch would take it past that; nothing was enqueued
+        - `free_allowance_exhausted` - this month's free allowance for the
+          meter is used up and paid usage is not enabled
+        - `account_budget_exhausted`, `product_budget_exhausted` - the
+          billing account's monthly limit, or Ironfang Render's, is reached
+        - `exemption_limit_reached` - an exempt account's agreed limit is reached
 
-        The first two clear within the minute, so retry with backoff. The third
-        does not: upgrade in the portal or wait for the period to roll over.
-        Branch on the code rather than the status.
+        The rate and capacity limits clear by themselves, so retry with
+        backoff, after `Retry-After` where it is sent. The billing codes do
+        not: enable paid usage or raise the limit in Billing, or wait for the
+        month to roll over. Nothing was reserved or counted. Branch on the
+        code rather than the status.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying, on the refusals that clear by themselves.
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    Forbidden:
+      description: |
+        `insufficient_scope` - the key does not carry the scope;
+        `account_not_linked` - the key's account belongs to no Ironfang
+        organisation, so its usage cannot be billed; `product_not_eligible` -
+        paid use of Ironfang Render needs an eligible billing account.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    IdempotencyConflict:
+      description: |
+        `idempotency_key_used` - this Idempotency-Key already made its render
+        (or is making it, or failed); nothing was reserved again.
+        `idempotency_conflict` - the key was used for a different request.
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    BillingRefused:
+      description: |
+        Paid usage cannot be billed: `paid_usage_paused`, `payment_required`,
+        `payment_action_required` or `account_restricted`. Resolve it in
+        Billing; nothing was reserved or counted. The same body can also
+        carry `account_closed` (410) and `operation_too_large` (413).
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+    BillingUnavailable:
+      description: |
+        `billing_temporarily_unavailable` - the billing ledger could not admit
+        the request just now. Retry after `Retry-After` seconds; nothing was
+        reserved.
+      headers:
+        Retry-After:
+          schema: { type: integer }
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
@@ -1144,6 +1487,106 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
 
   schemas:
+    TemplateList:
+      type: object
+      additionalProperties: false
+      required:
+      - templates
+      - next_cursor
+      - total
+      properties:
+        templates:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/Template'
+        next_cursor:
+          type: string
+          description: Cursor for the next page; empty on the final page.
+        total:
+          type: integer
+          minimum: 0
+          description: 'How many templates the account has in total, independent of this page. Read it rather than counting pages.'
+    BatchList:
+      type: object
+      additionalProperties: false
+      required:
+      - batches
+      - next_cursor
+      properties:
+        batches:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BatchSummary'
+        next_cursor:
+          type: string
+    BatchSummary:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - external_id
+      - item_count
+      - created_at
+      - completed_at
+      - counts
+      - done
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        item_count:
+          type: integer
+          minimum: 1
+          maximum: 100
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        done:
+          type: boolean
+        counts:
+          type: object
+          additionalProperties: false
+          required:
+          - total
+          - queued
+          - running
+          - succeeded
+          - failed
+          - cancelled
+          properties:
+            total:
+              type: integer
+              minimum: 0
+              maximum: 100
+            queued:
+              type: integer
+              minimum: 0
+              maximum: 100
+            running:
+              type: integer
+              minimum: 0
+              maximum: 100
+            succeeded:
+              type: integer
+              minimum: 0
+              maximum: 100
+            failed:
+              type: integer
+              minimum: 0
+              maximum: 100
+            cancelled:
+              type: integer
+              minimum: 0
+              maximum: 100
     Error:
       type: object
       required: [error]
@@ -1154,28 +1597,88 @@ components:
           properties:
             code:
               type: string
-              description: Stable, safe to branch on.
+              description: |
+                Stable, safe to branch on. New codes may be added: treat a
+                code you do not recognise as a failure of the class its HTTP
+                status indicates.
               enum:
                 - bad_request
                 - unauthorized
                 - invalid_api_key
                 - auth_failed
                 - forbidden
-                - email_unverified
+                - billing_moved
                 - not_found
-                - quota_exhausted
                 - rate_limited
                 - target_rate_limited
                 - render_failed
                 - bad_signature
                 - signing_disabled
+                - account_gone
+                - account_not_linked
+                - account_required
+                - admission_failed
+                - bad_destination
+                - bad_target
+                - batch_plan_failed
+                - batch_submit_failed
+                - batch_too_large
+                - bundle_failed
+                - clip_busy
+                - concurrency_limit
+                - delegated_not_allowed
+                - delivery_disabled
+                - delivery_plan_failed
+                - destination_disabled
+                - idempotency_conflict
+                - idempotency_key_used
+                - insufficient_scope
+                - invalid_token
+                - job_finished
+                - job_plan_failed
+                - job_submit_failed
+                - logo_fetch_failed
+                - pdf_too_long
+                - preview_busy
+                - queue_full
+                - result_expired
+                - result_not_ready
+                - result_read_failed
+                - secret_failed
+                - site_preview_disabled
+                - store_failed
+                - unknown_destination
+                - unscannable
+                - vault_failed
+                - video_disabled
+                - free_allowance_exhausted
+                - account_budget_exhausted
+                - product_budget_exhausted
+                - paid_usage_paused
+                - payment_required
+                - payment_action_required
+                - account_restricted
+                - account_closed
+                - product_not_eligible
+                - exemption_limit_reached
+                - operation_too_large
+                - billing_temporarily_unavailable
             message:
               type: string
               description: Human-readable. May change; do not match on it.
+            docs:
+              type: string
+              format: uri
+              description: Where the error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request. Quote it to support.
       example:
         error:
           code: target_rate_limited
           message: too many renders for that host, try again shortly
+          docs: https://ironfang.com/render/docs#errors
+        request_id: 01992f6e-7c1a-7b3e-9d52-4f0a6c8e2b17
 
     Cookie:
       type: object
@@ -1228,6 +1731,38 @@ components:
         left:
           type: number
 
+    PageAction:
+      description: |
+        One ordered pre-capture action. Selectors are CSS selectors in the main
+        page. click and hover wait until the first matching element is
+        interactable; wait_for_selector waits for its presence (not visibility).
+        All actions share the remaining timeout_ms render budget.
+      oneOf:
+        - type: object
+          additionalProperties: false
+          required: [type, selector]
+          properties:
+            type:
+              type: string
+              enum: [click, hover, wait_for_selector]
+            selector:
+              type: string
+              minLength: 1
+              maxLength: 1024
+              description: Non-blank CSS selector; at most 1024 UTF-8 bytes.
+        - type: object
+          additionalProperties: false
+          required: [type, duration_ms]
+          properties:
+            type:
+              type: string
+              enum: [delay]
+            duration_ms:
+              type: integer
+              minimum: 0
+              maximum: 10000
+              description: Delay in milliseconds; all action delays together may total at most 10000 ms.
+
     RenderCommon:
       type: object
       properties:
@@ -1261,6 +1796,48 @@ components:
           description: |
             CSS selectors to hide before capturing. Applied after load, so
             elements injected by script are covered.
+        css:
+          type: string
+          maxLength: 65536
+          example: '.chat-widget { display: none !important; }'
+          description: |
+            Custom stylesheet, at most 65536 UTF-8 bytes. Applied after normal
+            load/wait conditions and built-in hiding, before script, actions,
+            settling and capture. Supports screenshots and PDFs, including
+            @media print rules. Malformed stylesheet syntax is a 400
+            bad_request; Chromium determines supported properties and values.
+        script:
+          type: string
+          maxLength: 16384
+          example: "document.querySelector('#pricing')?.click();"
+          description: |
+            JavaScript statements executed inside the target page's main-frame
+            context after load/wait conditions and css, before actions and
+            capture. Runs as an async function body: use await or return a
+            promise for asynchronous work. Completion is awaited; return values
+            are discarded. At most 16384 UTF-8 bytes and 5000 ms execution,
+            further bounded by the remaining timeout_ms budget. Syntax errors,
+            execution failures and timeouts return 422 render_failed with a
+            sanitized message. Supports screenshots and PDFs; no browser-session
+            or Playwright/Puppeteer APIs are exposed.
+        actions:
+          type: array
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/PageAction'
+          example:
+            - type: click
+              selector: '#show-more'
+            - type: wait_for_selector
+              selector: '#details'
+          description: |
+            Up to 20 actions, executed in order after css and script, before
+            settling and capture. Supports screenshots and PDFs. Missing or
+            unready selectors and action timeouts fail with 422 render_failed,
+            identifying the zero-based action index and type. Invalid action
+            shapes are 400 bad_request. An action failure stops the list and is
+            not retried in queued jobs. All options, including action order,
+            are part of the screenshot cache key; use no_cache for a fresh run.
         headers:
           type: object
           additionalProperties:
@@ -1388,6 +1965,39 @@ components:
           default: true
           description: Knockout tile behind the logo so it sits on clean ground.
 
+    DeliveryList:
+      type: object
+      additionalProperties: false
+      required: [deliveries, next_cursor]
+      properties:
+        deliveries:
+          type: array
+          maxItems: 100
+          items: { $ref: '#/components/schemas/DeliveryRecord' }
+        next_cursor: { type: string, maxLength: 256 }
+    DeliveryRecord:
+      type: object
+      additionalProperties: false
+      required: [id, job_id, destination_id, event, status, attempts, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        job_id: { type: string, format: uuid }
+        destination_id: { type: string, format: uuid }
+        event: { type: string }
+        status: { type: string, enum: [pending, delivering, delivered, failed] }
+        attempts: { type: integer, minimum: 0 }
+        created_at: { type: string, format: date-time }
+        next_attempt_at: { type: string, format: date-time }
+        delivered_at: { type: string, format: date-time }
+        response_status: { type: integer }
+        error: { type: string }
+        object_key: { type: string }
+        payload: { type: string, description: Last posted body; omitted from lists and after purging. }
+        payload_timestamp: { type: string }
+        payload_signature: { type: string }
+        payload_at: { type: [string, 'null'], format: date-time }
+        payload_retention_days: { type: integer }
+        response_body: { type: string }
     JobDelivery:
       type: object
       description: |
@@ -1415,7 +2025,7 @@ components:
             no other field, and nothing evaluated. Segments may hold letters,
             digits, dot, dash and underscore; anything that would climb out
             of the prefix is refused when the job is submitted, not quietly
-            rewritten. Defaults to `renderwolf/{date}/{job_id}`.
+            rewritten. Defaults to `render/{date}/{job_id}`.
           example: captures/{external_id}/{job_id}.png
     ScreenshotRequest:
       allOf:
@@ -1498,7 +2108,7 @@ components:
               minimum: 0
               maximum: 10000
               description: |
-                Extra settle time after load. Renderwolf watches the page and
+                Extra settle time after load. Ironfang Render watches the page and
                 captures when it stops changing, so this is rarely needed - use
                 it for content that arrives on a timer, which quiescence cannot
                 anticipate. Capped at ten seconds.
@@ -1709,8 +2319,11 @@ components:
         full_page: { type: boolean, default: false }
         ttl_hours:
           type: integer
-          default: 0
-          description: Hours until the URL expires. `0` never expires.
+          minimum: 0
+          default: 720
+          description: |
+            Hours until the URL expires. Leaving it out gives 720 (30 days);
+            `0` never expires.
 
     SignedUrl:
       type: object
@@ -1722,25 +2335,19 @@ components:
         path:
           type: string
           description: Path only, for serving behind your own domain.
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: When the URL stops rendering (UTC); null when it never expires.
 
     Usage:
       type: object
+      description: |
+        This UTC calendar month's usage of every Ironfang Render meter, from
+        the organisation's billing account. Amounts are pounds before tax, as
+        exact decimal strings.
       properties:
-        period:
-          type: string
-          description: |
-            The period these numbers cover. Follows the billing anniversary for
-            subscribers, the calendar month otherwise.
-        credits:
-          type: integer
-          description: Credits spent so far this period. Cache hits are free and not counted.
-        renders:
-          type: integer
-          deprecated: true
-          description: The same number under the name the API shipped with.
-        limit:
-          type: integer
-          description: Credits included in the plan for this period, grants included.
+        product: { type: string, enum: [render] }
         period_start:
           type: string
           format: date
@@ -1748,45 +2355,34 @@ components:
           type: string
           format: date
           description: The period as [period_start, period_end) in UTC dates.
-        by_kind:
-          type: object
-          description: |
-            Where this period's credits went, keyed by render kind
-            (`screenshot`, `pdf`, `image`, `qr`, `clip`). Kinds with no spend
-            are absent.
-          additionalProperties:
-            type: object
-            properties:
-              credits: { type: integer }
-              count: { type: integer }
-        unattributed:
-          type: integer
-          description: |
-            Credits from before per-kind metering existed. The breakdown plus
-            this always equals `credits`.
-        daily:
+        catalogue_version:
+          type: string
+          description: The billing catalogue version that prices this period.
+        mode:
+          type: string
+          enum: [free, setup_pending, enabled, paused, closed]
+          description: The billing account's mode; `enabled` means paid usage beyond the free allowances is on.
+        currency: { type: string, enum: [GBP] }
+        settled:
+          type: string
+          description: What Ironfang Render's settled usage costs this period.
+        reserved:
+          type: string
+          description: The most work in flight could add if it all succeeds; not charged on top of `settled`.
+        meters:
           type: array
-          description: The last 30 days of spend, oldest first, zero days included.
           items:
             type: object
             properties:
-              day: { type: string, format: date }
-              credits: { type: integer }
-              by_kind:
-                type: object
-                additionalProperties: { type: integer }
-      example:
-        period: '2026-08'
-        credits: 412
-        renders: 412
-        limit: 5000
-        period_start: '2026-08-01'
-        period_end: '2026-09-01'
-        by_kind:
-          screenshot: { credits: 231, count: 231 }
-          pdf: { credits: 118, count: 59 }
-          qr: { credits: 63, count: 63 }
-        daily:
-          - day: '2026-08-25'
-            credits: 41
-            by_kind: { screenshot: 30, pdf: 8, qr: 3 }
+              id: { type: string, description: 'The meter, e.g. `render.screenshot`.' }
+              unit: { type: string }
+              unit_plural: { type: string }
+              free_allowance: { type: integer, description: This month's free quantity. }
+              used: { type: integer, description: Quantity committed this month. }
+              free_used: { type: integer, description: How much of `used` the free allowance covered. }
+              billable: { type: integer, description: '`used` beyond the free allowance.' }
+              reserved: { type: integer, description: Quantity held by work in flight. }
+              remaining_free: { type: integer, description: Free allowance left once work in flight is counted. }
+              charge: { type: string, description: What `billable` costs, before tax. }
+              free_utility: { type: boolean, description: A meter that is never charged (QR codes). }
+              exempt: { type: boolean, description: The account is exempt from settling this product. }

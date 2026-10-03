@@ -1,21 +1,21 @@
 openapi: 3.2.0
 info:
-  title: Renderwolf Batches API
+  title: Ironfang Render Batches API
   version: 1.0.0
   summary: Screenshots, PDFs, dynamic images and video through one API.
-  description: Renderwolf renders web pages to images, PDFs and video.
+  description: Ironfang Render renders web pages to images, PDFs and video.
   contact:
     name: Ironfang
     email: hello@ironfang.uk
-    url: https://ironfang.uk
-  termsOfService: https://ironfang.uk/legal/terms
+    url: https://ironfang.com
+  termsOfService: https://ironfang.com/legal/terms
   license:
     name: Proprietary - use governed by the Ironfang terms of service
-    url: https://ironfang.uk/legal/terms
+    url: https://ironfang.com/legal/terms
 servers:
-- url: https://api.ironfang.uk/renderwolf
+- url: https://api.ironfang.com/render
   description: Production
-- url: https://api.ironfang.uk
+- url: https://api.ironfang.com
   description: Production, unpartitioned - retained for existing clients
 security:
 - apiKey: []
@@ -24,6 +24,41 @@ tags:
   description: Up to 100 renders submitted, and refused, together.
 paths:
   /v1/batches:
+    get:
+      operationId: listBatches
+      summary: List batches
+      description: Tenant-scoped metadata, newest first by creation time and ID. Equal timestamps retain stable pagination. Newer insertions do not appear on subsequent pages; refresh the first page to see them. No input payloads or child job bodies in batch summaries. A final page has an empty next_cursor. Responses are no-store. The JWT portal twin has the same response and pagination contract.
+      tags:
+      - Batches
+      parameters:
+      - name: limit
+        in: query
+        schema:
+          type: integer
+          minimum: 1
+          maximum: 100
+          default: 50
+      - name: cursor
+        in: query
+        schema:
+          type: string
+          maxLength: 256
+        description: Pass next_cursor from the preceding page; empty means the first page.
+      responses:
+        '200':
+          description: One bounded page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BatchList'
+        '400':
+          description: Malformed cursor, repeated/unknown parameter or limit outside 1–100.
+        '401':
+          description: Authentication required.
+        '403':
+          description: The caller cannot read this collection.
+        '500':
+          description: Storage unavailable.
     post:
       tags:
       - Batches
@@ -40,26 +75,45 @@ paths:
 
         and an unknown field is refused rather than ignored, because a typo
 
-        that is silently dropped is a credit spent on the wrong render.
+        that is silently dropped is a render spent on the wrong thing.
 
 
         The batch is accepted or refused whole. Every item is validated before
 
-        any is stored, and the credits for all of them are reserved in one
+        any is stored, and every item is admitted on your billing account in
 
-        transaction, so a batch that would exceed your monthly credits is a
+        one step, so a batch any item of which cannot be admitted is refused
 
-        `429` that charged nothing and left no jobs behind. The error names
+        with the billing code, reserves nothing and leaves no jobs behind.
 
-        the item that was wrong.
+        Each item then commits or releases on its own as its job finishes.
+
+        A validation error names the item that was wrong. A batch that would
+
+        take the account past 1,000 unfinished jobs is refused whole the
+
+        same way, with `429 queue_full`.
 
 
         Items are ordinary jobs: poll them individually, or poll the batch for
 
         the aggregate. There is no ZIP of results - configure a storage
 
-        destination if you want the output collected in one place.'
+        destination if you want the output collected in one place.
+
+
+        Send `Idempotency-Key` to make the submission safe to retry: the same
+
+        key returns the batch it first created, with its jobs and another
+
+        `202`, instead of a second set of jobs and a second reservation. The
+
+        request is not compared with the first. Poll the batch for its
+
+        current counts.'
       operationId: submitBatch
+      parameters:
+      - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -108,10 +162,13 @@ paths:
         '400':
           description: Invalid submission, or `batch_too_large`. The message names the item.
         '403':
-          description: The key carries no `renderwolf:render` scope
-          or is not account-backed.: null
+          description: The key carries no `render:render` scope, or is not account-backed.
         '429':
-          description: '`quota_exhausted`: the whole batch was refused and nothing was charged.'
+          $ref: '#/components/responses/RateLimited'
+        '402':
+          $ref: '#/components/responses/BillingRefused'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
   /v1/batches/{id}:
     get:
       tags:
@@ -129,12 +186,25 @@ paths:
           type: string
       responses:
         '200':
-          description: The batch
-          its counts and its jobs.: null
+          description: The batch, its counts and its jobs.
         '404':
           description: No such batch on this account.
 components:
   schemas:
+    BatchList:
+      type: object
+      additionalProperties: false
+      required:
+      - batches
+      - next_cursor
+      properties:
+        batches:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/BatchSummary'
+        next_cursor:
+          type: string
     JobDelivery:
       type: object
       description: 'Where this job goes when it finishes, by destination id. Register the
@@ -173,10 +243,248 @@ components:
 
             of the prefix is refused when the job is submitted, not quietly
 
-            rewritten. Defaults to `renderwolf/{date}/{job_id}`.
+            rewritten. Defaults to `render/{date}/{job_id}`.
 
             '
           example: captures/{external_id}/{job_id}.png
+    BatchSummary:
+      type: object
+      additionalProperties: false
+      required:
+      - id
+      - external_id
+      - item_count
+      - created_at
+      - completed_at
+      - counts
+      - done
+      properties:
+        id:
+          type: string
+          format: uuid
+        external_id:
+          type: string
+        item_count:
+          type: integer
+          minimum: 1
+          maximum: 100
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type:
+          - string
+          - 'null'
+          format: date-time
+        done:
+          type: boolean
+        counts:
+          type: object
+          additionalProperties: false
+          required:
+          - total
+          - queued
+          - running
+          - succeeded
+          - failed
+          - cancelled
+          properties:
+            total:
+              type: integer
+              minimum: 0
+              maximum: 100
+            queued:
+              type: integer
+              minimum: 0
+              maximum: 100
+            running:
+              type: integer
+              minimum: 0
+              maximum: 100
+            succeeded:
+              type: integer
+              minimum: 0
+              maximum: 100
+            failed:
+              type: integer
+              minimum: 0
+              maximum: 100
+            cancelled:
+              type: integer
+              minimum: 0
+              maximum: 100
+    Error:
+      type: object
+      required:
+      - error
+      properties:
+        error:
+          type: object
+          required:
+          - code
+          - message
+          properties:
+            code:
+              type: string
+              description: 'Stable, safe to branch on. New codes may be added: treat a
+
+                code you do not recognise as a failure of the class its HTTP
+
+                status indicates.
+
+                '
+              enum:
+              - bad_request
+              - unauthorized
+              - invalid_api_key
+              - auth_failed
+              - forbidden
+              - billing_moved
+              - not_found
+              - rate_limited
+              - target_rate_limited
+              - render_failed
+              - bad_signature
+              - signing_disabled
+              - account_gone
+              - account_not_linked
+              - account_required
+              - admission_failed
+              - bad_destination
+              - bad_target
+              - batch_plan_failed
+              - batch_submit_failed
+              - batch_too_large
+              - bundle_failed
+              - clip_busy
+              - concurrency_limit
+              - delegated_not_allowed
+              - delivery_disabled
+              - delivery_plan_failed
+              - destination_disabled
+              - idempotency_conflict
+              - idempotency_key_used
+              - insufficient_scope
+              - invalid_token
+              - job_finished
+              - job_plan_failed
+              - job_submit_failed
+              - logo_fetch_failed
+              - pdf_too_long
+              - preview_busy
+              - queue_full
+              - result_expired
+              - result_not_ready
+              - result_read_failed
+              - secret_failed
+              - site_preview_disabled
+              - store_failed
+              - unknown_destination
+              - unscannable
+              - vault_failed
+              - video_disabled
+              - free_allowance_exhausted
+              - account_budget_exhausted
+              - product_budget_exhausted
+              - paid_usage_paused
+              - payment_required
+              - payment_action_required
+              - account_restricted
+              - account_closed
+              - product_not_eligible
+              - exemption_limit_reached
+              - operation_too_large
+              - billing_temporarily_unavailable
+            message:
+              type: string
+              description: Human-readable. May change; do not match on it.
+            docs:
+              type: string
+              format: uri
+              description: Where the error codes are documented.
+        request_id:
+          type: string
+          description: The X-Ironfang-Request-ID of the failed request. Quote it to support.
+      example:
+        error:
+          code: target_rate_limited
+          message: too many renders for that host, try again shortly
+          docs: https://ironfang.com/render/docs#errors
+        request_id: 01992f6e-7c1a-7b3e-9d52-4f0a6c8e2b17
+  responses:
+    RateLimited:
+      description: "Rate limits and exhausted billing allowances share this status,\nseparated by `error.code`:\n\n- `rate_limited` - your account exceeded 120 renders/minute\n- `target_rate_limited` - the site being rendered is being hit too hard\n  across all customers (60/minute per host)\n- `clip_busy`, `preview_busy` - every encoder or preview slot on the\n  worker is in use; `Retry-After` says when to come back\n- `concurrency_limit` - your account already has 2 browser\n  operations in progress, synchronous renders and running jobs\n  together; retry after `Retry-After`, or submit a durable job,\n  which waits for a free slot instead of being refused\n- `queue_full` - your account already has 1,000 unfinished jobs, or\n  the batch would take it past that; nothing was enqueued\n- `free_allowance_exhausted` - this month's free allowance for the\n  meter is used up and paid usage is not enabled\n- `account_budget_exhausted`, `product_budget_exhausted` - the\n  billing account's monthly limit, or Ironfang Render's, is reached\n- `exemption_limit_reached` - an exempt account's agreed limit is reached\n\nThe rate and capacity limits clear by themselves, so retry with\nbackoff, after `Retry-After` where it is sent. The billing codes do\nnot: enable paid usage or raise the limit in Billing, or wait for the\nmonth to roll over. Nothing was reserved or counted. Branch on the\ncode rather than the status.\n"
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying, on the refusals that clear by themselves.
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BillingRefused:
+      description: 'Paid usage cannot be billed: `paid_usage_paused`, `payment_required`,
+
+        `payment_action_required` or `account_restricted`. Resolve it in
+
+        Billing; nothing was reserved or counted. The same body can also
+
+        carry `account_closed` (410) and `operation_too_large` (413).
+
+        '
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    BillingUnavailable:
+      description: '`billing_temporarily_unavailable` - the billing ledger could not admit
+
+        the request just now. Retry after `Retry-After` seconds; nothing was
+
+        reserved.
+
+        '
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: 'Makes a submission safe to retry. Any string up to 255 characters;
+
+        surrounding whitespace is ignored and a longer key is a `400
+
+        bad_request`. A key is remembered per account for as long as the job
+
+        it created exists, and has no expiry of its own. Jobs and batches
+
+        keep separate key spaces.
+
+
+        A job submitted again under its key returns the existing job with
+
+        `200` when the request is the same, and is a `409
+
+        idempotency_conflict` when it differs. A batch submitted again under
+
+        its key returns the batch the key first created, with its jobs and
+
+        `202`; the request is not compared, so a batch has no conflict
+
+        response.
+
+        '
+      schema:
+        type: string
+        maxLength: 255
   securitySchemes:
     apiKey:
       type: http
@@ -184,3 +492,6 @@ components:
       description: 'An API key from the portal, sent as `Authorization: Bearer rw_live_...`.
 
         '
+externalDocs:
+  description: Ironfang Render documentation
+  url: https://ironfang.com/render/docs
