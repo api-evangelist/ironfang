@@ -55,6 +55,9 @@ maintainers:
   url: https://ironfang.com
 
 common:
+- type: CapabilityMap
+  url: capabilities/ironfang-capability-edges.yml
+  name: Ironfang Business Capability Map
 - type: AgenticAccess
   url: agentic-access/ironfang-agentic-access.yml
 - type: Spectral
