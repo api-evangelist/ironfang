@@ -1,0 +1,12 @@
+{
+ "url": "https://api.ironfang.com/finance/v2/openapi.yaml",
+ "requested_url": "https://api.ironfang.com/finance/v2/openapi.yaml",
+ "status": 200,
+ "content_type": "application/yaml; charset=utf-8",
+ "bytes": 116145,
+ "sha256": "b8d673897d0ebb976322b928ad237324c1f7ad8ef9cc30e2f18bf4ae8a9b9457",
+ "fetched_at": "2026-10-04",
+ "fetched_by": "APIEvangelist-Harvest/1.0 (+https://apievangelist.com)",
+ "match": "equivalent",
+ "note": "Re-fetched from the provider by verify-openapi-sources.py; the provider's current document describes the same operations (Jaccard 1.0), but the bytes differ, so the archive is an earlier or reformatted copy."
+}

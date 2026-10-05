@@ -1,0 +1,12 @@
+{
+ "url": "https://api.ironfang.com/analytics/openapi.yaml",
+ "requested_url": "https://api.ironfang.com/analytics/openapi.yaml",
+ "status": 200,
+ "content_type": "application/yaml; charset=utf-8",
+ "bytes": 96337,
+ "sha256": "94e7a1891f50e717ca932f61b12b778f9b20ad402282df902849a512e3e5864e",
+ "fetched_at": "2026-10-04",
+ "fetched_by": "APIEvangelist-Harvest/1.0 (+https://apievangelist.com)",
+ "match": "equivalent",
+ "note": "Re-fetched from the provider by verify-openapi-sources.py; the provider's current document describes the same operations (Jaccard 1.0), but the bytes differ, so the archive is an earlier or reformatted copy."
+}
