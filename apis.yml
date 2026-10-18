@@ -21,6 +21,19 @@ specificationVersion: '0.21'
 
 tags:
 - Developer Tools
+- Screenshots
+- website screenshot
+- HTML to PDF
+- PDF API
+- Image API
+- OG Image API
+- QR Code API
+- Website-to-Video
+- Rendering Infrastructure
+- MCP
+- UK-hosted
+tags_raw:
+- Developer Tools
 - screenshot-api
 - website screenshot
 - HTML to PDF
@@ -385,6 +398,8 @@ apis:
   humanURL: https://ironfang.com/audit/docs
   baseURL: https://api.ironfang.com/audit
   tags:
+  - Audit
+  tags_raw:
   - Audits
   properties:
   - type: OpenAPI
@@ -412,6 +427,8 @@ apis:
   humanURL: https://ironfang.com/audit/docs
   baseURL: https://api.ironfang.com/audit
   tags:
+  - Event
+  tags_raw:
   - Events
   properties:
   - type: OpenAPI
@@ -466,6 +483,8 @@ apis:
   humanURL: https://ironfang.com/audit/docs
   baseURL: https://api.ironfang.com/audit
   tags:
+  - Export
+  tags_raw:
   - Exports
   properties:
   - type: OpenAPI
@@ -547,6 +566,8 @@ apis:
   humanURL: https://ironfang.com/audit/docs
   baseURL: https://api.ironfang.com/audit
   tags:
+  - Notification Preferences
+  tags_raw:
   - NotificationPreferences
   properties:
   - type: OpenAPI
@@ -574,6 +595,8 @@ apis:
   humanURL: https://ironfang.com/audit/docs
   baseURL: https://api.ironfang.com/audit
   tags:
+  - Notification
+  tags_raw:
   - Notifications
   properties:
   - type: OpenAPI
@@ -817,6 +840,8 @@ apis:
   humanURL: https://ironfang.com/audit/docs
   baseURL: https://api.ironfang.com/audit
   tags:
+  - Webhook
+  tags_raw:
   - Webhooks
   properties:
   - type: OpenAPI
@@ -902,6 +927,8 @@ apis:
   humanURL: https://ironfang.com/docs/finance
   baseURL: https://api.ironfang.com/finance
   tags:
+  - Generation
+  tags_raw:
   - generation
   properties:
   - type: OpenAPI
@@ -931,6 +958,8 @@ apis:
   humanURL: https://ironfang.com/docs/finance
   baseURL: https://api.ironfang.com/finance
   tags:
+  - Job
+  tags_raw:
   - Jobs
   properties:
   - type: OpenAPI
@@ -1047,6 +1076,8 @@ apis:
   humanURL: https://ironfang.com/docs/finance
   baseURL: https://api.ironfang.com/finance
   tags:
+  - Rulesets
+  tags_raw:
   - rulesets
   properties:
   - type: OpenAPI
@@ -1134,6 +1165,8 @@ apis:
   humanURL: https://ironfang.com/docs/finance
   baseURL: https://api.ironfang.com/finance
   tags:
+  - Job
+  tags_raw:
   - Jobs
   properties:
   - type: OpenAPI
@@ -1221,6 +1254,8 @@ apis:
   humanURL: https://ironfang.com/docs/finance
   baseURL: https://api.ironfang.com/finance
   tags:
+  - Rulesets
+  tags_raw:
   - rulesets
   properties:
   - type: OpenAPI
@@ -1304,6 +1339,8 @@ apis:
   humanURL: https://ironfang.com/rig/docs
   baseURL: https://api.ironfang.com/rig
   tags:
+  - Event
+  tags_raw:
   - Events
   properties:
   - type: OpenAPI
@@ -1379,6 +1416,8 @@ apis:
   humanURL: https://ironfang.com/rig/docs
   baseURL: https://api.ironfang.com/rig
   tags:
+  - Project
+  tags_raw:
   - Projects
   properties:
   - type: OpenAPI
@@ -1604,6 +1643,8 @@ apis:
   humanURL: https://ironfang.com/analytics/docs
   baseURL: https://api.ironfang.com/analytics
   tags:
+  - Recording
+  tags_raw:
   - Recordings
   properties:
   - type: OpenAPI
@@ -1796,6 +1837,8 @@ apis:
   humanURL: https://ironfang.com/security/docs
   baseURL: https://api.ironfang.com/security
   tags:
+  - Services
+  tags_raw:
   - Service
   properties:
   - type: OpenAPI
