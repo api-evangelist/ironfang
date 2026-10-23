@@ -237,3 +237,9 @@ components:
 externalDocs:
   description: Ironfang Analytics documentation
   url: https://ironfang.com/analytics/docs
+x-provenance:
+  method: harvested
+  publisher: Ironfang
+  source: https://api.ironfang.com/analytics/openapi.yaml
+  note: split by refine-openapis from the provider's own published document, verified by fetch (openapi/_original/*.fetch.json);
+    stamped by stamp-openapi-provenance.py (roadmap#793)

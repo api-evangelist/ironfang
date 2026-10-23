@@ -2433,3 +2433,9 @@ components:
 externalDocs:
   description: Ironfang Finance documentation
   url: https://ironfang.com/docs/finance
+x-provenance:
+  method: harvested
+  publisher: Ironfang
+  source: https://api.ironfang.com/finance/openapi.yaml
+  note: split by refine-openapis from the provider's own published document, verified by fetch (openapi/_original/*.fetch.json);
+    stamped by stamp-openapi-provenance.py (roadmap#793)
